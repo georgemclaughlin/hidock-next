@@ -37,6 +37,15 @@ let isProcessing = false
 let processingInterval: ReturnType<typeof setInterval> | null = null
 let lastSkipLogAt = 0 // Throttle "skipping" spam to once per 60s
 
+function progressTickerLimit(stage: string): number | null {
+  const normalizedStage = stage.toLowerCase()
+  if (/\bchunk\s+\d+\s+of\s+\d+\b/.test(normalizedStage)) return null
+  if (normalizedStage.includes('preparing') || normalizedStage.includes('starting') || normalizedStage.includes('loading')) return 18
+  if (normalizedStage.includes('transcribing')) return 68
+  if (normalizedStage.includes('diarizing')) return 82
+  return 90
+}
+
 export function setMainWindowForTranscription(win: BrowserWindow): void {
   mainWindow = win
 }
@@ -175,10 +184,14 @@ async function processQueue(): Promise<void> {
         // B-TXN-002: Progress ticker that increments during long API calls
         // instead of being stuck at a hardcoded value
         let tickerProgress = 0
+        let currentStage = 'preparing'
         const progressTicker = setInterval(() => {
+          const limit = progressTickerLimit(currentStage)
+          if (limit === null) return
+
           // Tick progress upward during API calls, capping below 95% (reserved for completion)
-          if (tickerProgress < 90) {
-            tickerProgress += 2
+          if (tickerProgress < limit) {
+            tickerProgress = Math.min(tickerProgress + 2, limit)
             updateQueueProgress(item.id, tickerProgress)
             notifyRenderer('transcription:progress', {
               queueItemId: item.id,
@@ -191,6 +204,7 @@ async function processQueue(): Promise<void> {
 
         // spec-014: Progress callback for transcription stages
         const progressCallback = (stage: string, progress: number) => {
+          currentStage = stage
           tickerProgress = progress // Sync ticker with actual progress
           updateQueueProgress(item.id, progress)
           notifyRenderer('transcription:progress', {

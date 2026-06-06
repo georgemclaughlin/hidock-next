@@ -873,6 +873,11 @@ fn transcribe_parakeet_chunked(
     );
 
     for chunk_index in 0..total_chunks {
+        let chunk_number = chunk_index + 1;
+        let chunk_start_progress = parakeet_chunk_progress(chunk_index, total_chunks);
+        let chunk_stage = format!("transcribing chunk {chunk_number} of {total_chunks}");
+        emit_transcription_progress(&chunk_stage, chunk_start_progress);
+
         let primary_start = chunk_index * primary_chunk_samples;
         if primary_start >= audio.len() {
             break;
@@ -899,7 +904,7 @@ fn transcribe_parakeet_chunked(
         .with_context(|| {
             format!(
                 "Parakeet chunk {} of {} failed for {}",
-                chunk_index + 1,
+                chunk_number,
                 total_chunks,
                 input.display()
             )
@@ -923,14 +928,17 @@ fn transcribe_parakeet_chunked(
             });
         }
 
-        let progress = 20
-            + (((chunk_index + 1) as f32 / total_chunks as f32) * 50.0)
-                .round()
-                .clamp(0.0, 50.0) as u8;
-        emit_transcription_progress("transcribing audio", progress);
+        let progress = parakeet_chunk_progress(chunk_number, total_chunks);
+        emit_transcription_progress(&chunk_stage, progress);
     }
 
     Ok(merge_transcription_results(chunk_results))
+}
+
+fn parakeet_chunk_progress(completed_chunks: usize, total_chunks: usize) -> u8 {
+    20 + ((completed_chunks as f32 / total_chunks.max(1) as f32) * 50.0)
+        .round()
+        .clamp(0.0, 50.0) as u8
 }
 
 fn seconds_to_samples(seconds: f32) -> usize {
