@@ -148,13 +148,17 @@ export function SourceReader({
     () => parseTranscriptSegments(transcript?.speakers),
     [transcript?.speakers]
   )
+  const hasDiarizedTranscript = useMemo(
+    () => transcriptSegments.some((segment) => Boolean(segment.speaker?.trim())),
+    [transcriptSegments]
+  )
 
   const copiedTranscriptText = useMemo(() => {
     if (!transcript) return ''
-    return transcriptView === 'diarized'
+    return transcriptView === 'diarized' && hasDiarizedTranscript
       ? formatSegmentedTranscript(transcriptSegments, transcript.full_text)
       : transcript.full_text
-  }, [transcript, transcriptSegments, transcriptView])
+  }, [hasDiarizedTranscript, transcript, transcriptSegments, transcriptView])
 
   // Reset all state when recording changes
   useEffect(() => {
@@ -169,6 +173,12 @@ export function SourceReader({
     setAudioPlayerExpanded(false)
     setDetailsExpanded(false)
   }, [recording?.id])
+
+  useEffect(() => {
+    if (transcriptView === 'diarized' && !hasDiarizedTranscript) {
+      setTranscriptView('raw')
+    }
+  }, [hasDiarizedTranscript, transcriptView])
 
   const handleCloseAudioPlayer = useCallback(() => {
     setAudioPlayerExpanded(false)
@@ -677,7 +687,12 @@ export function SourceReader({
                 <TabsTrigger value="raw" className="flex-1">
                   Raw
                 </TabsTrigger>
-                <TabsTrigger value="diarized" className="flex-1">
+                <TabsTrigger
+                  value="diarized"
+                  className="flex-1"
+                  disabled={!hasDiarizedTranscript}
+                  title={hasDiarizedTranscript ? 'Show diarized transcript' : 'Diarized transcript not available'}
+                >
                   Diarized
                 </TabsTrigger>
               </TabsList>
@@ -695,8 +710,8 @@ export function SourceReader({
               </TabsContent>
               <TabsContent value="diarized" className="mt-3">
                 <TranscriptViewer
-                  transcript={transcriptSegments.length > 0 ? transcript.full_text : ''}
-                  segments={transcriptSegments}
+                  transcript={hasDiarizedTranscript ? transcript.full_text : ''}
+                  segments={hasDiarizedTranscript ? transcriptSegments : []}
                   currentTimeMs={currentTimeMs}
                   onSeek={onSeek || (() => {})}
                   showSummary={false}

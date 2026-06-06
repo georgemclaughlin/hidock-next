@@ -357,6 +357,10 @@ function buildTranscriptSegmentsJson(output: NativeTranscriptOutput): string | u
     return undefined
   }
 
+  if (!segments.some((segment) => Boolean(segment.speaker))) {
+    return undefined
+  }
+
   return JSON.stringify(segments)
 }
 

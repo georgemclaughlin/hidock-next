@@ -7,7 +7,7 @@ use polyvoice::{
     pipeline_v2::hybrid::HybridPipeline,
     segmentation::PowersetSegmenter,
     types::{Profile, SampleRate, SpeakerTurn},
-    ResNet34Adapter,
+    Embedder, EmbedderError, ResNet34Adapter,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
@@ -39,6 +40,11 @@ const TRANSCRIPTION_TAIL_CONTEXT_SECS: f32 = 2.0;
 const TRANSCRIPTION_TAIL_WORD_GRACE_SECS: f32 = 0.15;
 const MIN_TAIL_RETRY_SECS: f32 = 1.0;
 const MIN_TAIL_RETRY_RMS: f32 = 0.0015;
+const TRANSCRIPT_SEGMENT_MERGE_GAP_SECS: f64 = 0.8;
+const TRANSCRIPT_SEGMENT_MAX_SECS: f64 = 18.0;
+const TRANSCRIPT_SEGMENT_MAX_CHARS: usize = 320;
+const SHORT_SPEAKER_RUN_MAX_SECS: f64 = 3.2;
+const SHORT_SPEAKER_RUN_MAX_WORDS: usize = 3;
 
 #[derive(Parser)]
 #[command(name = "recorder-transcriber")]
@@ -97,7 +103,7 @@ struct TranscriptOutput {
     segments: Vec<TranscriptSegment>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct TranscriptSegment {
     text: String,
     start: Option<f64>,
@@ -113,6 +119,42 @@ struct DownloadProgressEvent<'a> {
     progress: u8,
     downloaded_bytes: Option<u64>,
     total_bytes: Option<u64>,
+}
+
+struct SerialEmbedder<E: Embedder> {
+    inner: Mutex<E>,
+    dim: usize,
+}
+
+impl<E: Embedder> SerialEmbedder<E> {
+    fn new(inner: E) -> Self {
+        let dim = inner.dim();
+        Self {
+            inner: Mutex::new(inner),
+            dim,
+        }
+    }
+
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, E>, EmbedderError> {
+        self.inner
+            .lock()
+            .map_err(|_| EmbedderError::Legacy("serialized embedder lock poisoned".to_string()))
+    }
+}
+
+impl<E: Embedder> Embedder for SerialEmbedder<E> {
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn embed(&self, audio: &[f32]) -> Result<Vec<f32>, EmbedderError> {
+        self.lock()?.embed(audio)
+    }
+
+    fn embed_batch(&self, audios: &[&[f32]]) -> Result<Vec<Vec<f32>>, EmbedderError> {
+        let guard = self.lock()?;
+        audios.iter().map(|audio| guard.embed(audio)).collect()
+    }
 }
 
 fn main() -> Result<()> {
@@ -466,7 +508,7 @@ fn transcribe(
             let mut engine = ParakeetModel::load(&model_path, &Quantization::Int8)
                 .with_context(|| format!("Failed to load Parakeet model {}", model.id))?;
             let params = ParakeetParams {
-                timestamp_granularity: Some(TimestampGranularity::Segment),
+                timestamp_granularity: Some(TimestampGranularity::Word),
                 ..Default::default()
             };
             transcribe_parakeet_with_tail_rescue(&mut engine, &audio, &params, input)?
@@ -478,6 +520,8 @@ fn transcribe(
     if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
         eprintln!("Speaker diarization skipped: {error:#}");
     }
+    smooth_short_speaker_runs(&mut segments);
+    let segments = merge_transcript_segments(segments);
 
     Ok(TranscriptOutput {
         text,
@@ -669,6 +713,142 @@ fn transcript_text_from_segments(segments: &[TranscriptSegment]) -> Option<Strin
     }
 }
 
+fn merge_transcript_segments(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
+    let mut merged = Vec::new();
+    let mut current: Option<TranscriptSegment> = None;
+
+    for segment in segments {
+        let Some(active) = current.as_mut() else {
+            current = Some(segment);
+            continue;
+        };
+
+        if can_merge_transcript_segments(active, &segment) {
+            append_transcript_text(&mut active.text, &segment.text);
+            active.end = segment.end.or(active.end);
+        } else {
+            if let Some(previous) = current.replace(segment) {
+                merged.push(previous);
+            }
+        }
+    }
+
+    if let Some(segment) = current {
+        merged.push(segment);
+    }
+
+    merged
+}
+
+fn smooth_short_speaker_runs(segments: &mut [TranscriptSegment]) {
+    if segments.len() < 3 {
+        return;
+    }
+
+    let mut runs = Vec::new();
+    let mut start = 0;
+    while start < segments.len() {
+        let speaker = segments[start].speaker.clone();
+        let mut end = start + 1;
+        while end < segments.len() && segments[end].speaker == speaker {
+            end += 1;
+        }
+        runs.push((start, end, speaker));
+        start = end;
+    }
+
+    let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+    for index in 1..runs.len().saturating_sub(1) {
+        let (start, end, speaker) = &runs[index];
+        let Some(previous_speaker) = runs[index - 1].2.as_ref() else {
+            continue;
+        };
+        let Some(next_speaker) = runs[index + 1].2.as_ref() else {
+            continue;
+        };
+        if previous_speaker != next_speaker {
+            continue;
+        }
+
+        let duration = run_duration(&segments[*start..*end]);
+        let word_count = segments[*start..*end]
+            .iter()
+            .map(|segment| count_words(&segment.text))
+            .sum::<usize>();
+        let is_short_run =
+            duration <= SHORT_SPEAKER_RUN_MAX_SECS && word_count <= SHORT_SPEAKER_RUN_MAX_WORDS;
+
+        if speaker.is_none() || is_short_run {
+            replacements.push((*start, *end, previous_speaker.clone()));
+        }
+    }
+
+    for (start, end, speaker) in replacements {
+        for segment in &mut segments[start..end] {
+            segment.speaker = Some(speaker.clone());
+        }
+    }
+}
+
+fn run_duration(segments: &[TranscriptSegment]) -> f64 {
+    let Some(first) = segments.first() else {
+        return 0.0;
+    };
+    let Some(last) = segments.last() else {
+        return 0.0;
+    };
+    let start = first.start.unwrap_or(0.0);
+    let end = last.end.or(last.start).unwrap_or(start);
+    (end - start).max(0.0)
+}
+
+fn count_words(text: &str) -> usize {
+    text.split_whitespace().count()
+}
+
+fn can_merge_transcript_segments(left: &TranscriptSegment, right: &TranscriptSegment) -> bool {
+    if left.speaker != right.speaker {
+        return false;
+    }
+
+    let left_end = left.end.or(left.start).unwrap_or(0.0);
+    let right_start = right.start.unwrap_or(left_end);
+    if right_start - left_end > TRANSCRIPT_SEGMENT_MERGE_GAP_SECS {
+        return false;
+    }
+
+    let merged_start = left.start.unwrap_or(right_start);
+    let merged_end = right.end.or(right.start).unwrap_or(left_end);
+    if merged_end - merged_start > TRANSCRIPT_SEGMENT_MAX_SECS {
+        return false;
+    }
+
+    left.text.len() + right.text.len() + 1 <= TRANSCRIPT_SEGMENT_MAX_CHARS
+}
+
+fn append_transcript_text(target: &mut String, next: &str) {
+    let next = next.trim();
+    if next.is_empty() {
+        return;
+    }
+    if target.is_empty() {
+        target.push_str(next);
+        return;
+    }
+
+    if next
+        .chars()
+        .next()
+        .map(|ch| matches!(ch, '.' | ',' | '!' | '?' | ';' | ':' | ')' | ']' | '}'))
+        .unwrap_or(false)
+    {
+        target.push_str(next);
+    } else {
+        target.push(' ');
+        target.push_str(next);
+    }
+}
+
 fn assign_speakers(
     models_dir: &Path,
     audio: &[f32],
@@ -686,11 +866,14 @@ fn assign_speakers(
 
     let segmenter = PowersetSegmenter::new(&models.segmenter_path)
         .context("Failed to load diarization segmentation model")?;
-    let embedder = ResNet34Adapter::new(&models.embedder_path, 4)
+    let embedder = ResNet34Adapter::new(&models.embedder_path, 1)
         .context("Failed to load diarization embedding model")?;
     let clusterer = KMeansClusterer::new(20);
-    let pipeline =
-        HybridPipeline::new(Box::new(segmenter), Box::new(embedder), Box::new(clusterer));
+    let pipeline = HybridPipeline::new(
+        Box::new(segmenter),
+        Box::new(SerialEmbedder::new(embedder)),
+        Box::new(clusterer),
+    );
     let sample_rate = SampleRate::new(TARGET_SAMPLE_RATE)
         .ok_or_else(|| anyhow!("Unsupported diarization sample rate: {TARGET_SAMPLE_RATE}"))?;
     let diarization = pipeline
@@ -726,7 +909,7 @@ fn best_speaker_for_segment(segment: &TranscriptSegment, turns: &[SpeakerTurn]) 
     }
 
     best_speaker
-        .filter(|_| best_overlap >= 0.05)
+        .filter(|_| best_overlap > 0.0)
         .map(|speaker| format!("Speaker {}", speaker.0 + 1))
 }
 
