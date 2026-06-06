@@ -12,9 +12,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils'
 import { parseJsonArray, type Transcript } from '@/types'
 import { type UnifiedRecording, hasLocalPath } from '@/types/unified-recording'
+import { useConfigStore } from '@/store/domain/useConfigStore'
 import { useTranscriptionStore, type TranscriptionItem } from '@/store/features/useTranscriptionStore'
 
-type StageStatus = 'not_started' | 'queued' | 'running' | 'complete' | 'skipped' | 'blocked' | 'failed'
+type StageStatus = 'not_started' | 'queued' | 'running' | 'ready' | 'complete' | 'skipped' | 'blocked' | 'failed'
 
 type RecordingEmbeddingIndexStats = {
   recordingId: string
@@ -56,6 +57,8 @@ function getStatusLabel(status: StageStatus): string {
       return 'Running'
     case 'queued':
       return 'Queued'
+    case 'ready':
+      return 'Ready'
     case 'blocked':
       return 'Configure'
     case 'failed':
@@ -70,19 +73,21 @@ function getStatusLabel(status: StageStatus): string {
 function getStatusIcon(status: StageStatus) {
   switch (status) {
     case 'complete':
-      return <CheckCircle2 className="h-4 w-4" />
+      return <CheckCircle2 className="h-3.5 w-3.5" />
     case 'running':
-      return <Loader2 className="h-4 w-4 animate-spin" />
+      return <Loader2 className="h-3.5 w-3.5 animate-spin" />
     case 'queued':
-      return <Clock className="h-4 w-4" />
+      return <Clock className="h-3.5 w-3.5" />
+    case 'ready':
+      return <Circle className="h-3.5 w-3.5" />
     case 'blocked':
-      return <AlertCircle className="h-4 w-4" />
+      return <AlertCircle className="h-3.5 w-3.5" />
     case 'failed':
-      return <AlertCircle className="h-4 w-4" />
+      return <AlertCircle className="h-3.5 w-3.5" />
     case 'skipped':
-      return <CircleDashed className="h-4 w-4" />
+      return <CircleDashed className="h-3.5 w-3.5" />
     default:
-      return <Circle className="h-4 w-4" />
+      return <Circle className="h-3.5 w-3.5" />
   }
 }
 
@@ -94,6 +99,8 @@ function getStatusClassName(status: StageStatus): string {
       return 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
     case 'queued':
       return 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
+    case 'ready':
+      return 'border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300'
     case 'blocked':
       return 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
     case 'failed':
@@ -126,6 +133,7 @@ function buildStages(
   transcript: Transcript | undefined,
   item: TranscriptionItem | null,
   indexStats: RecordingEmbeddingIndexStats | null,
+  isSummaryConfigured: boolean,
   onTranscribe?: () => void,
   onOpenSettings?: () => void
 ): PipelineStage[] {
@@ -310,6 +318,15 @@ function buildStages(
       }
     }
 
+    if (isSummaryConfigured) {
+      return {
+        id: 'summary',
+        label: 'Summarize',
+        status: 'ready',
+        detail: 'Local assistant is configured for generated summaries when that stage is enabled.'
+      }
+    }
+
     return {
       id: 'summary',
       label: 'Summarize',
@@ -326,22 +343,22 @@ function StageButton({ stage }: { stage: PipelineStage }) {
   const content = (
     <div
       className={cn(
-        'group flex min-w-0 flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition-colors',
+        'group mx-auto flex min-w-0 max-w-28 flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-center transition-colors',
         stage.action ? 'cursor-pointer hover:bg-accent hover:text-accent-foreground' : ''
       )}
       title={stage.detail}
     >
       <div
         className={cn(
-          'flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-sm',
+          'flex h-6 w-6 items-center justify-center rounded-full border-2 shadow-sm',
           getStatusClassName(stage.status)
         )}
       >
         {getStatusIcon(stage.status)}
       </div>
       <div className="max-w-full">
-        <div className="truncate text-xs font-semibold text-foreground">{stage.label}</div>
-        <div className="truncate text-[10px] font-medium uppercase tracking-normal text-muted-foreground">
+        <div className="truncate text-[11px] font-semibold leading-tight text-foreground">{stage.label}</div>
+        <div className="truncate text-[9px] font-medium uppercase leading-tight tracking-normal text-muted-foreground">
           {getStatusLabel(stage.status)}
         </div>
       </div>
@@ -396,6 +413,7 @@ export function ProcessingPipelineTracker({
     return null
   })
   const [indexStats, setIndexStats] = useState<RecordingEmbeddingIndexStats | null>(null)
+  const isSummaryConfigured = useConfigStore((state) => Boolean(state.config?.embeddings.ollamaBaseUrl?.trim()))
 
   useEffect(() => {
     let cancelled = false
@@ -420,13 +438,13 @@ export function ProcessingPipelineTracker({
   }, [recording.id, recording.transcriptionStatus, transcript?.id])
 
   const stages = useMemo(
-    () => buildStages(recording, transcript, transcriptionItem, indexStats, onTranscribe, onOpenSettings),
-    [recording, transcript, transcriptionItem, indexStats, onTranscribe, onOpenSettings]
+    () => buildStages(recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, onTranscribe, onOpenSettings),
+    [recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, onTranscribe, onOpenSettings]
   )
 
   return (
     <section className="rounded-md border bg-background px-3 py-2">
-      <div className="mb-1 flex items-center justify-between gap-3">
+      <div className="mb-0.5 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Processing</h3>
         <span className="text-xs text-muted-foreground">
           {stages.filter((stage) => stage.status === 'complete').length}/{stages.length} complete
@@ -437,7 +455,7 @@ export function ProcessingPipelineTracker({
           {stages.map((stage, index) => (
             <div key={stage.id} className="relative min-w-0">
               {index < stages.length - 1 && (
-                <div className="absolute left-1/2 right-[-50%] top-5 h-px bg-border" />
+                <div className="absolute left-1/2 right-[-50%] top-4 h-px bg-border" />
               )}
               <div className="relative z-10">
                 <StageButton stage={stage} />

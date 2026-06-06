@@ -347,8 +347,10 @@ export function Settings() {
     },
     {
       label: 'Summarize',
-      status: ollamaUrl.trim() ? 'Configured' : 'URL required',
-      description: 'Local assistant settings will power generated summaries when that stage is enabled.',
+      status: ollamaUrl.trim() ? 'Ready' : 'URL required',
+      description: ollamaUrl.trim()
+        ? 'Local assistant is configured for generated summaries when that stage is enabled.'
+        : 'Set an Ollama URL before generated summaries can run.',
       sectionId: 'settings-stage-summary'
     }
   ], [
