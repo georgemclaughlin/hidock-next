@@ -1,6 +1,5 @@
 import { memo } from 'react'
 import {
-  Mic,
   FileText,
   Calendar,
   Play,
@@ -41,7 +40,6 @@ interface SourceCardProps {
   onDownload: () => void
   onDelete: () => void
   onTranscribe?: () => void
-  onAskAssistant: () => void
   onGenerateOutput: () => void
   onToggleTranscript: () => void
   onNavigateToMeeting: (meetingId: string) => void
@@ -65,7 +63,6 @@ export const SourceCard = memo(function SourceCard({
   onDownload,
   onDelete,
   onTranscribe,
-  onAskAssistant,
   onGenerateOutput,
   onToggleTranscript,
   onNavigateToMeeting
@@ -132,10 +129,6 @@ export const SourceCard = memo(function SourceCard({
                 {recording.quality}
               </span>
             )}
-
-            <Button variant="ghost" size="icon" onClick={onAskAssistant} title="Ask Assistant about this capture">
-              <Mic className="h-4 w-4" />
-            </Button>
 
             <Button variant="ghost" size="icon" onClick={onGenerateOutput} title="Generate artifact from this capture">
               <FileText className="h-4 w-4" />

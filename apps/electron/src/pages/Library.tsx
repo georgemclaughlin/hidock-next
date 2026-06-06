@@ -456,13 +456,6 @@ export function Library() {
     }
   }
 
-  const handleAskAssistant = useCallback(
-    (recording: UnifiedRecording) => {
-      navigate('/assistant', { state: { contextId: recording.knowledgeCaptureId || recording.id } })
-    },
-    [navigate]
-  )
-
   const handleGenerateOutput = useCallback(
     (recording: UnifiedRecording) => {
       navigate('/actionables', { state: { sourceId: recording.knowledgeCaptureId || recording.id, action: 'generate' } })
@@ -709,13 +702,6 @@ export function Library() {
       handleDelete(recording)
     },
     [handleDelete]
-  )
-
-  const handleAskAssistantCallback = useCallback(
-    (recording: UnifiedRecording) => {
-      handleAskAssistant(recording)
-    },
-    [handleAskAssistant]
   )
 
   const handleGenerateOutputCallback = useCallback(
@@ -991,7 +977,6 @@ export function Library() {
                           onDownload={() => handleDownloadCallback(recording)}
                           onDelete={() => handleDeleteCallback(recording)}
                           onTranscribe={() => queueTranscription(recording)}
-                          onAskAssistant={() => handleAskAssistantCallback(recording)}
                           onGenerateOutput={() => handleGenerateOutputCallback(recording)}
                           isDownloading={isDeviceOnly(recording) && isDownloading(recording.deviceFilename)}
                           downloadProgress={
@@ -1055,7 +1040,6 @@ export function Library() {
                           onDownload={() => handleDownloadCallback(recording)}
                           onDelete={() => handleDeleteCallback(recording)}
                           onTranscribe={() => queueTranscription(recording)}
-                          onAskAssistant={() => handleAskAssistantCallback(recording)}
                           onGenerateOutput={() => handleGenerateOutputCallback(recording)}
                           onToggleTranscript={() => handleToggleTranscriptCallback(recording.id)}
                           onNavigateToMeeting={handleNavigateToMeeting}

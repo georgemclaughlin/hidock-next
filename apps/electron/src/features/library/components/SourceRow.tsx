@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Play, X, AlertCircle, Download, Trash2, Wand2, Mic, FileText, RefreshCw } from 'lucide-react'
+import { Play, X, AlertCircle, Download, Trash2, Wand2, FileText, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -28,7 +28,6 @@ interface SourceRowProps {
   onDownload?: () => void
   onDelete?: () => void
   onTranscribe?: () => void
-  onAskAssistant?: () => void
   onGenerateOutput?: () => void
   // Download state for device-only recordings
   isDownloading?: boolean
@@ -51,7 +50,6 @@ export const SourceRow = memo(function SourceRow({
   onDownload,
   onDelete,
   onTranscribe,
-  onAskAssistant,
   onGenerateOutput,
   isDownloading = false,
   downloadProgress,
@@ -139,18 +137,6 @@ export const SourceRow = memo(function SourceRow({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
-
-        {/* Ask Assistant button */}
-        {onAskAssistant && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => { e.stopPropagation(); onAskAssistant(); }}
-            title="Ask Assistant about this capture"
-          >
-            <Mic className="h-3.5 w-3.5" />
-          </Button>
         )}
 
         {/* Generate Output button */}
