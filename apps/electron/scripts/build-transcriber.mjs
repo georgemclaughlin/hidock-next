@@ -43,8 +43,11 @@ function configureWindowsCmakeGenerator(env) {
 const env = { ...process.env }
 configureWindowsCmakeGenerator(env)
 
-const cargo = process.platform === 'win32' ? 'cargo.cmd' : 'cargo'
-const result = spawnSync(cargo, ['build', '--release'], {
+const command = process.platform === 'win32' ? 'cmd.exe' : 'cargo'
+const args = process.platform === 'win32'
+  ? ['/d', '/s', '/c', 'cargo build --release']
+  : ['build', '--release']
+const result = spawnSync(command, args, {
   cwd: transcriberDir,
   env,
   stdio: 'inherit'
