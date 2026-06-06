@@ -317,7 +317,8 @@ export interface AppConfig {
     parakeetModel: string
   }
   embeddings: {
-    provider: 'ollama'
+    provider: 'native' | 'ollama'
+    nativeModel: string
     ollamaBaseUrl: string
     ollamaModel: string
     chunkSize: number

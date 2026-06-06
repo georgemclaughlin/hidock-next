@@ -3,8 +3,10 @@
  * Combines vector search with LLM to answer questions about meetings
  */
 
-import { getVectorStore, SearchResult } from './vector-store'
+import { getVectorStore, SearchResult, VectorDocument, cosineSimilarity } from './vector-store'
 import { getOllamaService, OllamaChatMessage } from './ollama'
+import { getEmbeddingService } from './embeddings'
+import type { EmbeddingResult } from './embeddings'
 import { getDatabase, queryOne, escapeLikePattern } from './database'
 import { Result, success, error } from '../types/api'
 
@@ -23,6 +25,14 @@ interface RAGResponse {
     score: number
   }>
   error?: string
+}
+
+type GlobalKnowledgeResult = {
+  id: unknown
+  title: unknown
+  summary: unknown
+  capturedAt: unknown
+  semanticScore?: number
 }
 
 const SYSTEM_PROMPT = `You are a helpful meeting assistant that answers questions based on meeting transcripts.
@@ -148,10 +158,10 @@ class RAGService {
       return false
     }
 
-    // Ensure required models are available
-    const models = await ollama.ensureModels()
-    if (!models.embedding || !models.chat) {
-      console.log('Required Ollama models not available')
+    // Ensure the chat model is available. Embeddings are handled by the local sidecar by default.
+    const chatReady = await ollama.ensureChatModel()
+    if (!chatReady) {
+      console.log('Required Ollama chat model not available')
       return false
     }
 
@@ -216,22 +226,11 @@ class RAGService {
     if (context.meetingId) {
       // Search within specific meeting
       const docs = await vectorStore.searchByMeeting(context.meetingId)
-      const queryEmbedding = await ollama.generateEmbedding(message)
+      const queryEmbedding = await getEmbeddingService().generateEmbedding(message, 'query')
       if (queryEmbedding) {
         // Re-rank by actual query relevance using cosine similarity
         searchResults = docs.map((doc) => {
-          let score = 0.5 // Default if embedding comparison fails
-          if (doc.embedding && doc.embedding.length === queryEmbedding.length) {
-            let dotProduct = 0, normA = 0, normB = 0
-            for (let i = 0; i < queryEmbedding.length; i++) {
-              dotProduct += queryEmbedding[i] * doc.embedding[i]
-              normA += queryEmbedding[i] * queryEmbedding[i]
-              normB += doc.embedding[i] * doc.embedding[i]
-            }
-            const denominator = Math.sqrt(normA) * Math.sqrt(normB)
-            score = denominator === 0 ? 0 : dotProduct / denominator
-          }
-          return { document: doc, score }
+          return { document: doc, score: this.scoreDocumentAgainstQuery(doc, queryEmbedding) }
         })
         // Sort by actual relevance
         searchResults.sort((a, b) => b.score - a.score)
@@ -467,6 +466,125 @@ ${transcript.substring(0, 8000)}`
     }
   }
 
+  private scoreDocumentAgainstQuery(doc: VectorDocument, queryEmbedding: EmbeddingResult): number {
+    if (!doc.embedding || doc.embedding.length !== queryEmbedding.embedding.length) {
+      return 0.5
+    }
+    if (doc.embeddingProvider && doc.embeddingProvider !== queryEmbedding.provider) {
+      return 0.5
+    }
+    if (doc.embeddingModel && doc.embeddingModel !== queryEmbedding.model) {
+      return 0.5
+    }
+
+    return cosineSimilarity(queryEmbedding.embedding, doc.embedding)
+  }
+
+  private findKnowledgeCaptureForVectorDoc(doc: VectorDocument): GlobalKnowledgeResult | null {
+    const recordingId = doc.metadata.recordingId
+    const meetingId = doc.metadata.meetingId
+    if (!recordingId && !meetingId) return null
+
+    if (recordingId && meetingId) {
+      const row = queryOne<any>(`
+        SELECT id, title, summary, captured_at FROM knowledge_captures
+        WHERE source_recording_id = ? OR meeting_id = ?
+        ORDER BY CASE WHEN source_recording_id = ? THEN 0 ELSE 1 END
+        LIMIT 1
+      `, [recordingId, meetingId, recordingId])
+      if (row) {
+        return {
+          id: row.id,
+          title: row.title,
+          summary: row.summary || doc.content.substring(0, 240),
+          capturedAt: row.captured_at
+        }
+      }
+    }
+
+    if (recordingId) {
+      const row = queryOne<any>(`
+        SELECT id, title, summary, captured_at FROM knowledge_captures
+        WHERE source_recording_id = ?
+        LIMIT 1
+      `, [recordingId])
+      if (row) {
+        return {
+          id: row.id,
+          title: row.title,
+          summary: row.summary || doc.content.substring(0, 240),
+          capturedAt: row.captured_at
+        }
+      }
+    }
+
+    if (meetingId) {
+      const row = queryOne<any>(`
+        SELECT id, title, summary, captured_at FROM knowledge_captures
+        WHERE meeting_id = ?
+        LIMIT 1
+      `, [meetingId])
+      if (row) {
+        return {
+          id: row.id,
+          title: row.title,
+          summary: row.summary || doc.content.substring(0, 240),
+          capturedAt: row.captured_at
+        }
+      }
+    }
+
+    return null
+  }
+
+  private async semanticKnowledgeSearch(query: string, limit: number): Promise<GlobalKnowledgeResult[]> {
+    try {
+      const vectorStore = getVectorStore()
+      await vectorStore.initialize()
+      const semanticResults = await vectorStore.search(query, limit)
+      const knowledgeById = new Map<unknown, GlobalKnowledgeResult>()
+
+      for (const result of semanticResults) {
+        const capture = this.findKnowledgeCaptureForVectorDoc(result.document)
+        if (!capture || knowledgeById.has(capture.id)) continue
+
+        knowledgeById.set(capture.id, {
+          ...capture,
+          semanticScore: result.score
+        })
+      }
+
+      return Array.from(knowledgeById.values())
+    } catch (err) {
+      console.warn('RAGService:semanticKnowledgeSearch failed; falling back to lexical search:', err)
+      return []
+    }
+  }
+
+  private mergeKnowledgeResults(
+    lexical: GlobalKnowledgeResult[],
+    semantic: GlobalKnowledgeResult[],
+    limit: number
+  ): GlobalKnowledgeResult[] {
+    if (semantic.length === 0) return lexical.slice(0, limit)
+
+    const lexicalBudget = Math.max(1, Math.ceil(limit * 0.7))
+    const ordered = [
+      ...lexical.slice(0, lexicalBudget),
+      ...semantic,
+      ...lexical.slice(lexicalBudget)
+    ]
+    const merged = new Map<unknown, GlobalKnowledgeResult>()
+
+    for (const result of ordered) {
+      if (!merged.has(result.id)) {
+        merged.set(result.id, result)
+      }
+    }
+
+    return Array.from(merged.values()).slice(0, limit)
+  }
+
   /**
    * Perform a global search across all entities.
    * B-EXP-003: Multi-term LIKE search with ranking by match count
@@ -505,6 +623,8 @@ ${transcript.substring(0, 8000)}`
           summary: v[2],
           capturedAt: v[3]
         })) : []
+        const semanticKnowledge = await this.semanticKnowledgeSearch(query, limit)
+        const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge, limit)
 
         const peopleRows = db.exec(`
           SELECT id, name, email, type FROM contacts
@@ -531,7 +651,7 @@ ${transcript.substring(0, 8000)}`
           status: v[3]
         })) : []
 
-        return success({ knowledge, people, projects })
+        return success({ knowledge: mergedKnowledge, people, projects })
       }
 
       // Multi-term search: match ANY term, rank by how many terms matched
@@ -540,8 +660,8 @@ ${transcript.substring(0, 8000)}`
         columns: string[],
         selectCols: string,
         limitVal: number
-      ): { sql: string; params: unknown[] } => {
-        const params: unknown[] = []
+      ): { sql: string; params: Array<string | number> } => {
+        const params: Array<string | number> = []
         const termClauses: string[] = []
         const matchCountParts: string[] = []
 
@@ -579,6 +699,8 @@ ${transcript.substring(0, 8000)}`
         summary: v[2],
         capturedAt: v[3]
       })) : []
+      const semanticKnowledge = await this.semanticKnowledgeSearch(query, limit)
+      const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge, limit)
 
       // 2. Search people with explicit columns + multi-term ranking
       const pq = buildMultiTermQuery('contacts', ['name', 'email', 'company', 'role'], 'id, name, email, type', limit)
@@ -599,7 +721,7 @@ ${transcript.substring(0, 8000)}`
         status: v[3]
       })) : []
 
-      return success({ knowledge, people, projects })
+      return success({ knowledge: mergedKnowledge, people, projects })
     } catch (err) {
       console.error('RAGService:globalSearch error:', err)
       return error('DATABASE_ERROR', 'Global search failed', err)

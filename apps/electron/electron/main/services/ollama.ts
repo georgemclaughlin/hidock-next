@@ -98,6 +98,14 @@ class OllamaService {
     return results
   }
 
+  async ensureChatModel(): Promise<boolean> {
+    const hasChat = await this.hasModel(this.chatModel)
+    if (hasChat) return true
+
+    console.log(`Pulling chat model: ${this.chatModel}`)
+    return this.pullModel(this.chatModel)
+  }
+
   async generateEmbedding(text: string): Promise<number[] | null> {
     try {
       const response = await fetch(`${this.baseUrl}/api/embeddings`, {

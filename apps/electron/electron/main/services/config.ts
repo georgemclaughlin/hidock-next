@@ -48,7 +48,8 @@ export interface AppConfig {
     parakeetModel: string
   }
   embeddings: {
-    provider: 'ollama'
+    provider: 'native' | 'ollama'
+    nativeModel: string
     ollamaBaseUrl: string
     ollamaModel: string
     chunkSize: number
@@ -100,7 +101,8 @@ const DEFAULT_CONFIG: AppConfig = {
     parakeetModel: 'parakeet-v3'
   },
   embeddings: {
-    provider: 'ollama',
+    provider: 'native',
+    nativeModel: 'bge-small-en-v1.5-q',
     ollamaBaseUrl: 'http://localhost:11434',
     ollamaModel: 'nomic-embed-text',
     chunkSize: 500,
@@ -150,6 +152,18 @@ function normalizeNativeParakeetModel(value?: string): string {
   return model
 }
 
+function normalizeNativeEmbeddingModel(value?: string): string {
+  const model = value?.trim().toLowerCase()
+  if (!model) return DEFAULT_CONFIG.embeddings.nativeModel
+  if (model === 'bge-small' || model === 'bge-small-en-v1.5') {
+    return 'bge-small-en-v1.5-q'
+  }
+  if (model === 'nomic-embed-text' || model === 'nomic-embed-text-v1.5') {
+    return 'nomic-embed-text-v1.5-q'
+  }
+  return model
+}
+
 function isLoopbackHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
@@ -169,6 +183,7 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
   const allowRemoteOllama = value.privacy?.allowRemoteOllama === true
   const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl || DEFAULT_CONFIG.embeddings.ollamaBaseUrl
   const parakeetModel = normalizeNativeParakeetModel(value.transcription?.parakeetModel)
+  const embeddingProvider = value.embeddings?.provider === 'ollama' ? 'ollama' : 'native'
 
   return {
     ...value,
@@ -193,7 +208,11 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
     },
     embeddings: {
       ...value.embeddings,
-      provider: 'ollama',
+      provider: embeddingProvider,
+      nativeModel: normalizeNativeEmbeddingModel(value.embeddings?.nativeModel),
+      ollamaModel: value.embeddings?.ollamaModel || DEFAULT_CONFIG.embeddings.ollamaModel,
+      chunkSize: value.embeddings?.chunkSize || DEFAULT_CONFIG.embeddings.chunkSize,
+      chunkOverlap: value.embeddings?.chunkOverlap || DEFAULT_CONFIG.embeddings.chunkOverlap,
       ollamaBaseUrl: allowRemoteOllama || isLoopbackHttpUrl(ollamaBaseUrl)
         ? ollamaBaseUrl
         : DEFAULT_CONFIG.embeddings.ollamaBaseUrl

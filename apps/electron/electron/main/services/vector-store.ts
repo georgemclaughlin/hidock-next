@@ -4,12 +4,16 @@
  */
 
 import { getDatabase } from './database'
-import { getOllamaService } from './ollama'
+import { getEmbeddingService } from './embeddings'
+import type { EmbeddingResult } from './embeddings'
 
 interface VectorDocument {
   id: string
   content: string
   embedding: number[]
+  embeddingProvider?: string
+  embeddingModel?: string
+  embeddingDimensions?: number
   metadata: {
     meetingId?: string
     recordingId?: string
@@ -40,6 +44,13 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
   const denominator = Math.sqrt(normA) * Math.sqrt(normB)
   return denominator === 0 ? 0 : dotProduct / denominator
+}
+
+function isComparableEmbedding(doc: VectorDocument, query: EmbeddingResult): boolean {
+  if (doc.embedding.length !== query.embedding.length) return false
+  if (doc.embeddingProvider && doc.embeddingProvider !== query.provider) return false
+  if (doc.embeddingModel && doc.embeddingModel !== query.model) return false
+  return true
 }
 
 // Split text into chunks for embedding
@@ -89,19 +100,41 @@ class VectorStore {
         chunk_index INTEGER,
         timestamp TEXT,
         subject TEXT,
+        embedding_provider TEXT,
+        embedding_model TEXT,
+        embedding_dimensions INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `)
 
+    this.ensureEmbeddingMetadataColumns()
+
     // Create index for faster lookups
     db.run(`CREATE INDEX IF NOT EXISTS idx_vector_embeddings_meeting ON vector_embeddings(meeting_id)`)
     db.run(`CREATE INDEX IF NOT EXISTS idx_vector_embeddings_recording ON vector_embeddings(recording_id)`)
+    db.run(`CREATE INDEX IF NOT EXISTS idx_vector_embeddings_model ON vector_embeddings(embedding_provider, embedding_model)`)
 
     // Load existing embeddings into memory
     await this.loadFromDatabase()
 
     this.initialized = true
     console.log(`Vector store initialized with ${this.documents.size} documents`)
+  }
+
+  private ensureEmbeddingMetadataColumns(): void {
+    const db = getDatabase()
+    const tableInfo = db.exec('PRAGMA table_info(vector_embeddings)')
+    const columns = new Set((tableInfo[0]?.values ?? []).map((row) => row[1] as string))
+
+    const missingColumns: Array<{ name: string; definition: string }> = [
+      { name: 'embedding_provider', definition: 'embedding_provider TEXT' },
+      { name: 'embedding_model', definition: 'embedding_model TEXT' },
+      { name: 'embedding_dimensions', definition: 'embedding_dimensions INTEGER' }
+    ].filter((column) => !columns.has(column.name))
+
+    for (const column of missingColumns) {
+      db.run(`ALTER TABLE vector_embeddings ADD COLUMN ${column.definition}`)
+    }
   }
 
   private async loadFromDatabase(): Promise<void> {
@@ -121,6 +154,9 @@ class VectorStore {
         id: doc['id'] as string,
         content: doc['content'] as string,
         embedding: JSON.parse(doc['embedding'] as string),
+        embeddingProvider: doc['embedding_provider'] as string | undefined,
+        embeddingModel: doc['embedding_model'] as string | undefined,
+        embeddingDimensions: (doc['embedding_dimensions'] as number | undefined) ?? undefined,
         metadata: {
           meetingId: doc['meeting_id'] as string | undefined,
           recordingId: doc['recording_id'] as string | undefined,
@@ -138,14 +174,15 @@ class VectorStore {
     content: string,
     metadata: VectorDocument['metadata']
   ): Promise<string | null> {
-    const ollama = getOllamaService()
+    const embeddingService = getEmbeddingService()
 
     // Generate embedding
-    const embedding = await ollama.generateEmbedding(content)
-    if (!embedding) {
+    const embeddingResult = await embeddingService.generateEmbedding(content, 'document')
+    if (!embeddingResult) {
       console.error('Failed to generate embedding for document')
       return null
     }
+    const { embedding } = embeddingResult
 
     const id = `${metadata.recordingId || 'doc'}_${metadata.chunkIndex}_${Date.now()}`
 
@@ -153,6 +190,9 @@ class VectorStore {
       id,
       content,
       embedding,
+      embeddingProvider: embeddingResult.provider,
+      embeddingModel: embeddingResult.model,
+      embeddingDimensions: embeddingResult.dimensions,
       metadata
     }
 
@@ -163,8 +203,9 @@ class VectorStore {
     const db = getDatabase()
     db.run(
       `INSERT OR REPLACE INTO vector_embeddings
-       (id, content, embedding, meeting_id, recording_id, chunk_index, timestamp, subject)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, content, embedding, meeting_id, recording_id, chunk_index, timestamp, subject,
+        embedding_provider, embedding_model, embedding_dimensions)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         content,
@@ -173,7 +214,10 @@ class VectorStore {
         metadata.recordingId || null,
         metadata.chunkIndex,
         metadata.timestamp || null,
-        metadata.subject || null
+        metadata.subject || null,
+        embeddingResult.provider,
+        embeddingResult.model,
+        embeddingResult.dimensions
       ]
     )
 
@@ -195,8 +239,18 @@ class VectorStore {
         (d) => d.metadata.recordingId === metadata.recordingId
       )
       if (existing.length > 0) {
-        console.log(`Transcript ${metadata.recordingId} already indexed`)
-        return 0
+        const embeddingModel = getEmbeddingService().getModelMetadata()
+        const hasCurrentEmbeddings = existing.every(
+          (doc) => doc.embeddingProvider === embeddingModel.provider && doc.embeddingModel === embeddingModel.model
+        )
+
+        if (hasCurrentEmbeddings) {
+          console.log(`Transcript ${metadata.recordingId} already indexed`)
+          return 0
+        }
+
+        console.log(`Transcript ${metadata.recordingId} embeddings use an old model; reindexing`)
+        await this.deleteByRecording(metadata.recordingId)
       }
     }
 
@@ -219,10 +273,12 @@ class VectorStore {
   }
 
   async search(query: string, topK = 5): Promise<SearchResult[]> {
-    const ollama = getOllamaService()
+    if (this.documents.size === 0) return []
+
+    const embeddingService = getEmbeddingService()
 
     // Generate query embedding
-    const queryEmbedding = await ollama.generateEmbedding(query)
+    const queryEmbedding = await embeddingService.generateEmbedding(query, 'query')
     if (!queryEmbedding) {
       console.error('Failed to generate query embedding')
       return []
@@ -232,7 +288,8 @@ class VectorStore {
     const results: SearchResult[] = []
 
     for (const doc of this.documents.values()) {
-      const score = cosineSimilarity(queryEmbedding, doc.embedding)
+      if (!isComparableEmbedding(doc, queryEmbedding)) continue
+      const score = cosineSimilarity(queryEmbedding.embedding, doc.embedding)
       results.push({ document: doc, score })
     }
 

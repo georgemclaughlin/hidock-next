@@ -7,6 +7,7 @@ import initSqlJs from 'sql.js'
 const mockOllamaService = {
   isAvailable: vi.fn().mockResolvedValue(true),
   ensureModels: vi.fn().mockResolvedValue({ embedding: true, chat: true }),
+  ensureChatModel: vi.fn().mockResolvedValue(true),
   chat: vi.fn().mockResolvedValue('AI Response'),
   generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2])
 }
@@ -24,6 +25,17 @@ vi.mock('../vector-store', () => ({
     search: vi.fn().mockResolvedValue([]),
     searchByMeeting: vi.fn().mockResolvedValue([]),
     getAllDocuments: vi.fn().mockReturnValue([])
+  }))
+}))
+
+vi.mock('../embeddings', () => ({
+  getEmbeddingService: vi.fn(() => ({
+    generateEmbedding: vi.fn().mockResolvedValue({
+      embedding: [0.1, 0.2],
+      provider: 'native-fastembed',
+      model: 'bge-small-en-v1.5-q',
+      dimensions: 2
+    })
   }))
 }))
 

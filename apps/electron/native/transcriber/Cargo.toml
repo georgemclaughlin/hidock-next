@@ -8,6 +8,7 @@ license = "MIT"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
+fastembed = { version = "5.16.0", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
 flate2 = "1"
 polyvoice = { version = "0.6.8", features = ["onnx", "download", "segmentation", "embedder", "clusterer", "resegmentation", "profile-balanced"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"] }

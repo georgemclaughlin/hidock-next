@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
 import { app } from 'electron'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { getDataPath } from './config'
 
@@ -51,6 +52,31 @@ export interface NativeModelDownloadProgress {
   progress: number
   downloaded_bytes?: number
   total_bytes?: number
+}
+
+export type NativeEmbeddingInputType = 'document' | 'query'
+
+export interface NativeEmbeddingModel {
+  id: string
+  name: string
+  description: string
+  dimensions: number
+  provider: 'native-fastembed'
+  is_downloaded: boolean
+}
+
+export interface NativeEmbeddingResult {
+  model_id: string
+  provider: 'native-fastembed'
+  dimensions: number
+  embeddings: number[][]
+}
+
+export interface NativeEmbeddingDownloadResult {
+  success: boolean
+  model_id: string
+  provider: 'native-fastembed'
+  dimensions: number
 }
 
 interface RunResult {
@@ -257,5 +283,59 @@ export async function transcribeWithNativeModel(
     output,
     provider: engine === 'parakeet' ? 'local-parakeet' : 'local-whisper',
     model: model.id
+  }
+}
+
+export function getNativeEmbeddingModelId(configuredModel?: string): string {
+  const model = (configuredModel || '').trim().toLowerCase()
+  if (!model) return 'bge-small-en-v1.5-q'
+  if (model === 'nomic-embed-text' || model === 'nomic-embed-text-v1.5') {
+    return 'nomic-embed-text-v1.5-q'
+  }
+  if (model === 'bge-small' || model === 'bge-small-en-v1.5') {
+    return 'bge-small-en-v1.5-q'
+  }
+  return model
+}
+
+export async function listNativeEmbeddingModels(): Promise<NativeEmbeddingModel[]> {
+  return runNativeJson<NativeEmbeddingModel[]>(['embedding-models'])
+}
+
+export async function downloadNativeEmbeddingModel(modelId: string): Promise<NativeEmbeddingDownloadResult> {
+  return runNativeJson<NativeEmbeddingDownloadResult>(['download-embedding', getNativeEmbeddingModelId(modelId)])
+}
+
+export async function generateNativeEmbeddings(
+  texts: string[],
+  inputType: NativeEmbeddingInputType,
+  configuredModel?: string
+): Promise<NativeEmbeddingResult> {
+  if (texts.length === 0) {
+    return {
+      model_id: getNativeEmbeddingModelId(configuredModel),
+      provider: 'native-fastembed',
+      dimensions: 0,
+      embeddings: []
+    }
+  }
+
+  const modelId = getNativeEmbeddingModelId(configuredModel)
+  const tempDir = mkdtempSync(join(tmpdir(), 'recorder-embeddings-'))
+  const inputPath = join(tempDir, 'input.json')
+
+  try {
+    writeFileSync(inputPath, JSON.stringify({ texts }))
+    return await runNativeJson<NativeEmbeddingResult>([
+      'embed',
+      '--model-id',
+      modelId,
+      '--input',
+      inputPath,
+      '--input-type',
+      inputType
+    ])
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true })
   }
 }

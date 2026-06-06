@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 use flate2::read::GzDecoder;
 use polyvoice::{
     clusterer::KMeansClusterer,
@@ -45,6 +46,7 @@ const TRANSCRIPT_SEGMENT_MAX_SECS: f64 = 18.0;
 const TRANSCRIPT_SEGMENT_MAX_CHARS: usize = 320;
 const SHORT_SPEAKER_RUN_MAX_SECS: f64 = 3.2;
 const SHORT_SPEAKER_RUN_MAX_WORDS: usize = 3;
+const DEFAULT_TEXT_EMBEDDING_MODEL_ID: &str = "bge-small-en-v1.5-q";
 
 #[derive(Parser)]
 #[command(name = "recorder-transcriber")]
@@ -60,8 +62,20 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Models,
+    EmbeddingModels,
     Download {
         model_id: String,
+    },
+    DownloadEmbedding {
+        model_id: String,
+    },
+    Embed {
+        #[arg(long)]
+        model_id: String,
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long, value_enum, default_value_t = TextEmbeddingInputType::Document)]
+        input_type: TextEmbeddingInputType,
     },
     Transcribe {
         #[arg(long)]
@@ -94,6 +108,46 @@ struct ModelInfo {
     is_directory: bool,
     is_downloaded: bool,
     engine_type: EngineType,
+}
+
+#[derive(Debug, Clone)]
+struct TextEmbeddingCatalogEntry {
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    model: EmbeddingModel,
+    dimensions: usize,
+    document_prefix: &'static str,
+    query_prefix: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TextEmbeddingModelInfo {
+    id: String,
+    name: String,
+    description: String,
+    dimensions: usize,
+    provider: String,
+    is_downloaded: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct TextEmbeddingRequest {
+    texts: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TextEmbeddingOutput {
+    model_id: String,
+    provider: String,
+    dimensions: usize,
+    embeddings: Vec<Vec<f32>>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum TextEmbeddingInputType {
+    Document,
+    Query,
 }
 
 #[derive(Debug, Serialize)]
@@ -195,10 +249,67 @@ fn run_cli() -> Result<()> {
             }
             print_json(&models.values().cloned().collect::<Vec<_>>())
         }
+        Command::EmbeddingModels => {
+            let cache_dir = text_embeddings_cache_dir(&models_dir);
+            fs::create_dir_all(&cache_dir).with_context(|| {
+                format!(
+                    "Failed to create text embeddings cache directory {}",
+                    cache_dir.display()
+                )
+            })?;
+            let models = text_embedding_catalog()
+                .into_iter()
+                .map(|entry| TextEmbeddingModelInfo {
+                    id: entry.id.to_string(),
+                    name: entry.name.to_string(),
+                    description: entry.description.to_string(),
+                    dimensions: entry.dimensions,
+                    provider: "native-fastembed".to_string(),
+                    is_downloaded: is_text_embedding_model_downloaded(&cache_dir, &entry),
+                })
+                .collect::<Vec<_>>();
+            print_json(&models)
+        }
         Command::Download { model_id } => {
             let model = get_model(&model_id)?;
             download_model(&models_dir, &model)?;
             print_json(&serde_json::json!({ "success": true, "model_id": model.id }))
+        }
+        Command::DownloadEmbedding { model_id } => {
+            let entry = get_text_embedding_model(&model_id)?;
+            let cache_dir = text_embeddings_cache_dir(&models_dir);
+            fs::create_dir_all(&cache_dir).with_context(|| {
+                format!(
+                    "Failed to create text embeddings cache directory {}",
+                    cache_dir.display()
+                )
+            })?;
+
+            build_text_embedding_model(&cache_dir, &entry, true)?;
+            print_json(&serde_json::json!({
+                "success": true,
+                "model_id": entry.id,
+                "provider": "native-fastembed",
+                "dimensions": entry.dimensions
+            }))
+        }
+        Command::Embed {
+            model_id,
+            input,
+            input_type,
+        } => {
+            let entry = get_text_embedding_model(&model_id)?;
+            let cache_dir = text_embeddings_cache_dir(&models_dir);
+            fs::create_dir_all(&cache_dir).with_context(|| {
+                format!(
+                    "Failed to create text embeddings cache directory {}",
+                    cache_dir.display()
+                )
+            })?;
+
+            let request = read_text_embedding_request(&input)?;
+            let output = embed_texts(&cache_dir, &entry, input_type, request)?;
+            print_json(&output)
         }
         Command::Transcribe {
             model_id,
@@ -234,6 +345,153 @@ fn models_dir(data_dir: Option<&Path>) -> Result<PathBuf> {
     let base =
         dirs::data_dir().ok_or_else(|| anyhow!("Could not determine local app data directory"))?;
     Ok(base.join("LocalRecorder").join("models"))
+}
+
+fn text_embeddings_cache_dir(models_dir: &Path) -> PathBuf {
+    models_dir.join("text-embeddings")
+}
+
+fn text_embedding_catalog() -> Vec<TextEmbeddingCatalogEntry> {
+    vec![
+        TextEmbeddingCatalogEntry {
+            id: "bge-small-en-v1.5-q",
+            name: "BGE Small English v1.5 Q",
+            description: "Fast 384-dimensional quantized English embedding model for local semantic search.",
+            model: EmbeddingModel::BGESmallENV15Q,
+            dimensions: 384,
+            document_prefix: "",
+            query_prefix: "Represent this sentence for searching relevant passages: ",
+        },
+        TextEmbeddingCatalogEntry {
+            id: "nomic-embed-text-v1.5-q",
+            name: "Nomic Embed Text v1.5 Q",
+            description: "768-dimensional quantized English embedding model with long context and existing Ollama continuity.",
+            model: EmbeddingModel::NomicEmbedTextV15Q,
+            dimensions: 768,
+            document_prefix: "search_document: ",
+            query_prefix: "search_query: ",
+        },
+        TextEmbeddingCatalogEntry {
+            id: "bge-m3",
+            name: "BGE M3",
+            description: "1024-dimensional multilingual embedding model for advanced local semantic search.",
+            model: EmbeddingModel::BGEM3,
+            dimensions: 1024,
+            document_prefix: "",
+            query_prefix: "Represent this sentence for searching relevant passages: ",
+        },
+    ]
+}
+
+fn normalize_text_embedding_model_id(model_id: &str) -> String {
+    let normalized = model_id.trim().to_lowercase();
+    match normalized.as_str() {
+        "" => DEFAULT_TEXT_EMBEDDING_MODEL_ID.to_string(),
+        "bge-small-en-v1.5" | "bge-small" => "bge-small-en-v1.5-q".to_string(),
+        "nomic-embed-text" | "nomic-embed-text-v1.5" => "nomic-embed-text-v1.5-q".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn get_text_embedding_model(model_id: &str) -> Result<TextEmbeddingCatalogEntry> {
+    let normalized = normalize_text_embedding_model_id(model_id);
+    text_embedding_catalog()
+        .into_iter()
+        .find(|entry| entry.id == normalized)
+        .ok_or_else(|| anyhow!("Unknown text embedding model: {}", model_id))
+}
+
+fn text_embedding_intra_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get().clamp(1, 4))
+        .unwrap_or(4)
+}
+
+fn build_text_embedding_model(
+    cache_dir: &Path,
+    entry: &TextEmbeddingCatalogEntry,
+    show_download_progress: bool,
+) -> Result<TextEmbedding> {
+    TextEmbedding::try_new(
+        TextInitOptions::new(entry.model.clone())
+            .with_cache_dir(cache_dir.to_path_buf())
+            .with_show_download_progress(show_download_progress)
+            .with_intra_threads(text_embedding_intra_threads()),
+    )
+    .with_context(|| format!("Failed to initialize text embedding model {}", entry.id))
+}
+
+fn is_text_embedding_model_downloaded(cache_dir: &Path, entry: &TextEmbeddingCatalogEntry) -> bool {
+    let Ok(model_info) = TextEmbedding::get_model_info(&entry.model) else {
+        return false;
+    };
+    let repo_dir = cache_dir.join(format!(
+        "models--{}",
+        model_info.model_code.replace('/', "--")
+    ));
+    let snapshots_dir = repo_dir.join("snapshots");
+    snapshots_dir
+        .read_dir()
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false)
+}
+
+fn read_text_embedding_request(input: &Path) -> Result<TextEmbeddingRequest> {
+    let bytes = fs::read(input)
+        .with_context(|| format!("Failed to read embedding input {}", input.display()))?;
+    serde_json::from_slice(&bytes)
+        .with_context(|| format!("Failed to parse embedding input {}", input.display()))
+}
+
+fn prepare_text_embedding_input(
+    entry: &TextEmbeddingCatalogEntry,
+    input_type: TextEmbeddingInputType,
+    text: &str,
+) -> String {
+    let trimmed = text.trim();
+    let prefix = match input_type {
+        TextEmbeddingInputType::Document => entry.document_prefix,
+        TextEmbeddingInputType::Query => entry.query_prefix,
+    };
+
+    if prefix.is_empty() || trimmed.starts_with(prefix) {
+        trimmed.to_string()
+    } else {
+        format!("{prefix}{trimmed}")
+    }
+}
+
+fn embed_texts(
+    cache_dir: &Path,
+    entry: &TextEmbeddingCatalogEntry,
+    input_type: TextEmbeddingInputType,
+    request: TextEmbeddingRequest,
+) -> Result<TextEmbeddingOutput> {
+    if request.texts.is_empty() {
+        return Ok(TextEmbeddingOutput {
+            model_id: entry.id.to_string(),
+            provider: "native-fastembed".to_string(),
+            dimensions: entry.dimensions,
+            embeddings: Vec::new(),
+        });
+    }
+
+    let texts = request
+        .texts
+        .iter()
+        .map(|text| prepare_text_embedding_input(entry, input_type, text))
+        .collect::<Vec<_>>();
+    let mut model = build_text_embedding_model(cache_dir, entry, false)?;
+    let embeddings = model
+        .embed(&texts, None)
+        .with_context(|| format!("Failed to generate text embeddings with {}", entry.id))?;
+
+    Ok(TextEmbeddingOutput {
+        model_id: entry.id.to_string(),
+        provider: "native-fastembed".to_string(),
+        dimensions: entry.dimensions,
+        embeddings,
+    })
 }
 
 fn catalog() -> HashMap<String, ModelInfo> {
