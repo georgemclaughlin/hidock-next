@@ -14,7 +14,7 @@ import { TranscriptViewer, type TranscriptViewerSegmentInput } from './Transcrip
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { UnifiedRecording, hasLocalPath, isDeviceOnly } from '@/types/unified-recording'
 import { Transcript, Meeting, parseJsonArray } from '@/types'
-import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Square, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen, Copy } from 'lucide-react'
+import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Square, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen, Copy, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -134,6 +134,7 @@ export function SourceReader({
   const [isCopyingTranscript, setIsCopyingTranscript] = useState(false)
   const [transcriptCopied, setTranscriptCopied] = useState(false)
   const [transcriptView, setTranscriptView] = useState<TranscriptView>('raw')
+  const [audioPlayerExpanded, setAudioPlayerExpanded] = useState(false)
 
   const transcriptSegments = useMemo(
     () => parseTranscriptSegments(transcript?.speakers),
@@ -157,7 +158,13 @@ export function SourceReader({
     setIsCopyingTranscript(false)
     setTranscriptCopied(false)
     setTranscriptView('raw')
+    setAudioPlayerExpanded(false)
   }, [recording?.id])
+
+  const handleCloseAudioPlayer = useCallback(() => {
+    setAudioPlayerExpanded(false)
+    onStop?.()
+  }, [onStop])
 
   const handleSaveTitle = useCallback(async () => {
     if (!recording?.knowledgeCaptureId) return
@@ -590,10 +597,42 @@ export function SourceReader({
         )}
       </div>
 
-      {/* Audio Player — shown whenever recording has local file */}
+      {/* Audio Player — collapsed by default to keep the reader focused on transcript content */}
       {canPlay && (
         <div className="sticky top-0 bg-background z-10 border-b">
-          <AudioPlayer key={recording.id} filename={recording.filename} onClose={onStop} />
+          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-muted/30">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-muted-foreground">Audio</p>
+              <p className="text-sm truncate" title={recording.filename}>
+                {recording.filename}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAudioPlayerExpanded((expanded) => !expanded)}
+              className="gap-2 shrink-0"
+              aria-expanded={audioPlayerExpanded}
+              aria-controls="source-audio-player-panel"
+              title={audioPlayerExpanded ? 'Hide waveform' : 'Show waveform'}
+            >
+              {audioPlayerExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              Waveform
+            </Button>
+          </div>
+          {audioPlayerExpanded && (
+            <div id="source-audio-player-panel" className="px-4 pb-4 bg-background">
+              <AudioPlayer
+                key={recording.id}
+                filename={recording.filename}
+                onClose={handleCloseAudioPlayer}
+              />
+            </div>
+          )}
         </div>
       )}
 
