@@ -70,6 +70,35 @@ describe('VectorStore embedding metadata', () => {
     expect(rows[0].values[0]).toEqual(['native-fastembed', 'bge-small-en-v1.5-q', 2])
   })
 
+  it('returns per-recording embedding index stats', async () => {
+    embeddingMocks.generateEmbedding.mockResolvedValue({
+      embedding: [1, 0],
+      provider: 'native-fastembed',
+      model: 'bge-small-en-v1.5-q',
+      dimensions: 2
+    })
+
+    const store = new VectorStore()
+    await store.initialize()
+    await store.addDocument('pricing discussion', {
+      recordingId: 'rec-1',
+      chunkIndex: 0
+    })
+    await store.addDocument('launch plan', {
+      recordingId: 'rec-2',
+      chunkIndex: 0
+    })
+
+    expect(store.getRecordingIndexStats('rec-1')).toMatchObject({
+      recordingId: 'rec-1',
+      documentCount: 1,
+      currentModelDocumentCount: 1,
+      incompatibleDocumentCount: 0,
+      embeddingProvider: 'native-fastembed',
+      embeddingModel: 'bge-small-en-v1.5-q'
+    })
+  })
+
   it('does not compare vectors from a different embedding provider or model', async () => {
     embeddingMocks.generateEmbedding
       .mockResolvedValueOnce({

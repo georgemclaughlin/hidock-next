@@ -6,7 +6,7 @@ import {
 import { getVectorStore } from '../services/vector-store'
 import { success, error, Result } from '../types/api'
 import type { NativeEmbeddingDownloadResult, NativeEmbeddingModel } from '../services/native-transcriber'
-import type { VectorIndexStats, VectorReindexResult } from '../services/vector-store'
+import type { RecordingVectorIndexStats, VectorIndexStats, VectorReindexResult } from '../services/vector-store'
 
 export function registerEmbeddingHandlers(): void {
   ipcMain.handle('embeddings:listModels', async (): Promise<Result<NativeEmbeddingModel[]>> => {
@@ -44,6 +44,24 @@ export function registerEmbeddingHandlers(): void {
       return error('INTERNAL_ERROR', 'Failed to load embedding index stats', err)
     }
   })
+
+  ipcMain.handle(
+    'embeddings:getRecordingIndexStats',
+    async (_event, recordingId: string): Promise<Result<RecordingVectorIndexStats>> => {
+      try {
+        if (!recordingId || typeof recordingId !== 'string') {
+          return error('VALIDATION_ERROR', 'Recording ID is required')
+        }
+
+        const vectorStore = getVectorStore()
+        await vectorStore.initialize()
+        return success(vectorStore.getRecordingIndexStats(recordingId))
+      } catch (err) {
+        console.error('embeddings:getRecordingIndexStats error:', err)
+        return error('INTERNAL_ERROR', 'Failed to load recording embedding index stats', err)
+      }
+    }
+  )
 
   ipcMain.handle('embeddings:reindexTranscripts', async (): Promise<Result<VectorReindexResult>> => {
     try {

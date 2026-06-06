@@ -93,6 +93,15 @@ type EmbeddingIndexStats = {
   embeddingModel: string
 }
 
+type RecordingEmbeddingIndexStats = {
+  recordingId: string
+  documentCount: number
+  currentModelDocumentCount: number
+  incompatibleDocumentCount: number
+  embeddingProvider: string
+  embeddingModel: string
+}
+
 type EmbeddingReindexResult = {
   totalTranscripts: number
   reindexedTranscripts: number
@@ -361,6 +370,7 @@ export interface ElectronAPI {
       dimensions: number
     }>>
     getIndexStats: () => Promise<Result<EmbeddingIndexStats>>
+    getRecordingIndexStats: (recordingId: string) => Promise<Result<RecordingEmbeddingIndexStats>>
     reindexTranscripts: () => Promise<Result<EmbeddingReindexResult>>
   }
 
@@ -754,6 +764,7 @@ const electronAPI: ElectronAPI = {
     listModels: () => callIPC('embeddings:listModels'),
     downloadModel: (modelId) => callIPC('embeddings:downloadModel', modelId),
     getIndexStats: () => callIPC('embeddings:getIndexStats'),
+    getRecordingIndexStats: (recordingId) => callIPC('embeddings:getRecordingIndexStats', recordingId),
     reindexTranscripts: () => callIPC('embeddings:reindexTranscripts')
   },
 

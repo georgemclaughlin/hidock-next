@@ -18,6 +18,7 @@ export interface TranscriptionItem {
   filename: string
   status: TranscriptionStatus
   progress: number // 0-100 (estimated)
+  stage?: string
   error?: string
   retryCount: number
   attempts: number
@@ -34,7 +35,7 @@ export interface TranscriptionQueueStore {
 
   // Actions
   addToQueue: (id: string, recordingId: string, filename: string) => void
-  updateProgress: (id: string, progress: number) => void
+  updateProgress: (id: string, progress: number, stage?: string) => void
   markCompleted: (id: string, provider: string) => void
   markFailed: (id: string, error: string) => void
   retry: (id: string) => void
@@ -71,7 +72,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
       })
     },
 
-    updateProgress: (id, progress) => {
+    updateProgress: (id, progress, stage) => {
       set((state) => {
         const item = state.queue.get(id)
         if (!item) return state
@@ -80,6 +81,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
         queue.set(id, {
           ...item,
           progress,
+          stage: stage ?? item.stage,
           status: 'processing',
           startedAt: item.startedAt || new Date(),
           attempts: item.attempts + (item.startedAt ? 0 : 1)
@@ -102,6 +104,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
           ...item,
           progress: 100,
           status: 'completed',
+          stage: undefined,
           provider,
           completedAt: new Date()
         })
@@ -122,6 +125,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
         queue.set(id, {
           ...item,
           status: 'failed',
+          stage: undefined,
           error
         })
 
@@ -161,6 +165,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
             ...currentItem,
             status: 'pending',
             progress: 0,
+            stage: undefined,
             error: undefined,
             retryCount: currentItem.retryCount + 1,
             // C-005: Reset startedAt so next updateProgress sets a fresh timestamp

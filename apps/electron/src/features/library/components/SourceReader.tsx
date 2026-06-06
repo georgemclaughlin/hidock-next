@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { TranscriptViewer, type TranscriptViewerSegmentInput } from './TranscriptViewer'
+import { ProcessingPipelineTracker } from './ProcessingPipelineTracker'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { UnifiedRecording, hasLocalPath, isDeviceOnly } from '@/types/unified-recording'
 import { Transcript, Meeting, parseJsonArray } from '@/types'
@@ -100,6 +101,7 @@ interface SourceReaderProps {
   isDeleting?: boolean
   // Navigation
   onNavigateToMeeting?: (meetingId: string) => void
+  onOpenSettings?: () => void
   // Metadata editing callback
   onMetadataEdited?: () => void
 }
@@ -121,6 +123,7 @@ export function SourceReader({
   downloadProgress,
   isDeleting = false,
   onNavigateToMeeting,
+  onOpenSettings,
   onMetadataEdited
 }: SourceReaderProps) {
 
@@ -661,8 +664,15 @@ export function SourceReader({
 
       {/* Transcript Content */}
       <div className="flex-1 overflow-auto p-4">
+        <ProcessingPipelineTracker
+          recording={recording}
+          transcript={transcript}
+          onTranscribe={onTranscribe}
+          onOpenSettings={onOpenSettings}
+        />
+
         {transcript ? (
-          <div className="space-y-3">
+          <div className="mt-4 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">Transcript</h3>
               <Button

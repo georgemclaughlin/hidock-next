@@ -56,7 +56,7 @@ export function useTranscriptionSync() {
           window.electronAPI.onTranscriptionProgress((data) => {
             const store = useTranscriptionStore.getState()
             if (data.queueItemId) {
-              store.updateProgress(data.queueItemId, data.progress)
+              store.updateProgress(data.queueItemId, data.progress, data.stage)
             }
           })
         )

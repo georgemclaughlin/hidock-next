@@ -37,6 +37,15 @@ interface VectorIndexStats {
   embeddingModel: string
 }
 
+interface RecordingVectorIndexStats {
+  recordingId: string
+  documentCount: number
+  currentModelDocumentCount: number
+  incompatibleDocumentCount: number
+  embeddingProvider: string
+  embeddingModel: string
+}
+
 interface VectorReindexResult {
   totalTranscripts: number
   reindexedTranscripts: number
@@ -514,6 +523,33 @@ class VectorStore {
       embeddingModel: currentModel.model
     }
   }
+
+  getRecordingIndexStats(recordingId: string): RecordingVectorIndexStats {
+    const currentModel = getEmbeddingService().getModelMetadata()
+    let documentCount = 0
+    let currentModelDocumentCount = 0
+    let incompatibleDocumentCount = 0
+
+    for (const doc of this.documents.values()) {
+      if (doc.metadata.recordingId !== recordingId) continue
+
+      documentCount++
+      if (doc.embeddingProvider === currentModel.provider && doc.embeddingModel === currentModel.model) {
+        currentModelDocumentCount++
+      } else {
+        incompatibleDocumentCount++
+      }
+    }
+
+    return {
+      recordingId,
+      documentCount,
+      currentModelDocumentCount,
+      incompatibleDocumentCount,
+      embeddingProvider: currentModel.provider,
+      embeddingModel: currentModel.model
+    }
+  }
 }
 
 // Singleton instance
@@ -527,4 +563,4 @@ export function getVectorStore(): VectorStore {
 }
 
 export { VectorStore, chunkText, cosineSimilarity }
-export type { VectorDocument, SearchResult, VectorIndexStats, VectorReindexResult }
+export type { VectorDocument, SearchResult, VectorIndexStats, VectorReindexResult, RecordingVectorIndexStats }

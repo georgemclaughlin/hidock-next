@@ -1115,6 +1115,7 @@ export function Library() {
               isDeleting={selectedRecording ? deleting === selectedRecording.id : false}
               // Navigation
               onNavigateToMeeting={handleNavigateToMeeting}
+              onOpenSettings={() => navigate('/settings')}
               // Metadata editing
               onMetadataEdited={() => refresh(false)}
             />
