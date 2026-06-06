@@ -706,6 +706,7 @@ export function SourceReader({
                   summary={transcript.summary ?? undefined}
                   actionItems={parseJsonArray<string>(transcript.action_items)}
                   transcriptLabel="Raw Transcript"
+                  showTranscriptHeader={false}
                 />
               </TabsContent>
               <TabsContent value="diarized" className="mt-3">
@@ -717,6 +718,7 @@ export function SourceReader({
                   showSummary={false}
                   showActionItems={false}
                   transcriptLabel="Diarized Transcript"
+                  showTranscriptHeader={false}
                   emptyMessage="Diarized transcript not available for this recording."
                 />
               </TabsContent>

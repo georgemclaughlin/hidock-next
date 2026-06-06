@@ -20,6 +20,7 @@ interface TranscriptViewerProps {
   summary?: string
   actionItems?: string[]
   transcriptLabel?: string
+  showTranscriptHeader?: boolean
   emptyMessage?: string
 }
 
@@ -165,6 +166,7 @@ export function TranscriptViewer({
   summary,
   actionItems,
   transcriptLabel = 'Full Transcript',
+  showTranscriptHeader = true,
   emptyMessage = 'Transcript not available'
 }: TranscriptViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -263,20 +265,25 @@ export function TranscriptViewer({
 
       {/* Full Transcript Section */}
       <div>
-        <button
-          onClick={() => setTranscriptExpanded(!transcriptExpanded)}
-          className="flex items-center justify-between w-full p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors"
-          aria-expanded={transcriptExpanded}
-        >
-          <span className="text-sm font-medium">{transcriptLabel}</span>
-          {transcriptExpanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )}
-        </button>
-        {transcriptExpanded && (
-          <div ref={containerRef} className="p-3 mt-2 bg-muted rounded-lg max-h-[60vh] overflow-y-auto">
+        {showTranscriptHeader && (
+          <button
+            onClick={() => setTranscriptExpanded(!transcriptExpanded)}
+            className="flex items-center justify-between w-full p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors"
+            aria-expanded={transcriptExpanded}
+          >
+            <span className="text-sm font-medium">{transcriptLabel}</span>
+            {transcriptExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+        )}
+        {(!showTranscriptHeader || transcriptExpanded) && (
+          <div
+            ref={containerRef}
+            className={`p-3 bg-muted rounded-lg max-h-[60vh] overflow-y-auto ${showTranscriptHeader ? 'mt-2' : ''}`}
+          >
             {hasTimestamps ? (
               <div className="space-y-4">
                 {segments.map((segment, i) => (
