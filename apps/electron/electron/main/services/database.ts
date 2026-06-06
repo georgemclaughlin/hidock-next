@@ -1360,6 +1360,36 @@ function runMigrations(currentVersion: number): void {
   }
 }
 
+function stripLeadingSqlComments(sql: string): string {
+  let result = sql.trim()
+  let removedComment = true
+
+  while (removedComment) {
+    removedComment = false
+
+    if (result.startsWith('--')) {
+      const lineEnd = result.indexOf('\n')
+      result = lineEnd === -1 ? '' : result.slice(lineEnd + 1).trimStart()
+      removedComment = true
+    } else if (result.startsWith('/*')) {
+      const blockEnd = result.indexOf('*/')
+      result = blockEnd === -1 ? '' : result.slice(blockEnd + 2).trimStart()
+      removedComment = true
+    }
+  }
+
+  return result
+}
+
+function isCreateTableStatement(sql: string): boolean {
+  return /^CREATE\s+TABLE\b/i.test(stripLeadingSqlComments(sql))
+}
+
+function getTableColumns(database: SqlJsDatabase, tableName: string): string[] {
+  const tableInfo = database.exec(`PRAGMA table_info(${tableName})`)
+  return tableInfo[0]?.values?.map(col => String(col[1])) ?? []
+}
+
 /**
  * Safe database initialization.
  * Performs a 4-phase boot sequence:
@@ -1386,7 +1416,7 @@ export async function initializeDatabase(): Promise<void> {
     // --- PHASE 1: CORE TABLES ---
     console.log('[Database] Phase 1: Ensuring core tables exist...')
     for (const sql of statements) {
-      if (sql.toUpperCase().startsWith('CREATE TABLE')) {
+      if (isCreateTableStatement(sql)) {
         try {
           database.run(sql)
         } catch (e) {
@@ -1400,8 +1430,7 @@ export async function initializeDatabase(): Promise<void> {
     console.log('[Database] Phase 2: Aligning table structures...')
     
     // Repair Recordings
-    const recordingsInfo = database.exec("PRAGMA table_info(recordings)")
-    const recCols = recordingsInfo[0].values.map(col => col[1])
+    const recCols = getTableColumns(database, 'recordings')
     const recordingRepairs = [
       { name: 'migrated_to_capture_id', def: "TEXT" },
       { name: 'migration_status', def: "TEXT CHECK(migration_status IN ('pending', 'migrated', 'skipped', 'error')) DEFAULT 'pending'" },
@@ -1415,8 +1444,7 @@ export async function initializeDatabase(): Promise<void> {
     }
 
     // Repair Knowledge Captures
-    const captureInfo = database.exec("PRAGMA table_info(knowledge_captures)")
-    const capCols = captureInfo[0].values.map(col => col[1])
+    const capCols = getTableColumns(database, 'knowledge_captures')
     const knowledgeRepairs = [
       { name: 'category', def: "category TEXT CHECK(category IN ('meeting', 'interview', '1:1', 'brainstorm', 'note', 'other')) DEFAULT 'meeting'" },
       { name: 'status', def: "status TEXT CHECK(status IN ('processing', 'ready', 'enriched')) DEFAULT 'ready'" },
