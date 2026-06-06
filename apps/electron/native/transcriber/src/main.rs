@@ -21,8 +21,9 @@ use transcribe_rs::{
         parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity},
         Quantization,
     },
-    whisper_cpp::{WhisperEngine, WhisperInferenceParams},
 };
+#[cfg(not(windows))]
+use transcribe_rs::whisper_cpp::{WhisperEngine, WhisperInferenceParams};
 
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 
@@ -148,37 +149,7 @@ fn models_dir(data_dir: Option<&Path>) -> Result<PathBuf> {
 fn catalog() -> HashMap<String, ModelInfo> {
     let mut models = HashMap::new();
 
-    insert_model(
-        &mut models,
-        ModelInfo {
-            id: "whisper-small".to_string(),
-            name: "Whisper Small".to_string(),
-            description: "CPU-capable Whisper model with modest resource usage.".to_string(),
-            filename: "ggml-small.bin".to_string(),
-            url: "https://blob.handy.computer/ggml-small.bin".to_string(),
-            sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b".to_string(),
-            size_mb: 465,
-            is_directory: false,
-            is_downloaded: false,
-            engine_type: EngineType::Whisper,
-        },
-    );
-
-    insert_model(
-        &mut models,
-        ModelInfo {
-            id: "whisper-medium".to_string(),
-            name: "Whisper Medium".to_string(),
-            description: "More accurate Whisper model; slower on CPU.".to_string(),
-            filename: "whisper-medium-q4_1.bin".to_string(),
-            url: "https://blob.handy.computer/whisper-medium-q4_1.bin".to_string(),
-            sha256: "79283fc1f9fe12ca3248543fbd54b73292164d8df5a16e095e2bceeaaabddf57".to_string(),
-            size_mb: 469,
-            is_directory: false,
-            is_downloaded: false,
-            engine_type: EngineType::Whisper,
-        },
-    );
+    insert_whisper_models(&mut models);
 
     insert_model(
         &mut models,
@@ -198,6 +169,44 @@ fn catalog() -> HashMap<String, ModelInfo> {
 
     models
 }
+
+#[cfg(not(windows))]
+fn insert_whisper_models(models: &mut HashMap<String, ModelInfo>) {
+    insert_model(
+        models,
+        ModelInfo {
+            id: "whisper-small".to_string(),
+            name: "Whisper Small".to_string(),
+            description: "CPU-capable Whisper model with modest resource usage.".to_string(),
+            filename: "ggml-small.bin".to_string(),
+            url: "https://blob.handy.computer/ggml-small.bin".to_string(),
+            sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b".to_string(),
+            size_mb: 465,
+            is_directory: false,
+            is_downloaded: false,
+            engine_type: EngineType::Whisper,
+        },
+    );
+
+    insert_model(
+        models,
+        ModelInfo {
+            id: "whisper-medium".to_string(),
+            name: "Whisper Medium".to_string(),
+            description: "More accurate Whisper model; slower on CPU.".to_string(),
+            filename: "whisper-medium-q4_1.bin".to_string(),
+            url: "https://blob.handy.computer/whisper-medium-q4_1.bin".to_string(),
+            sha256: "79283fc1f9fe12ca3248543fbd54b73292164d8df5a16e095e2bceeaaabddf57".to_string(),
+            size_mb: 469,
+            is_directory: false,
+            is_downloaded: false,
+            engine_type: EngineType::Whisper,
+        },
+    );
+}
+
+#[cfg(windows)]
+fn insert_whisper_models(_models: &mut HashMap<String, ModelInfo>) {}
 
 fn insert_model(models: &mut HashMap<String, ModelInfo>, model: ModelInfo) {
     models.insert(model.id.clone(), model);
@@ -316,6 +325,11 @@ fn transcribe(
     let model_path = models_dir.join(&model.filename);
 
     let text = match model.engine_type {
+        #[cfg(windows)]
+        EngineType::Whisper => {
+            return Err(anyhow!("Whisper is not available in the Windows sidecar build"));
+        }
+        #[cfg(not(windows))]
         EngineType::Whisper => {
             let mut engine = WhisperEngine::load(&model_path)
                 .with_context(|| format!("Failed to load Whisper model {}", model.id))?;

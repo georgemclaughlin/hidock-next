@@ -15,7 +15,12 @@ serde_json = "1"
 sha2 = "0.10"
 symphonia = { version = "0.5", features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 tar = "0.4"
-transcribe-rs = { version = "=0.3.8", features = ["whisper-cpp", "onnx"] }
+
+[target.'cfg(windows)'.dependencies]
+transcribe-rs = { version = "=0.3.8", default-features = false, features = ["onnx"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ort = { version = "=2.0.0-rc.12", default-features = false, features = ["tls-native-vendored"] }
+
+[target.'cfg(not(windows))'.dependencies]
+transcribe-rs = { version = "=0.3.8", features = ["whisper-cpp", "onnx"] }
