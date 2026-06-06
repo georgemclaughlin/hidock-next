@@ -326,9 +326,11 @@ class VectorStore {
         r.meeting_id,
         m.subject
       FROM transcripts t
-      LEFT JOIN recordings r ON r.id = t.recording_id
+      JOIN recordings r ON r.id = t.recording_id
       LEFT JOIN meetings m ON m.id = r.meeting_id
       WHERE t.full_text IS NOT NULL AND TRIM(t.full_text) != ''
+        AND COALESCE(r.location, '') != 'deleted'
+        AND COALESCE(r.status, '') != 'deleted'
       ORDER BY r.date_recorded DESC
     `)
 

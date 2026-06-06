@@ -69,7 +69,9 @@ describe('RAGService globalSearch', () => {
         summary TEXT,
         captured_at TEXT,
         source_recording_id TEXT,
-        meeting_id TEXT
+        meeting_id TEXT,
+        storage_tier TEXT DEFAULT 'hot',
+        deleted_at TEXT
       );
       CREATE TABLE transcripts (
         id TEXT PRIMARY KEY,
@@ -82,7 +84,9 @@ describe('RAGService globalSearch', () => {
         id TEXT PRIMARY KEY,
         filename TEXT NOT NULL,
         date_recorded TEXT NOT NULL,
-        meeting_id TEXT
+        meeting_id TEXT,
+        location TEXT DEFAULT 'local-only',
+        status TEXT DEFAULT 'ready'
       );
       CREATE TABLE meetings (
         id TEXT PRIMARY KEY,
@@ -138,5 +142,28 @@ describe('RAGService globalSearch', () => {
       })
     ])
     expect(result.data.knowledge[0].summary).toContain('Boston Marathon')
+  })
+
+  it('does not return transcript rows for deleted recordings', async () => {
+    dbInstance.run(`
+      INSERT INTO recordings (id, filename, date_recorded, location, status)
+      VALUES ('rec-deleted', 'deleted-dialogue.ogg', '2026-06-06T01:02:00.000Z', 'deleted', 'deleted')
+    `)
+    dbInstance.run(`
+      INSERT INTO transcripts (id, recording_id, full_text, created_at)
+      VALUES (
+        'transcript-deleted',
+        'rec-deleted',
+        'I was watching the Boston Marathon and the thought started there.',
+        '2026-06-06T01:05:00.000Z'
+      )
+    `)
+
+    const result = await getRAGService().globalSearch('Boston', 10)
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+
+    expect(result.data.knowledge).toEqual([])
   })
 })

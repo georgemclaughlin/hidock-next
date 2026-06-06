@@ -52,6 +52,10 @@ type RankedKnowledgeResult = GlobalKnowledgeResult & {
   lexicalRank: number
 }
 
+const ACTIVE_RECORDING_SQL = "COALESCE(r.location, '') != 'deleted' AND COALESCE(r.status, '') != 'deleted'"
+const ACTIVE_KNOWLEDGE_CAPTURE_SQL = "kc.deleted_at IS NULL AND COALESCE(kc.storage_tier, '') != 'deleted'"
+const ACTIVE_CAPTURE_SOURCE_SQL = `(kc.source_recording_id IS NULL OR (r.id IS NOT NULL AND ${ACTIVE_RECORDING_SQL}))`
+
 const SYSTEM_PROMPT = `You are a helpful meeting assistant that answers questions based on meeting transcripts.
 
 Your capabilities:
@@ -504,9 +508,13 @@ ${transcript.substring(0, 8000)}`
 
     if (recordingId && meetingId) {
       const row = queryOne<any>(`
-        SELECT id, title, summary, captured_at, source_recording_id FROM knowledge_captures
-        WHERE source_recording_id = ? OR meeting_id = ?
-        ORDER BY CASE WHEN source_recording_id = ? THEN 0 ELSE 1 END
+        SELECT kc.id, kc.title, kc.summary, kc.captured_at, kc.source_recording_id
+        FROM knowledge_captures kc
+        LEFT JOIN recordings r ON r.id = kc.source_recording_id
+        WHERE (kc.source_recording_id = ? OR kc.meeting_id = ?)
+          AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
+          AND ${ACTIVE_CAPTURE_SOURCE_SQL}
+        ORDER BY CASE WHEN kc.source_recording_id = ? THEN 0 ELSE 1 END
         LIMIT 1
       `, [recordingId, meetingId, recordingId])
       if (row) {
@@ -522,8 +530,12 @@ ${transcript.substring(0, 8000)}`
 
     if (recordingId) {
       const row = queryOne<any>(`
-        SELECT id, title, summary, captured_at, source_recording_id FROM knowledge_captures
-        WHERE source_recording_id = ?
+        SELECT kc.id, kc.title, kc.summary, kc.captured_at, kc.source_recording_id
+        FROM knowledge_captures kc
+        LEFT JOIN recordings r ON r.id = kc.source_recording_id
+        WHERE kc.source_recording_id = ?
+          AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
+          AND ${ACTIVE_CAPTURE_SOURCE_SQL}
         LIMIT 1
       `, [recordingId])
       if (row) {
@@ -539,8 +551,12 @@ ${transcript.substring(0, 8000)}`
 
     if (meetingId) {
       const row = queryOne<any>(`
-        SELECT id, title, summary, captured_at, source_recording_id FROM knowledge_captures
-        WHERE meeting_id = ?
+        SELECT kc.id, kc.title, kc.summary, kc.captured_at, kc.source_recording_id
+        FROM knowledge_captures kc
+        LEFT JOIN recordings r ON r.id = kc.source_recording_id
+        WHERE kc.meeting_id = ?
+          AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
+          AND ${ACTIVE_CAPTURE_SOURCE_SQL}
         LIMIT 1
       `, [meetingId])
       if (row) {
@@ -572,6 +588,7 @@ ${transcript.substring(0, 8000)}`
       LEFT JOIN transcripts t ON t.recording_id = r.id
       LEFT JOIN meetings m ON m.id = r.meeting_id
       WHERE r.id = ?
+        AND ${ACTIVE_RECORDING_SQL}
       LIMIT 1
     `, [recordingId])
 
@@ -662,6 +679,8 @@ ${transcript.substring(0, 8000)}`
       LEFT JOIN recordings r ON r.id = kc.source_recording_id
       LEFT JOIN meetings m ON m.id = COALESCE(kc.meeting_id, r.meeting_id)
       WHERE ${captureSearch.whereSql}
+        AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
+        AND ${ACTIVE_CAPTURE_SOURCE_SQL}
       GROUP BY kc.id
       ORDER BY match_rank DESC, kc.captured_at DESC
       LIMIT ?
@@ -683,13 +702,15 @@ ${transcript.substring(0, 8000)}`
         t.full_text,
         ${transcriptSearch.rankSql} AS match_rank
       FROM transcripts t
-      LEFT JOIN recordings r ON r.id = t.recording_id
+      JOIN recordings r ON r.id = t.recording_id
       LEFT JOIN meetings m ON m.id = r.meeting_id
       WHERE (${transcriptSearch.whereSql})
         AND t.recording_id IS NOT NULL
+        AND ${ACTIVE_RECORDING_SQL}
         AND NOT EXISTS (
           SELECT 1 FROM knowledge_captures kc
           WHERE kc.source_recording_id = t.recording_id
+            AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
         )
       ORDER BY match_rank DESC, captured_at DESC
       LIMIT ?

@@ -110,7 +110,9 @@ describe('VectorStore embedding metadata', () => {
         id TEXT PRIMARY KEY,
         filename TEXT NOT NULL,
         date_recorded TEXT NOT NULL,
-        meeting_id TEXT
+        meeting_id TEXT,
+        location TEXT DEFAULT 'local-only',
+        status TEXT DEFAULT 'ready'
       )
     `)
     dbInstance.run(`
@@ -147,5 +149,54 @@ describe('VectorStore embedding metadata', () => {
       WHERE recording_id = 'rec-1'
     `)
     expect(rows[0].values[0]).toEqual(['rec-1', 'native-fastembed', 'bge-small-en-v1.5-q'])
+  })
+
+  it('does not reindex transcripts for deleted recordings', async () => {
+    dbInstance.run(`
+      CREATE TABLE transcripts (
+        id TEXT PRIMARY KEY,
+        recording_id TEXT,
+        full_text TEXT NOT NULL
+      )
+    `)
+    dbInstance.run(`
+      CREATE TABLE recordings (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        date_recorded TEXT NOT NULL,
+        meeting_id TEXT,
+        location TEXT DEFAULT 'local-only',
+        status TEXT DEFAULT 'ready'
+      )
+    `)
+    dbInstance.run(`
+      CREATE TABLE meetings (
+        id TEXT PRIMARY KEY,
+        subject TEXT NOT NULL
+      )
+    `)
+    dbInstance.run(`
+      INSERT INTO recordings (id, filename, date_recorded, location, status)
+      VALUES ('rec-deleted', 'deleted.wav', '2026-01-01T12:00:00.000Z', 'deleted', 'deleted')
+    `)
+    dbInstance.run(`
+      INSERT INTO transcripts (id, recording_id, full_text)
+      VALUES ('transcript-deleted', 'rec-deleted', 'Pricing discussion. Launch plan.')
+    `)
+
+    const store = new VectorStore()
+    await store.initialize()
+    const result = await store.reindexAllTranscripts()
+
+    expect(result).toMatchObject({
+      totalTranscripts: 0,
+      reindexedTranscripts: 0,
+      indexedChunks: 0,
+      skipped: 0,
+      failed: []
+    })
+
+    const rows = dbInstance.exec('SELECT COUNT(*) FROM vector_embeddings')
+    expect(rows[0].values[0][0]).toBe(0)
   })
 })
