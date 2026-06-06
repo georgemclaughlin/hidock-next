@@ -42,7 +42,6 @@ export function Library() {
   // Selected source for center panel
   const selectedSourceId = useLibraryStore((state) => state.selectedSourceId)
   const setSelectedSourceId = useLibraryStore((state) => state.setSelectedSourceId)
-  const selectSingle = useLibraryStore((state) => state.selectSingle)
 
   // Centralized operations (downloads + transcriptions)
   const {
@@ -744,13 +743,13 @@ export function Library() {
   // Handle row click for tri-pane layout
   const handleRowClick = useCallback((recording: UnifiedRecording) => {
     audioControls.stop()
-    selectSingle(recording.id)
+    setSelectedSourceId(recording.id)
 
     const { waveformLoadedForId } = useUIStore.getState()
     if (hasLocalPath(recording) && waveformLoadedForId !== recording.id) {
       audioControls.loadWaveformOnly(recording.id, recording.localPath)
     }
-  }, [selectSingle, audioControls])
+  }, [setSelectedSourceId, audioControls])
 
   // C-005: Keep openDetailRef in sync with handleRowClick + filteredRecordings
   openDetailRef.current = (id: string) => {
