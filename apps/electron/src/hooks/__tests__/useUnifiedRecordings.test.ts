@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { useUnifiedRecordings } from '../useUnifiedRecordings'
 import { useAppStore } from '@/store/useAppStore'
 
@@ -29,13 +29,23 @@ vi.mock('@/components/ui/toaster', () => ({
 }))
 
 // Mock Electron API
+let transcriptionCompletedCallback: ((data: { recordingId: string }) => void) | null = null
+
 function createMockElectronAPI() {
+  transcriptionCompletedCallback = null
+
   return {
     recordings: { getAll: vi.fn().mockResolvedValue([]) },
     syncedFiles: { getAll: vi.fn().mockResolvedValue([]) },
     deviceCache: { getAll: vi.fn().mockResolvedValue([]), saveAll: vi.fn().mockResolvedValue(undefined) },
     knowledge: { getAll: vi.fn().mockResolvedValue([]) },
-    onRecordingAdded: vi.fn(() => vi.fn())
+    onRecordingAdded: vi.fn(() => vi.fn()),
+    onTranscriptionStarted: vi.fn(() => vi.fn()),
+    onTranscriptionCompleted: vi.fn((callback) => {
+      transcriptionCompletedCallback = callback
+      return vi.fn()
+    }),
+    onTranscriptionFailed: vi.fn(() => vi.fn())
   } as any
 }
 
@@ -64,6 +74,8 @@ describe('useUnifiedRecordings', () => {
     }
     // @ts-ignore
     useAppStore.mockImplementation((selector: any) => selector(storeState))
+    // @ts-ignore
+    useAppStore.getState = vi.fn(() => storeState)
   })
 
   // ============================================================
@@ -177,6 +189,31 @@ describe('useUnifiedRecordings', () => {
           expect(call[0][0].filename).toBe('test.wav')
           expect(call[0][0].title).toBeUndefined()
         }
+      })
+    })
+
+    it('uses transcription_status before legacy status for local-only recordings', async () => {
+      const mockRecs = [{
+        id: 'rec-1',
+        filename: 'test.wav',
+        file_path: '/recordings/test.wav',
+        file_size: 100,
+        status: 'ready',
+        transcription_status: 'complete',
+        date_recorded: '2025-01-01T10:00:00Z'
+      }]
+      // @ts-ignore
+      window.electronAPI.recordings.getAll.mockResolvedValue(mockRecs)
+
+      renderHook(() => useUnifiedRecordings())
+
+      await waitFor(() => {
+        expect(storeState.setUnifiedRecordings).toHaveBeenCalledWith(expect.arrayContaining([
+          expect.objectContaining({
+            id: 'rec-1',
+            transcriptionStatus: 'complete'
+          })
+        ]))
       })
     })
   })
@@ -468,6 +505,51 @@ describe('useUnifiedRecordings', () => {
 
       // The unsubscribe function should be called on unmount
       expect(unsubscribeFn).toHaveBeenCalled()
+    })
+  })
+
+  // ============================================================
+  // Transcription event subscription
+  // ============================================================
+
+  describe('transcription event subscription', () => {
+    it('subscribes to transcription completion events', () => {
+      renderHook(() => useUnifiedRecordings())
+
+      expect(window.electronAPI.onTranscriptionCompleted).toHaveBeenCalled()
+    })
+
+    it('updates cached status and refreshes when transcription completes', async () => {
+      storeState.unifiedRecordings = [
+        {
+          id: 'rec-1',
+          filename: 'test.wav',
+          transcriptionStatus: 'processing',
+          location: 'local-only',
+          syncStatus: 'synced'
+        }
+      ]
+      storeState.unifiedRecordingsLoaded = true
+
+      renderHook(() => useUnifiedRecordings())
+
+      // @ts-ignore
+      window.electronAPI.recordings.getAll.mockClear()
+
+      act(() => {
+        transcriptionCompletedCallback?.({ recordingId: 'rec-1' })
+      })
+
+      expect(storeState.setUnifiedRecordings).toHaveBeenCalledWith(expect.arrayContaining([
+        expect.objectContaining({
+          id: 'rec-1',
+          transcriptionStatus: 'complete'
+        })
+      ]))
+
+      await waitFor(() => {
+        expect(window.electronAPI.recordings.getAll).toHaveBeenCalled()
+      })
     })
   })
 })

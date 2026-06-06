@@ -255,7 +255,7 @@ function buildRecordingMap(
         size: dbRec.file_size,
         duration: dbRec.duration_seconds || 0,
         dateRecorded,
-        transcriptionStatus: mapTranscriptionStatus(dbRec.status, capture?.status ?? undefined),
+        transcriptionStatus: mapTranscriptionStatus(dbRec.transcription_status ?? dbRec.status, capture?.status ?? undefined),
         meetingId: dbRec.meeting_id,
         location: 'local-only',
         localPath: dbRec.file_path,
@@ -325,6 +325,10 @@ interface UseUnifiedRecordingsResult {
   }
 }
 
+type LoadRecordingsOptions = {
+  bypassDebounce?: boolean
+}
+
 /**
  * Hook that provides a unified view of all recordings across device and local storage.
  *
@@ -352,20 +356,21 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
   const [deviceConnected, setDeviceConnected] = useState(false)
   const loadingRef = useRef(false) // Prevent concurrent loads
   const pendingForceRefreshRef = useRef(false)
+  const pendingLocalRefreshRef = useRef(false)
   const deviceReadyRefreshDoneRef = useRef(false) // Track if we've done a device-ready refresh
   const lastLoadTimestampRef = useRef(0) // FL-02: Track last load to prevent triple-fire
   const connectionEventCooldownRef = useRef(0) // AUD5-014: Suppress polling right after connection events
 
   const deviceService = getRecorderDeviceService()
 
-  const loadRecordings = useCallback(async (forceRefresh: boolean = false) => {
+  const loadRecordings = useCallback(async (forceRefresh: boolean = false, options: LoadRecordingsOptions = {}) => {
     console.log('[useUnifiedRecordings] loadRecordings called, forceRefresh:', forceRefresh, 'loadingRef:', loadingRef.current)
 
     // FL-02 FIX: Debounce rapid-fire calls (connection + ready + poll within 2 seconds)
     // This prevents the triple-fire issue where all 3 events trigger simultaneously on device connection
     const now = Date.now()
     const timeSinceLastLoad = now - lastLoadTimestampRef.current
-    if (!forceRefresh && timeSinceLastLoad < 2000) {
+    if (!forceRefresh && !options.bypassDebounce && timeSinceLastLoad < 2000) {
       console.log('[useUnifiedRecordings] Debouncing - only', timeSinceLastLoad, 'ms since last load')
       return
     }
@@ -382,6 +387,9 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
       if (forceRefresh) {
         console.log('[useUnifiedRecordings] Already loading - queuing forceRefresh')
         pendingForceRefreshRef.current = true
+      } else if (options.bypassDebounce) {
+        console.log('[useUnifiedRecordings] Already loading - queuing local refresh')
+        pendingLocalRefreshRef.current = true
       } else {
         console.log('[useUnifiedRecordings] Skipping - already loading')
       }
@@ -515,6 +523,9 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
       if (pendingForceRefreshRef.current) {
         pendingForceRefreshRef.current = false
         setTimeout(() => loadRecordingsRef.current(true), 0)
+      } else if (pendingLocalRefreshRef.current) {
+        pendingLocalRefreshRef.current = false
+        setTimeout(() => loadRecordingsRef.current(false, { bypassDebounce: true }), 0)
       }
       console.log('[useUnifiedRecordings] loadRecordings completed')
     }
@@ -522,6 +533,18 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
 
   const loadRecordingsRef = useRef(loadRecordings)
   loadRecordingsRef.current = loadRecordings
+
+  const updateCachedRecordingTranscriptionStatus = useCallback((
+    recordingId: string,
+    transcriptionStatus: UnifiedRecording['transcriptionStatus']
+  ) => {
+    const currentRecordings = useAppStore.getState().unifiedRecordings as UnifiedRecording[]
+    setRecordings(currentRecordings.map((recording) => (
+      recording.id === recordingId
+        ? { ...recording, transcriptionStatus }
+        : recording
+    )))
+  }, [setRecordings])
 
   // TODO: FL-05: Multiple page instances each create independent subscriptions below.
   // A singleton subscription manager would prevent duplicate refreshes when multiple
@@ -611,6 +634,40 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
 
     return unsubscribe
   }, [loadRecordings])
+
+  // Keep the active Library/Calendar list in sync with background transcription.
+  // Completion/failure events are emitted after the DB write, so this refreshes
+  // local data without forcing a USB device read.
+  useEffect(() => {
+    const api = window.electronAPI
+    const unsubscribers: Array<() => void> = []
+
+    if (api?.onTranscriptionStarted) {
+      unsubscribers.push(api.onTranscriptionStarted((data) => {
+        updateCachedRecordingTranscriptionStatus(data.recordingId, 'processing')
+      }))
+    }
+
+    if (api?.onTranscriptionCompleted) {
+      unsubscribers.push(api.onTranscriptionCompleted((data) => {
+        updateCachedRecordingTranscriptionStatus(data.recordingId, 'complete')
+        void loadRecordingsRef.current(false, { bypassDebounce: true })
+      }))
+    }
+
+    if (api?.onTranscriptionFailed) {
+      unsubscribers.push(api.onTranscriptionFailed((data) => {
+        updateCachedRecordingTranscriptionStatus(data.recordingId, 'error')
+        void loadRecordingsRef.current(false, { bypassDebounce: true })
+      }))
+    }
+
+    return () => {
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe()
+      }
+    }
+  }, [updateCachedRecordingTranscriptionStatus])
 
   // Poll device for file count changes (detect new recordings on device)
   useEffect(() => {
