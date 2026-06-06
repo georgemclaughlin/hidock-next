@@ -16,17 +16,16 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 use tar::Archive;
-use transcribe_rs::{
-    onnx::{
-        parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity},
-        Quantization,
-    },
+use transcribe_rs::onnx::{
+    parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity},
+    Quantization,
 };
 #[cfg(not(windows))]
 use transcribe_rs::whisper_cpp::{WhisperEngine, WhisperInferenceParams};
 
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 const CLI_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
+const DOWNLOAD_PROGRESS_PREFIX: &str = "LR_PROGRESS ";
 
 #[derive(Parser)]
 #[command(name = "recorder-transcriber")]
@@ -92,6 +91,15 @@ struct TranscriptSegment {
     end: Option<f64>,
 }
 
+#[derive(Debug, Serialize)]
+struct DownloadProgressEvent<'a> {
+    model: &'a str,
+    stage: &'a str,
+    progress: u8,
+    downloaded_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+}
+
 fn main() -> Result<()> {
     let worker = std::thread::Builder::new()
         .name("recorder-transcriber-cli".to_string())
@@ -109,7 +117,9 @@ fn main() -> Result<()> {
             } else {
                 "unknown panic payload".to_string()
             };
-            Err(anyhow!("Recorder transcriber CLI thread panicked: {message}"))
+            Err(anyhow!(
+                "Recorder transcriber CLI thread panicked: {message}"
+            ))
         }
     }
 }
@@ -253,10 +263,13 @@ fn is_model_downloaded(models_dir: &Path, model: &ModelInfo) -> bool {
 fn download_model(models_dir: &Path, model: &ModelInfo) -> Result<()> {
     let final_path = models_dir.join(&model.filename);
     if is_model_downloaded(models_dir, model) {
+        emit_download_progress(model, "ready", 100, None, None);
         return Ok(());
     }
 
     let partial_path = models_dir.join(format!("{}.partial", model.filename));
+    emit_download_progress(model, "starting", 0, None, None);
+
     let mut response = reqwest::blocking::get(&model.url)
         .with_context(|| format!("Failed to start model download from {}", model.url))?;
     if !response.status().is_success() {
@@ -268,16 +281,58 @@ fn download_model(models_dir: &Path, model: &ModelInfo) -> Result<()> {
 
     let mut file = File::create(&partial_path)
         .with_context(|| format!("Failed to create {}", partial_path.display()))?;
-    response
-        .copy_to(&mut file)
-        .with_context(|| format!("Failed while downloading {}", model.id))?;
+    let total_bytes = response
+        .content_length()
+        .or_else(|| Some(model.size_mb.saturating_mul(1024 * 1024)))
+        .filter(|bytes| *bytes > 0);
+    let mut downloaded_bytes = 0_u64;
+    let mut last_progress = 0_u8;
+    let mut buffer = [0_u8; 64 * 1024];
+
+    emit_download_progress(model, "downloading", 0, Some(0), total_bytes);
+    loop {
+        let bytes_read = response
+            .read(&mut buffer)
+            .with_context(|| format!("Failed while downloading {}", model.id))?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        file.write_all(&buffer[..bytes_read])
+            .with_context(|| format!("Failed to write {}", partial_path.display()))?;
+        downloaded_bytes = downloaded_bytes.saturating_add(bytes_read as u64);
+
+        if let Some(total) = total_bytes {
+            let progress = ((downloaded_bytes.saturating_mul(85)) / total).min(85) as u8;
+            if progress != last_progress {
+                emit_download_progress(
+                    model,
+                    "downloading",
+                    progress,
+                    Some(downloaded_bytes),
+                    Some(total),
+                );
+                last_progress = progress;
+            }
+        }
+    }
+
+    emit_download_progress(
+        model,
+        "downloading",
+        85,
+        Some(downloaded_bytes),
+        total_bytes,
+    );
     file.flush()?;
     drop(file);
 
+    emit_download_progress(model, "verifying", 90, Some(downloaded_bytes), total_bytes);
     verify_sha256(&partial_path, &model.sha256)
         .with_context(|| format!("Failed to verify downloaded model {}", model.id))?;
 
     if model.is_directory {
+        emit_download_progress(model, "extracting", 95, Some(downloaded_bytes), total_bytes);
         let extract_dir = models_dir.join(format!("{}.extracting", model.filename));
         if extract_dir.exists() {
             fs::remove_dir_all(&extract_dir)?;
@@ -310,7 +365,28 @@ fn download_model(models_dir: &Path, model: &ModelInfo) -> Result<()> {
         fs::rename(&partial_path, &final_path)?;
     }
 
+    emit_download_progress(model, "ready", 100, Some(downloaded_bytes), total_bytes);
     Ok(())
+}
+
+fn emit_download_progress(
+    model: &ModelInfo,
+    stage: &str,
+    progress: u8,
+    downloaded_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+) {
+    let event = DownloadProgressEvent {
+        model: &model.id,
+        stage,
+        progress,
+        downloaded_bytes,
+        total_bytes,
+    };
+
+    if let Ok(json) = serde_json::to_string(&event) {
+        eprintln!("{DOWNLOAD_PROGRESS_PREFIX}{json}");
+    }
 }
 
 fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
@@ -350,7 +426,9 @@ fn transcribe(
     let text = match model.engine_type {
         #[cfg(windows)]
         EngineType::Whisper => {
-            return Err(anyhow!("Whisper is not available in the Windows sidecar build"));
+            return Err(anyhow!(
+                "Whisper is not available in the Windows sidecar build"
+            ));
         }
         #[cfg(not(windows))]
         EngineType::Whisper => {

@@ -142,7 +142,22 @@ vi.mock('../../services/transcription', () => ({
     success: true,
     model: 'parakeet-v3',
     message: 'Parakeet V3 is downloaded for local transcription.'
-  })
+  }),
+  downloadLocalTranscriptionModel: vi.fn().mockResolvedValue({
+    success: true,
+    model: 'parakeet-v3',
+    message: 'Parakeet V3 is downloaded for local transcription.'
+  }),
+  listLocalTranscriptionModels: vi.fn().mockResolvedValue([
+    {
+      id: 'parakeet-v3',
+      name: 'Parakeet V3',
+      description: 'CPU-optimized Parakeet V3 INT8 model.',
+      size_mb: 456,
+      is_downloaded: false,
+      engine_type: 'parakeet'
+    }
+  ])
 }))
 
 // Mock config service
@@ -198,6 +213,8 @@ describe('Recording IPC Handlers', () => {
       'transcription:getQueue',
       'transcription:updateQueueItem',
       'transcription:downloadParakeetModel',
+      'transcription:listModels',
+      'transcription:downloadModel',
       'recordings:scanFolder',
       'recordings:getCandidates',
       'recordings:getMeetingsNearDate',
@@ -892,6 +909,52 @@ describe('Recording IPC Handlers', () => {
       )
 
       expect(result).toEqual({ success: false, error: 'Native transcription sidecar is required but was not found.' })
+    })
+  })
+
+  describe('transcription:downloadModel', () => {
+    it('should forward native model download progress to the invoking renderer', async () => {
+      const { downloadLocalTranscriptionModel } = await import('../../services/transcription')
+      const send = vi.fn()
+
+      vi.mocked(downloadLocalTranscriptionModel).mockImplementationOnce(async (_engine, _model, onProgress) => {
+        onProgress?.({
+          model: 'parakeet-v3',
+          stage: 'downloading',
+          progress: 42,
+          downloaded_bytes: 1024,
+          total_bytes: 2048
+        })
+        return {
+          success: true,
+          model: 'parakeet-v3',
+          message: 'Parakeet V3 is downloaded for local transcription.'
+        }
+      })
+
+      const result = await handlers['transcription:downloadModel'](
+        { sender: { send } },
+        'parakeet',
+        'parakeet-v3'
+      )
+
+      expect(downloadLocalTranscriptionModel).toHaveBeenCalledWith(
+        'parakeet',
+        'parakeet-v3',
+        expect.any(Function)
+      )
+      expect(send).toHaveBeenCalledWith('transcription:modelDownloadProgress', {
+        model: 'parakeet-v3',
+        stage: 'downloading',
+        progress: 42,
+        downloadedBytes: 1024,
+        totalBytes: 2048
+      })
+      expect(result).toEqual({
+        success: true,
+        model: 'parakeet-v3',
+        message: 'Parakeet V3 is downloaded for local transcription.'
+      })
     })
   })
 })

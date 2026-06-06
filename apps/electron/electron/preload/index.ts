@@ -169,6 +169,13 @@ export interface ElectronAPI {
       engine_type: 'parakeet' | 'whisper'
     }>>
     downloadTranscriptionModel: (engine?: 'parakeet' | 'whisper', model?: string) => Promise<{ success: boolean; model?: string; message?: string; error?: string }>
+    onTranscriptionModelDownloadProgress: (callback: (data: {
+      model: string
+      stage: string
+      progress: number
+      downloadedBytes?: number
+      totalBytes?: number
+    }) => void) => () => void
   }
 
   // Database - Transcripts
@@ -589,6 +596,17 @@ const electronAPI: ElectronAPI = {
     downloadParakeetModel: (pythonCommand: string, model: string) => callIPC('transcription:downloadParakeetModel', pythonCommand, model),
     getTranscriptionModels: () => callIPC('transcription:listModels'),
     downloadTranscriptionModel: (engine?: 'parakeet' | 'whisper', model?: string) => callIPC('transcription:downloadModel', engine, model),
+    onTranscriptionModelDownloadProgress: (callback: (data: {
+      model: string
+      stage: string
+      progress: number
+      downloadedBytes?: number
+      totalBytes?: number
+    }) => void) => {
+      const handler = (_event: any, data: any) => callback(data)
+      ipcRenderer.on('transcription:modelDownloadProgress', handler)
+      return () => ipcRenderer.removeListener('transcription:modelDownloadProgress', handler)
+    },
   },
 
   transcripts: {

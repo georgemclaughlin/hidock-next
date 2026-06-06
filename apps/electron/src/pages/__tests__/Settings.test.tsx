@@ -1,12 +1,40 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Settings } from '../Settings'
 
 const mockLoadConfig = vi.fn()
 const mockUpdateConfig = vi.fn()
 const mockSyncCalendar = vi.fn()
 const mockDownloadTranscriptionModel = vi.fn()
+const mockGetTranscriptionModels = vi.fn()
+const mockOnTranscriptionModelDownloadProgress = vi.fn()
+let modelDownloadProgressCallback: ((data: any) => void) | null = null
+
+const defaultTranscriptionModels = [
+  {
+    id: 'parakeet-v3',
+    name: 'Parakeet V3',
+    description: 'CPU-optimized Parakeet V3 INT8 model.',
+    size_mb: 456,
+    is_downloaded: false,
+    engine_type: 'parakeet'
+  },
+  {
+    id: 'whisper-small',
+    name: 'Whisper Small',
+    description: 'CPU-capable Whisper model with modest resource usage.',
+    size_mb: 465,
+    is_downloaded: false,
+    engine_type: 'whisper'
+  }
+]
+
+const downloadedTranscriptionModels = defaultTranscriptionModels.map((model) => (
+  model.id === 'parakeet-v3'
+    ? { ...model, is_downloaded: true }
+    : model
+))
 
 // Mock the stores
 vi.mock('@/store/useAppStore', () => ({
@@ -98,30 +126,20 @@ global.window.electronAPI = {
   },
   recordings: {
     downloadParakeetModel: vi.fn(),
-    getTranscriptionModels: vi.fn().mockResolvedValue([
-      {
-        id: 'parakeet-v3',
-        name: 'Parakeet V3',
-        description: 'CPU-optimized Parakeet V3 INT8 model.',
-        size_mb: 456,
-        is_downloaded: false,
-        engine_type: 'parakeet'
-      },
-      {
-        id: 'whisper-small',
-        name: 'Whisper Small',
-        description: 'CPU-capable Whisper model with modest resource usage.',
-        size_mb: 465,
-        is_downloaded: false,
-        engine_type: 'whisper'
-      }
-    ]),
-    downloadTranscriptionModel: mockDownloadTranscriptionModel
+    getTranscriptionModels: mockGetTranscriptionModels,
+    downloadTranscriptionModel: mockDownloadTranscriptionModel,
+    onTranscriptionModelDownloadProgress: mockOnTranscriptionModelDownloadProgress
   }
 } as any
 
 beforeEach(() => {
   vi.clearAllMocks()
+  modelDownloadProgressCallback = null
+  mockGetTranscriptionModels.mockResolvedValue(defaultTranscriptionModels)
+  mockOnTranscriptionModelDownloadProgress.mockImplementation((callback) => {
+    modelDownloadProgressCallback = callback
+    return vi.fn()
+  })
   mockDownloadTranscriptionModel.mockResolvedValue({
     success: true,
     model: 'parakeet-v3',
@@ -157,6 +175,50 @@ describe('Settings Page', () => {
         'parakeet-v3'
       )
     })
+  })
+
+  it('should show model download progress and disable the button after success', async () => {
+    let finishDownload: ((value: any) => void) | null = null
+    mockGetTranscriptionModels
+      .mockResolvedValueOnce(defaultTranscriptionModels)
+      .mockResolvedValueOnce(downloadedTranscriptionModels)
+    mockDownloadTranscriptionModel.mockImplementationOnce(() => new Promise((resolve) => {
+      finishDownload = resolve
+    }))
+
+    render(<Settings />)
+
+    fireEvent.click(screen.getByLabelText('Download parakeet model'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Downloading Model')).toBeInTheDocument()
+    })
+
+    act(() => {
+      modelDownloadProgressCallback?.({
+        model: 'parakeet-v3',
+        stage: 'downloading',
+        progress: 42,
+        downloadedBytes: 42 * 1024 * 1024,
+        totalBytes: 100 * 1024 * 1024
+      })
+    })
+
+    expect(screen.getByLabelText('Model download progress')).toHaveAttribute('aria-valuenow', '42')
+    expect(screen.getByText('42%')).toBeInTheDocument()
+
+    act(() => {
+      finishDownload?.({
+        success: true,
+        model: 'parakeet-v3',
+        message: 'Parakeet V3 is downloaded for local transcription.'
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('parakeet model downloaded')).toBeDisabled()
+    })
+    expect(screen.getByText('Model Downloaded')).toBeInTheDocument()
   })
 
   it('should render local assistant settings form', async () => {

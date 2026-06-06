@@ -45,10 +45,24 @@ export interface NativeModelDownloadResult {
   error?: string
 }
 
+export interface NativeModelDownloadProgress {
+  model: string
+  stage: string
+  progress: number
+  downloaded_bytes?: number
+  total_bytes?: number
+}
+
 interface RunResult {
   stdout: string
   stderr: string
 }
+
+interface RunNativeTranscriberOptions {
+  onProgress?: (progress: NativeModelDownloadProgress) => void
+}
+
+const DOWNLOAD_PROGRESS_PREFIX = 'LR_PROGRESS '
 
 function sidecarBinaryName(): string {
   return process.platform === 'win32' ? 'recorder-transcriber.exe' : 'recorder-transcriber'
@@ -92,7 +106,7 @@ export function assertNativeTranscriberAvailable(): string {
   return getRequiredNativeTranscriberPath()
 }
 
-function runNativeTranscriber(args: string[]): Promise<RunResult> {
+function runNativeTranscriber(args: string[], options: RunNativeTranscriberOptions = {}): Promise<RunResult> {
   const binaryPath = getRequiredNativeTranscriberPath()
 
   return new Promise((resolvePromise, reject) => {
@@ -102,14 +116,37 @@ function runNativeTranscriber(args: string[]): Promise<RunResult> {
     })
 
     const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
+    const stderrLines: string[] = []
+    let stderrRemainder = ''
+
+    const handleStderrLine = (line: string): void => {
+      const trimmed = line.trim()
+      if (!trimmed) return
+
+      if (trimmed.startsWith(DOWNLOAD_PROGRESS_PREFIX)) {
+        try {
+          options.onProgress?.(JSON.parse(trimmed.slice(DOWNLOAD_PROGRESS_PREFIX.length)) as NativeModelDownloadProgress)
+          return
+        } catch {
+          stderrLines.push(line)
+          return
+        }
+      }
+
+      stderrLines.push(line)
+    }
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdoutChunks.push(chunk)
     })
 
     child.stderr.on('data', (chunk: Buffer) => {
-      stderrChunks.push(chunk)
+      stderrRemainder += chunk.toString('utf8')
+      const lines = stderrRemainder.split(/\r?\n/)
+      stderrRemainder = lines.pop() ?? ''
+      for (const line of lines) {
+        handleStderrLine(line)
+      }
     })
 
     child.on('error', (error) => {
@@ -117,8 +154,13 @@ function runNativeTranscriber(args: string[]): Promise<RunResult> {
     })
 
     child.on('close', (code) => {
+      if (stderrRemainder) {
+        handleStderrLine(stderrRemainder)
+        stderrRemainder = ''
+      }
+
       const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim()
-      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
+      const stderr = stderrLines.join('\n').trim()
 
       if (code === 0) {
         resolvePromise({ stdout, stderr })
@@ -130,8 +172,8 @@ function runNativeTranscriber(args: string[]): Promise<RunResult> {
   })
 }
 
-async function runNativeJson<T>(args: string[]): Promise<T> {
-  const result = await runNativeTranscriber(args)
+async function runNativeJson<T>(args: string[], options: RunNativeTranscriberOptions = {}): Promise<T> {
+  const result = await runNativeTranscriber(args, options)
   if (!result.stdout) {
     throw new Error('Native transcription sidecar did not return JSON output')
   }
@@ -164,8 +206,11 @@ export async function getNativeTranscriptionModel(modelId: string): Promise<Nati
   return models.find((model) => model.id === modelId)
 }
 
-export async function downloadNativeTranscriptionModel(modelId: string): Promise<NativeModelDownloadResult> {
-  await runNativeJson<{ success: boolean; model_id: string }>(['download', modelId])
+export async function downloadNativeTranscriptionModel(
+  modelId: string,
+  onProgress?: (progress: NativeModelDownloadProgress) => void
+): Promise<NativeModelDownloadResult> {
+  await runNativeJson<{ success: boolean; model_id: string }>(['download', modelId], { onProgress })
   const model = await getNativeTranscriptionModel(modelId)
 
   return {

@@ -359,9 +359,17 @@ export function registerRecordingHandlers(): void {
 
   ipcMain.handle(
     'transcription:downloadModel',
-    async (_, engine?: 'parakeet' | 'whisper', model?: string): Promise<{ success: boolean; model?: string; message?: string; error?: string }> => {
+    async (event, engine?: 'parakeet' | 'whisper', model?: string): Promise<{ success: boolean; model?: string; message?: string; error?: string }> => {
       try {
-        return await downloadLocalTranscriptionModel(engine, model)
+        return await downloadLocalTranscriptionModel(engine, model, (progress) => {
+          event?.sender?.send('transcription:modelDownloadProgress', {
+            model: progress.model,
+            stage: progress.stage,
+            progress: progress.progress,
+            downloadedBytes: progress.downloaded_bytes,
+            totalBytes: progress.total_bytes
+          })
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to download transcription model'
         console.error('transcription:downloadModel error:', error)

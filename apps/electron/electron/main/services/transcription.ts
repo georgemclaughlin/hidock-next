@@ -25,6 +25,7 @@ import {
   getNativeModelIdForEngine,
   listNativeTranscriptionModels,
   transcribeWithNativeModel,
+  type NativeModelDownloadProgress,
   type NativeTranscriptionEngine,
   type NativeTranscriptionModel,
   type NativeTranscriptOutput,
@@ -296,9 +297,10 @@ export interface ParakeetModelDownloadResult {
 
 export async function downloadParakeetModel(
   _pythonCommandOverride?: string,
-  modelOverride?: string
+  modelOverride?: string,
+  onProgress?: (progress: NativeModelDownloadProgress) => void
 ): Promise<ParakeetModelDownloadResult> {
-  return downloadNativeTranscriptionModel(getNativeModelIdForEngine('parakeet', modelOverride))
+  return downloadNativeTranscriptionModel(getNativeModelIdForEngine('parakeet', modelOverride), onProgress)
 }
 
 export async function listLocalTranscriptionModels(): Promise<NativeTranscriptionModel[]> {
@@ -307,7 +309,8 @@ export async function listLocalTranscriptionModels(): Promise<NativeTranscriptio
 
 export async function downloadLocalTranscriptionModel(
   engineOverride?: NativeTranscriptionEngine,
-  modelOverride?: string
+  modelOverride?: string,
+  onProgress?: (progress: NativeModelDownloadProgress) => void
 ): Promise<ParakeetModelDownloadResult> {
   const config = getConfig()
   const engine = engineOverride || config.transcription.localEngine
@@ -316,7 +319,7 @@ export async function downloadLocalTranscriptionModel(
       ? config.transcription.localModel
       : config.transcription.parakeetModel
   )
-  return downloadNativeTranscriptionModel(getNativeModelIdForEngine(engine, configuredModel))
+  return downloadNativeTranscriptionModel(getNativeModelIdForEngine(engine, configuredModel), onProgress)
 }
 
 function normalizeTranscriptText(output: NativeTranscriptOutput): string {

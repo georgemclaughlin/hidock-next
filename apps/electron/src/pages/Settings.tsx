@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Save, FolderOpen, RefreshCw, AlertCircle, Download } from 'lucide-react'
+import { Save, FolderOpen, RefreshCw, AlertCircle, Download, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -28,7 +29,41 @@ type LocalTranscriptionEngine = AppConfig['transcription']['localEngine']
 type TranscriptionModelOption = {
   id: string
   name: string
+  description: string
+  size_mb: number
+  is_downloaded: boolean
   engine_type: LocalTranscriptionEngine
+}
+
+type ModelDownloadProgress = {
+  model: string
+  stage: string
+  progress: number
+  downloadedBytes?: number
+  totalBytes?: number
+}
+
+const MODEL_DOWNLOAD_STAGE_LABELS: Record<string, string> = {
+  starting: 'Preparing download',
+  downloading: 'Downloading model',
+  verifying: 'Verifying download',
+  extracting: 'Installing model',
+  ready: 'Model downloaded'
+}
+
+function formatModelDownloadStatus(progress: ModelDownloadProgress | null): string {
+  if (!progress) return 'Preparing download'
+
+  const label = MODEL_DOWNLOAD_STAGE_LABELS[progress.stage] ?? 'Downloading model'
+  if (
+    progress.stage === 'downloading' &&
+    progress.downloadedBytes !== undefined &&
+    progress.totalBytes !== undefined
+  ) {
+    return `${label} ${formatBytes(progress.downloadedBytes)} of ${formatBytes(progress.totalBytes)}`
+  }
+
+  return label
 }
 
 export function Settings() {
@@ -47,6 +82,7 @@ export function Settings() {
   const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
   const [modelDownloading, setModelDownloading] = useState(false)
+  const [modelDownloadProgress, setModelDownloadProgress] = useState<ModelDownloadProgress | null>(null)
   const [transcriptionModels, setTranscriptionModels] = useState<TranscriptionModelOption[]>([])
   const [storageLoading, setStorageLoading] = useState(false)
   // C-CHAT: RAG context window — default matches config.ts (10)
@@ -125,13 +161,54 @@ export function Settings() {
   }, [parakeetModelOptions.length, transcriptionModels.length, whisperModelOptions.length])
   const parakeetSelectOptions = parakeetModelOptions.length > 0
     ? parakeetModelOptions
-    : [{ id: 'parakeet-v3', name: 'Parakeet V3', engine_type: 'parakeet' as const }]
+    : [{
+        id: 'parakeet-v3',
+        name: 'Parakeet V3',
+        description: 'CPU-optimized Parakeet V3 INT8 model.',
+        size_mb: 456,
+        is_downloaded: false,
+        engine_type: 'parakeet' as const
+      }]
   const whisperSelectOptions = whisperModelOptions.length > 0
     ? whisperModelOptions
     : [
-        { id: 'whisper-small', name: 'Whisper Small', engine_type: 'whisper' as const },
-        { id: 'whisper-medium', name: 'Whisper Medium', engine_type: 'whisper' as const }
+        {
+          id: 'whisper-small',
+          name: 'Whisper Small',
+          description: 'CPU-capable Whisper model with modest resource usage.',
+          size_mb: 465,
+          is_downloaded: false,
+          engine_type: 'whisper' as const
+        },
+        {
+          id: 'whisper-medium',
+          name: 'Whisper Medium',
+          description: 'More accurate Whisper model; slower on CPU.',
+          size_mb: 469,
+          is_downloaded: false,
+          engine_type: 'whisper' as const
+        }
       ]
+  const selectedModelId = transcriptionEngine === 'whisper'
+    ? transcriptionModel.trim()
+    : parakeetModel.trim()
+  const selectedTranscriptionModel = useMemo(
+    () => transcriptionModels.find((model) => model.id === selectedModelId),
+    [selectedModelId, transcriptionModels]
+  )
+  const selectedModelDownloaded = selectedTranscriptionModel?.is_downloaded ?? false
+  const selectedModelSize = selectedTranscriptionModel
+    ? formatBytes(selectedTranscriptionModel.size_mb * 1024 * 1024)
+    : null
+  const activeModelProgress = modelDownloadProgress?.model === selectedModelId
+    ? modelDownloadProgress
+    : null
+  const downloadProgressValue = activeModelProgress?.progress ?? 0
+  const downloadButtonLabel = modelDownloading
+    ? 'Downloading Model'
+    : selectedModelDownloaded
+      ? 'Model Downloaded'
+      : 'Download Model'
 
   // Stable loadConfig with useCallback for dependency array
   const loadConfigStable = useCallback(async () => {
@@ -150,6 +227,16 @@ export function Settings() {
     loadStorageInfo()
     loadTranscriptionModels()
   }, [loadConfigStable])
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.recordings.onTranscriptionModelDownloadProgress?.((progress) => {
+      setModelDownloadProgress(progress)
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   useEffect(() => {
     if (config) {
@@ -184,6 +271,12 @@ export function Settings() {
     transcriptionModels.length,
     whisperModelOptions
   ])
+
+  useEffect(() => {
+    if (!modelDownloading) {
+      setModelDownloadProgress(null)
+    }
+  }, [modelDownloading, selectedModelId])
 
   const loadTranscriptionModels = async () => {
     try {
@@ -323,18 +416,29 @@ export function Settings() {
   const handleDownloadTranscriptionModel = async () => {
     if (modelDownloading) return
 
-    const model = transcriptionEngine === 'whisper'
-      ? transcriptionModel.trim()
-      : parakeetModel.trim()
+    const model = selectedModelId
     if (!model) {
       toast.error('Validation Error', `${transcriptionEngine === 'whisper' ? 'Whisper' : 'Parakeet'} model is required`)
       return
     }
+    if (selectedModelDownloaded) return
 
     setModelDownloading(true)
+    setModelDownloadProgress({ model, stage: 'starting', progress: 0 })
     try {
       const result = await window.electronAPI.recordings.downloadTranscriptionModel(transcriptionEngine, model)
       if (result.success) {
+        setModelDownloadProgress((progress) => ({
+          model,
+          stage: 'ready',
+          progress: 100,
+          downloadedBytes: progress?.model === model ? progress.downloadedBytes : undefined,
+          totalBytes: progress?.model === model ? progress.totalBytes : undefined
+        }))
+        setTranscriptionModels((models) => models.map((option) => (
+          option.id === model ? { ...option, is_downloaded: true } : option
+        )))
+        await loadTranscriptionModels()
         toast.success('Model Ready', result.message || `Model "${model}" is ready for local transcription`)
       } else {
         toast.error('Model Download Failed', result.error || 'Failed to download transcription model')
@@ -393,7 +497,7 @@ export function Settings() {
                 <Select
                   value={transcriptionEngine}
                   onValueChange={(value) => setTranscriptionEngine(value as LocalTranscriptionEngine)}
-                  disabled={saving}
+                  disabled={saving || modelDownloading}
                 >
                   <SelectTrigger id="transcriptionEngine" aria-label="Local transcription engine" className="mt-1">
                     <SelectValue />
@@ -472,16 +576,52 @@ export function Settings() {
               <Button
                 variant="outline"
                 onClick={handleDownloadTranscriptionModel}
-                disabled={saving || modelDownloading}
-                aria-label={`Download ${transcriptionEngine} model`}
+                disabled={saving || modelDownloading || selectedModelDownloaded}
+                aria-label={selectedModelDownloaded ? `${transcriptionEngine} model downloaded` : `Download ${transcriptionEngine} model`}
               >
                 {modelDownloading ? (
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                ) : selectedModelDownloaded ? (
+                  <CheckCircle2 className="h-4 w-4 mr-2" aria-hidden="true" />
                 ) : (
                   <Download className="h-4 w-4 mr-2" aria-hidden="true" />
                 )}
-                {modelDownloading ? 'Downloading Model' : 'Download Model'}
+                {downloadButtonLabel}
               </Button>
+
+              {(modelDownloading || selectedTranscriptionModel) && (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {selectedTranscriptionModel?.name ?? selectedModelId}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {modelDownloading
+                          ? formatModelDownloadStatus(activeModelProgress)
+                          : selectedModelDownloaded
+                            ? 'Ready for local transcription'
+                            : selectedModelSize
+                              ? `${selectedModelSize} download`
+                              : 'Download required'}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                      {modelDownloading
+                        ? `${Math.round(downloadProgressValue)}%`
+                        : selectedModelDownloaded
+                          ? 'Downloaded'
+                          : 'Not downloaded'}
+                    </span>
+                  </div>
+                  {modelDownloading && (
+                    <Progress
+                      value={downloadProgressValue}
+                      aria-label="Model download progress"
+                    />
+                  )}
+                </div>
+              )}
 
               <Button
                 onClick={handleSaveTranscription}
