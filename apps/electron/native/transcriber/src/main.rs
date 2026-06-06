@@ -839,11 +839,10 @@ fn transcribe(
 ) -> Result<TranscribeRunOutput> {
     let model_path = models_dir.join(&model.filename);
 
-    let mut checkpoint_dir = None;
     let mut diarization_audio = None;
     let mut audio_duration_secs: f32;
 
-    let result = match model.engine_type {
+    let (result, checkpoint_dir) = match model.engine_type {
         #[cfg(windows)]
         EngineType::Whisper => {
             return Err(anyhow!(
@@ -871,7 +870,7 @@ fn transcribe(
                 .transcribe_with(&audio, &params)
                 .with_context(|| format!("Whisper transcription failed for {}", input.display()))?;
             diarization_audio = Some(audio);
-            result
+            (result, None)
         }
         EngineType::Parakeet => {
             let streaming_sample_count = parakeet_streaming_sample_count(input)?;
@@ -914,8 +913,7 @@ fn transcribe(
                 output
             };
 
-            checkpoint_dir = output.checkpoint_dir;
-            output.result
+            (output.result, output.checkpoint_dir)
         }
     };
 
