@@ -866,6 +866,20 @@ describe('Database Service', () => {
   // =========================================================================
   // queryAll / queryOne helpers
   // =========================================================================
+  describe('getRecordings()', () => {
+    it('filters deleted recordings from the normal listing', async () => {
+      const dbModule = await initTestDatabase()
+
+      setQueryResults([])
+
+      dbModule.getRecordings()
+
+      const sql = mockDatabase.prepare.mock.calls.at(-1)?.[0] as string
+      expect(sql).toContain("COALESCE(location, '') != 'deleted'")
+      expect(sql).toContain("COALESCE(status, '') != 'deleted'")
+    })
+  })
+
   describe('queryAll()', () => {
     it('should return multiple rows', async () => {
       const dbModule = await initTestDatabase()

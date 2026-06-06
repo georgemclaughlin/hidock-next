@@ -14,6 +14,7 @@ import {
   getQueueItems,
   updateQueueItem,
   removeFromQueueByRecordingId,
+  deleteRecordingLocal,
   type Recording,
   type Transcript
 } from '../services/database'
@@ -130,6 +131,7 @@ export function registerRecordingHandlers(): void {
       if (recording && recording.file_path) {
         const deleted = deleteRecordingFile(recording.file_path)
         if (deleted) {
+          deleteRecordingLocal(result.data.id)
           updateRecordingStatus(result.data.id, 'deleted')
         }
         return deleted
@@ -165,6 +167,7 @@ export function registerRecordingHandlers(): void {
           if (recording && recording.file_path) {
             const wasDeleted = deleteRecordingFile(recording.file_path)
             if (wasDeleted) {
+              deleteRecordingLocal(id)
               updateRecordingStatus(id, 'deleted')
               deleted++
             } else {

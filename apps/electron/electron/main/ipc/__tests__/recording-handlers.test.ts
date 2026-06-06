@@ -30,7 +30,8 @@ vi.mock('../../services/database', () => ({
   insertRecording: vi.fn(),
   getQueueItems: vi.fn(),
   addToQueue: vi.fn(),
-  updateQueueItem: vi.fn()
+  updateQueueItem: vi.fn(),
+  deleteRecordingLocal: vi.fn()
 }))
 
 // Mock file-storage service
@@ -352,7 +353,7 @@ describe('Recording IPC Handlers', () => {
 
   describe('recordings:delete', () => {
     it('should delete a recording file and update its status', async () => {
-      const { getRecordingById, updateRecordingStatus } = await import('../../services/database')
+      const { deleteRecordingLocal, getRecordingById, updateRecordingStatus } = await import('../../services/database')
       const { deleteRecording } = await import('../../services/file-storage')
       const id = '550e8400-e29b-41d4-a716-446655440000'
       vi.mocked(getRecordingById).mockReturnValue({
@@ -365,6 +366,7 @@ describe('Recording IPC Handlers', () => {
       const result = await handlers['recordings:delete'](null, id)
 
       expect(deleteRecording).toHaveBeenCalledWith('/path/to/file.wav')
+      expect(deleteRecordingLocal).toHaveBeenCalledWith(id)
       expect(updateRecordingStatus).toHaveBeenCalledWith(id, 'deleted')
       expect(result).toBe(true)
     })
@@ -380,7 +382,7 @@ describe('Recording IPC Handlers', () => {
     })
 
     it('should not update status if file deletion fails', async () => {
-      const { getRecordingById, updateRecordingStatus } = await import('../../services/database')
+      const { deleteRecordingLocal, getRecordingById, updateRecordingStatus } = await import('../../services/database')
       const { deleteRecording } = await import('../../services/file-storage')
       const id = '550e8400-e29b-41d4-a716-446655440000'
       vi.mocked(getRecordingById).mockReturnValue({
@@ -392,6 +394,7 @@ describe('Recording IPC Handlers', () => {
 
       const result = await handlers['recordings:delete'](null, id)
 
+      expect(deleteRecordingLocal).not.toHaveBeenCalled()
       expect(updateRecordingStatus).not.toHaveBeenCalled()
       expect(result).toBe(false)
     })
@@ -417,7 +420,7 @@ describe('Recording IPC Handlers', () => {
 
   describe('recordings:deleteBatch', () => {
     it('should delete multiple recordings and return results', async () => {
-      const { getRecordingById, updateRecordingStatus } = await import('../../services/database')
+      const { deleteRecordingLocal, getRecordingById, updateRecordingStatus } = await import('../../services/database')
       const { deleteRecording } = await import('../../services/file-storage')
 
       const id1 = '550e8400-e29b-41d4-a716-446655440000'
@@ -430,6 +433,10 @@ describe('Recording IPC Handlers', () => {
 
       const result = await handlers['recordings:deleteBatch'](null, [id1, id2])
 
+      expect(deleteRecordingLocal).toHaveBeenCalledWith(id1)
+      expect(deleteRecordingLocal).toHaveBeenCalledWith(id2)
+      expect(updateRecordingStatus).toHaveBeenCalledWith(id1, 'deleted')
+      expect(updateRecordingStatus).toHaveBeenCalledWith(id2, 'deleted')
       expect(result.success).toBe(true)
       expect(result.deleted).toBe(2)
       expect(result.failed).toBe(0)

@@ -535,7 +535,10 @@ export function Library() {
         setBulkProgress({ current: i + 1, total: selectedRecordings.length })
 
         try {
-          await window.electronAPI.recordings.delete(recording.id)
+          const deleted = await window.electronAPI.recordings.delete(recording.id)
+          if (!deleted) {
+            errors.push({ filename: recording.filename, error: new Error('Delete returned false') })
+          }
         } catch (e) {
           console.error('Failed to delete:', recording.filename, e)
           errors.push({ filename: recording.filename, error: e })
@@ -545,7 +548,7 @@ export function Library() {
       // Step 2: Refresh data from server to update UI (only if some deletions succeeded)
       const successCount = selectedRecordings.length - errors.length
       if (successCount > 0) {
-        await refresh(false)
+        await refresh(false, { bypassDebounce: true })
       }
 
       // Step 3: Clear selection ONLY after successful refresh
@@ -593,8 +596,11 @@ export function Library() {
   const executeDeleteFromDevice = useCallback(async (recording: UnifiedRecording) => {
     setDeleting(recording.id)
     try {
-      await window.electronAPI.recordings.delete(recording.id)
-      await refresh(false)
+      const deleted = await window.electronAPI.recordings.delete(recording.id)
+      if (!deleted) {
+        throw new Error('Delete returned false')
+      }
+      await refresh(false, { bypassDebounce: true })
     } catch (e) {
       console.error('Failed to delete from device:', e)
       import('@/components/ui/toaster').then(({ toast }) => {
@@ -623,8 +629,11 @@ export function Library() {
   const executeDeleteLocal = useCallback(async (recording: UnifiedRecording) => {
     setDeleting(recording.id)
     try {
-      await window.electronAPI.recordings.delete(recording.id)
-      await refresh(false)
+      const deleted = await window.electronAPI.recordings.delete(recording.id)
+      if (!deleted) {
+        throw new Error('Delete returned false')
+      }
+      await refresh(false, { bypassDebounce: true })
     } catch (e) {
       console.error('Failed to delete local file:', e)
       import('@/components/ui/toaster').then(({ toast }) => {

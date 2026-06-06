@@ -311,7 +311,7 @@ interface UseUnifiedRecordingsResult {
   recordings: UnifiedRecording[]
   loading: boolean
   error: string | null
-  refresh: (forceDeviceRefresh?: boolean) => Promise<void>
+  refresh: (forceDeviceRefresh?: boolean, options?: LoadRecordingsOptions) => Promise<void>
   deviceConnected: boolean
   stats: {
     total: number

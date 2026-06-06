@@ -1961,7 +1961,12 @@ export interface Recording {
 }
 
 export function getRecordings(): Recording[] {
-  return queryAll<Recording>('SELECT * FROM recordings ORDER BY date_recorded DESC')
+  return queryAll<Recording>(`
+    SELECT * FROM recordings
+    WHERE COALESCE(location, '') != 'deleted'
+      AND COALESCE(status, '') != 'deleted'
+    ORDER BY date_recorded DESC
+  `)
 }
 
 export function getRecordingById(id: string): Recording | undefined {
