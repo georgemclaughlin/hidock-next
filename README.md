@@ -1,274 +1,159 @@
-# HiDock Next 🎵
+# HiDock Local
 
-Desktop & Web Applications for Managing Files on HiDock® Devices
+Local-only Electron app for HiDock recorder workflows.
 
-> **Disclaimer:** This is an unofficial, third-party application not affiliated with or endorsed by HiDock or its manufacturers. HiDock® is a trademark of its respective owners.
+This is an unofficial fork focused on one job: download recordings from a HiDock device, transcribe them on the local machine, and make the resulting transcripts searchable without sending recording data to a third-party service.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/) [![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)](https://www.typescriptlang.org/) [![Version](https://img.shields.io/badge/version-1.0--RC1-green.svg)](https://github.com/sgeraldes/hidock-next/releases)
+HiDock is a trademark of its respective owner. This project is not affiliated with or endorsed by HiDock or its manufacturers.
 
-![Desktop Application Screenshot](docs/hidock-desktop-app.png)
-_Desktop file manager for HiDock® devices - Download, organize, and transcribe audio files_
+## Supported App
 
-## ✨ Features
+The maintained app lives in [apps/electron](apps/electron).
 
-- 🎙️ **Device File Management** - Browse, download, and organize files from HiDock® devices
-- 🎵 **Advanced Audio Player** - Built-in player with waveform visualization
-- 🤖 **AI Transcription** - Support for 11+ AI providers (OpenAI, Gemini, Claude, etc.)
-- 📅 **Calendar Integration** - Automatic meeting correlation (Windows)
-- 📁 **Smart File Management** - Batch operations, filtering, and organization
-- 🌐 **Cross-Platform** - Windows, macOS, and Linux support
-- 🚀 **High Performance** - Optimized for large file collections
+The older Python desktop app, browser app, audio-insights prototype, meeting recorder, meeting assistant, shared cloud-provider packages, historical firmware research, and broad planning docs have been removed from this fork. They were useful upstream history, but they were not part of this local-only workflow.
 
-## 🚀 Quick Start
+## Local-Only Boundary
 
-### Windows
+The Electron app is designed around these constraints:
 
-```cmd
+- Recordings are downloaded over USB from the HiDock device.
+- Recordings, transcripts, indexes, and app data are stored on the local computer.
+- Speech-to-text is local: Parakeet by default, Whisper as a fallback.
+- Transcript chat/search uses local Ollama by default.
+- External calendar sync is disabled.
+- Hosted transcription and hosted LLM providers are not included in the supported path.
+
+Manual export is still possible. If a user copies a transcript into ChatGPT, Microsoft Copilot, or another enterprise tool, that happens outside this app's local-only boundary.
+
+## Requirements
+
+- Node.js 20 or newer
+- npm
+- A HiDock H1, H1E, P1, or compatible recorder
+- Optional: Ollama for local transcript chat/search
+- Optional: a local Parakeet or Whisper environment for transcription
+
+For Windows users, run the Electron app from native Windows PowerShell or Command Prompt when you need the GUI and USB device access. WSL is fine for editing, building, and tests, but it usually needs extra display and USB forwarding setup to run Electron reliably.
+
+## Quick Start
+
+### Windows Native
+
+```powershell
 git clone https://github.com/sgeraldes/hidock-next.git
 cd hidock-next
-setup-windows.bat
-run-desktop.bat
+cd apps\electron
+npm install
+npm run dev
 ```
 
-### macOS / Linux
+You can also use the root helper:
+
+```powershell
+.\run-electron.bat
+```
+
+### macOS / Linux / WSL Build
 
 ```bash
 git clone https://github.com/sgeraldes/hidock-next.git
-cd hidock-next
-./setup-unix.sh
-./run-desktop.sh
+cd hidock-next/apps/electron
+npm install
+npm run build
 ```
 
-## 📦 Applications
+On a Linux desktop with display and USB permissions configured:
 
-### [Desktop App](apps/desktop/) - Full-Featured Management
+```bash
+npm run dev
+```
 
-- Complete USB device control
-- Advanced audio playback with visualization
-- AI transcription with multiple providers
-- Calendar integration (Windows)
-- Batch file operations
+## Local Transcription
 
-### [Web App](apps/web/) - Modern Web Interface
+Parakeet is the default engine. The app launches a configured Python command and expects the model to already be available locally. The default model is:
 
-- React/TypeScript implementation
-- Real-time device monitoring
-- Responsive design
-- Cross-browser support
+```text
+nvidia/parakeet-tdt-0.6b-v2
+```
 
-### [Audio Insights](apps/audio-insights/) - AI Analysis Tool
+Because the app forces offline model loading for Parakeet, pre-cache the model before relying on it offline. On Windows, use a Windows Python environment if you run the Electron app from Windows.
 
-- Audio file analysis
-- Transcription extraction
-- Insights generation
+Example Parakeet setup:
 
-## 🛠️ Requirements
+```powershell
+python -m venv .venv-parakeet
+.\.venv-parakeet\Scripts\Activate.ps1
+pip install torch torchaudio "nemo_toolkit[asr]"
+python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v2')"
+```
 
-- **Python** 3.12 or higher
-- **Node.js** 18 or higher (for web apps)
-- **USB Driver** for HiDock devices
-- **OS**: Windows 10+, macOS 12+, Ubuntu 20.04+
+Then set the app's Parakeet Python command to the venv Python path, for example:
 
-## 📊 Platform Support
+```text
+C:\path\to\.venv-parakeet\Scripts\python.exe
+```
 
-| Feature              | Windows          | macOS            | Linux            |
-| -------------------- | ---------------- | ---------------- | ---------------- |
-| Device Management    | ✅ Full          | ✅ Full          | ✅ Full          |
-| Audio Processing     | ✅ Full          | ✅ Full          | ✅ Full          |
-| Calendar Integration | ✅ Outlook       | ❌               | ❌               |
-| AI Transcription     | ✅ All Providers | ✅ All Providers | ✅ All Providers |
+Whisper fallback uses a local `whisper` command:
 
-## 📂 Project Structure
+```bash
+pip install -U openai-whisper
+```
 
-```folder
+## Local Ollama
+
+For transcript chat and semantic search:
+
+```bash
+ollama serve
+ollama pull nomic-embed-text
+ollama pull llama3.2
+```
+
+The default Ollama URL is:
+
+```text
+http://localhost:11434
+```
+
+Remote Ollama URLs are blocked by local-only mode unless explicitly allowed in settings.
+
+## Development
+
+```bash
+cd apps/electron
+npm install
+npm run dev
+npm run build
+npm run test:run
+```
+
+Useful root helpers:
+
+```bash
+./run-electron.sh
+./build-electron.sh
+make dev
+make build
+make test
+```
+
+## Project Layout
+
+```text
 hidock-next/
-├── apps/               # Applications
-│   ├── desktop/        # Desktop application (Python/Tkinter)
-│   ├── web/            # Web application (React/TypeScript)
-│   └── audio-insights/ # Audio analysis tool
-├── research/           # Research and reverse engineering tools
-├── firmware/           # Device firmware files
-├── docs/               # Documentation
-├── scripts/            # Utility scripts
-└── config/             # Configuration files
+  apps/electron/        Electron main/preload/renderer app
+  docs/                 Local-only setup notes
+  run-electron.*        Root launch helpers
+  build-electron.*      Root build helpers
 ```
 
-## 🔧 Development
+## More Docs
 
-### Setup Development Environment
+- [Electron app README](apps/electron/README.md)
+- [Architecture](apps/electron/ARCHITECTURE.md)
+- [Local-only model](docs/LOCAL_ONLY.md)
+- [Windows and WSL notes](docs/WINDOWS_WSL.md)
 
-```bash
-python setup.py
-# Choose option 2 (Developer)
-```
+## License
 
-### Running Tests
-
-```bash
-cd apps/desktop
-pytest tests/
-```
-
-#### Test Markers & Fast vs Full Suite
-
-By default the repository defines markers to classify tests:
-
-- `unit` – fast, pure-Python or lightweight logic
-- `integration` – touches external systems, heavier setup
-- `gui` – requires a display / GUI toolkits
-- `slow` – long-running or large dataset processing
-
-The default invocation (no args) in local dev or CI (fast lane) skips
-`integration`, `gui`, and `slow` to keep feedback loops tight.
-
-Fast subset (default behavior via `pytest.ini`):
-
-```bash
-pytest -q
-```
-
-Run only integration tests:
-
-```bash
-pytest -m integration
-```
-
-Run full test suite (all markers):
-
-```bash
-pytest -m "unit or integration or gui or slow"
-```
-
-Or simply clear filtering by overriding `-m`:
-
-```bash
-pytest -m ""
-```
-
-Run everything including verbose output:
-
-```bash
-pytest -vv -m ""
-```
-
-Example: run unit + slow (e.g., for a targeted performance check):
-
-```bash
-pytest -m "unit or slow"
-```
-
-If you maintain custom CI stages, you can mirror this split:
-
-| Stage        | Command                                |
-|--------------|-----------------------------------------|
-| fast (default)| `pytest -q`                            |
-| integration  | `pytest -m integration -q`             |
-| gui          | `pytest -m gui`                        |
-| full         | `pytest -m "unit or integration or gui or slow"` |
-
-Tip: Keep the quick path green before running the heavier suites.
-
-### Building for Distribution
-
-```bash
-python scripts/build/build_desktop.py
-```
-
-### Virtual Environments
-
-See `docs/VENV.md` for the per-platform virtual environment strategy (separate `.venv.<tag>` per OS/WSL). The runtime scripts (`run-desktop.*`) and setup logic auto-select or create the correct one via `scripts/env/select_venv.py`.
-
-Common setup flags:
-
-```bash
-# Non-interactive full developer setup (auto-skip migration unless specified)
-python setup.py --non-interactive
-
-# Force legacy migration strategy
-python setup.py --migrate=copy      # or --migrate=rebuild / --migrate=skip
-
-# Explicit end-user minimal mode
-python setup.py --mode=end-user
-
-# Recreate tagged environment even if it exists
-python setup.py --force-new-env
-
-# Diagnose virtual environment only (no installs)
-python setup.py --diagnose-venv
-
-# Auto-install missing Debian/Ubuntu system dependencies (tk, ffmpeg, libusb, build tools)
-python setup.py --auto-install-missing
-```
-
-Environment variable alternative for migration:
-
-```bash
-HIDOCK_AUTO_MIGRATE=c python setup.py   # c=copy, r=rebuild, s=skip
-```
-
-Environment variable alternative for auto-install (CI / scripted):
-
-```bash
-HIDOCK_AUTO_INSTALL_MISSING=1 python setup.py --non-interactive
-```
-
-### Linux System Dependencies
-
-On Debian/Ubuntu based systems the setup script can detect and help resolve missing packages:
-
-- python3-tk / python3-dev (Tkinter UI)
-- ffmpeg / libavcodec-extra (audio transcoding)
-- libusb-1.0-0-dev / libudev-dev / pkg-config (device communications)
-- build-essential (compilation toolchain)
-- dialout group membership (USB access)
-
-If you see a prompt listing missing dependencies you can:
-
-1. Run the bundled automated installer
-2. View manual apt commands
-3. Continue anyway (not recommended)
-
-To skip prompts and let the script attempt installation automatically:
-
-```bash
-python setup.py --auto-install-missing --non-interactive
-```
-
-If packages fail to install you will still be able to continue, but Python dependency installation may later fail until system requirements are met.
-
-## 📝 Documentation
-
-- [Getting Started](docs/getting-started/QUICK_START.md)
-- [Desktop App Guide](apps/desktop/README.md)
-- [Web App Guide](apps/web/README.md)
-- [API Documentation](docs/api/)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- HiDock hardware team for device specifications
-- Open source community for libraries and tools
-- All contributors and testers
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/sgeraldes/hidock-next/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/sgeraldes/hidock-next/discussions)
-- **Documentation**: [Full Docs](docs/)
-
----
-
-**HiDock Next v1.0-RC1** - Ready for production use!
+MIT. See [LICENSE](LICENSE).

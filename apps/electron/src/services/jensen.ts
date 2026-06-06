@@ -2,7 +2,7 @@
  * Jensen Protocol Implementation for HiDock devices
  *
  * Architecture: Event-driven continuous read loop + command queue + handler dispatch
- * Direct port of the official HiDock HiNotes jensen.js (apps/web/jensen.js)
+ * HiDock Jensen protocol helpers for renderer-side device workflows.
  *
  * Key mechanisms (matching jensen.js):
  *  1. Continuous read loop: transferIn always pending, data flows into buffer

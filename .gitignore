@@ -1,157 +1,55 @@
-# ===================================================================
-# Python
-# ===================================================================
+# Dependencies
+node_modules/
+apps/electron/node_modules/
 
-# Virtual Environments
-.venv/
-venv/
-ENV/
-apps/desktop/.venv/
-apps/web/node_modules/
-apps/audio-insights/node_modules/
-
-# Python cache files
-__pycache__/
-*.py[cod]
-*.pyc
-*.pyo
-*.pyd
-apps/desktop/__pycache__/
-apps/desktop/scripts/__pycache__/
-apps/desktop/src/__pycache__/
-
-# Test and coverage reports
-.pytest_cache/
-temp/pytest_cache/
-apps/desktop/.pytest_cache/
+# Electron build outputs
+apps/electron/out/
+apps/electron/dist/
+apps/electron/coverage/
 coverage/
-htmlcov/
-apps/desktop/htmlcov/
-.coverage
-.coverage.*
-.coveragerc
-.mypy_cache/
-temp/mypy_cache/
+*.tsbuildinfo
 
-# ===================================================================
-# Project-Specific & User Files
-# ===================================================================
+# Vite and npm artifacts
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Custom folders that should not be in the repository
-temp/
-archive/
-archived/
-reference/
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.yaml
+oauth2_tokens.json
+
+# Local recordings and user data
 audio/
-.kiro/
-.claude/
-.code-review/
-.working-plans/
-.analysis/
-
-# AI Assistant project intelligence (keep rules but not project-specific data)
-.amazonq/project-intelligence/
-.amazonq/prompts/
-
-# Large media files (covered by the audio/ rule, but good to be explicit)
+recordings/
+transcripts/
+temp/
 *.wav
 *.mp3
 *.mp4
 *.mov
 *.avi
-*.ics
-
-# Database files and dumps
-*.sql
-*.dump
-
-# Temporary fix/utility scripts
-fix_*.py
-temp_*.py
-spec_writer.*
+*.hda
 *.sqlite3
+*.db
 
-# Development session artifacts (CHANGES logs, phase reports, verification docs)
-/CHANGES*.md
-/PHASE*.md
-/VERIFICATION*.md
-/IMPLEMENTATION*.md
-/MANUAL-VERIFICATION*.md
-/WAVE2*.md
-
-# ===================================================================
-# General Development
-# ===================================================================
-
-# Environment variables & Secrets
-# Keep .env files out of version control. A .env.example should be committed.
-.env
-.env.*
-!.env.example
-
-# Sensitive credential files
-*.pem
-*.key
-*.dat
-credentials.json
-secrets.yaml
-oauth2_tokens.json
-**/oauth2_tokens.json
-.hinotes.config
-**/.hinotes.config
-
-# Configuration files with API keys and user data
-hidock_config.json
-**/hidock_config.json
-
-# Build & dependency directories (can apply to any language)
-node_modules/
-dist/
-build/
-*.egg-info/
-*.egg
-*.tsbuildinfo
-apps/desktop/*.egg-info/
-apps/desktop/build/
-apps/desktop/dist/
-apps/electron/out/
-apps/web/dist/
-apps/web/build/
-**/out/
-**/dist/
-
-# Project-specific generated files
-_version.py
-
-# Log files
+# Logs
 logs/
 *.log
-apps/desktop/logs/*.log
-apps/desktop/logs/*.txt
-.hidock_setup.log
+*.log.*
 
-# Session logs and temporary documentation
-docs/session-logs/
-session_logs/
-*-SESSION.txt
-*-CALENDAR_INTEGRATION.txt
-*-FIRMWARE_RESEARCH.txt
-*-UX-UI_IMPROVEMENTS.txt
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# OS-generated files
+# OS/editor files
 .DS_Store
 Thumbs.db
 Desktop.ini
-
-# Editor & IDE directories
 .idea/
-# Keep VSCode settings in config/ide/vscode
-# .vscode/
 *.sublime-workspace
 *.suo
 *.ntvs*
@@ -159,34 +57,8 @@ Desktop.ini
 *.sln
 *.sw?
 
-# Temporary development files
-get-pip.py
-*.tmp
-*.temp
-build_output.txt
-
-# Development documentation (keep main docs)
-DOCUMENTATION_SUMMARY.md
-DOCUMENTATION_UPDATE_SUMMARY.md
-
-# Pre-commit secrets detection
-.secrets.baseline
-coverage.xml
-*.log.*
-startup_log.txt
-apps/web/.vite/
-.venv.nix/
-.venv.win/
-NUL
-
-# ===================================================================
-# QA & Automation Artifacts
-# ===================================================================
+# Local automation artifacts
 qa-artifacts/
-/*.png
 *.png.encrypted
-/docs/qa/screenshots/*.encrypted
-
-# System & Misc
-[Dd]esktop.ini
+NUL
 nul

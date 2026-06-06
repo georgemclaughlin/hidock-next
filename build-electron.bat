@@ -1,7 +1,7 @@
 @echo off
-REM HiDock Meeting Intelligence - Build Script
+REM HiDock Local - Build Script
 setlocal
-echo Building HiDock Meeting Intelligence...
+echo Building HiDock Local...
 echo.
 
 REM Navigate to script directory (project root)
@@ -39,7 +39,7 @@ echo.
 
 echo.
 echo ================================
-echo Building Electron App
+echo Building HiDock Local Electron App
 echo ================================
 echo Compiling main process (backend) and renderer (frontend)...
 echo.

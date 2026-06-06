@@ -1,12 +1,18 @@
 #!/bin/bash
-# HiDock Meeting Intelligence - Development Run Script
+# HiDock Local - Development Run Script
 
-echo "Starting HiDock Meeting Intelligence..."
+echo "Starting HiDock Local..."
 echo
 
 # Navigate to script directory (project root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+if grep -qi microsoft /proc/version 2>/dev/null && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "Warning: WSL detected without a display server."
+    echo "Electron GUI and USB testing are usually more reliable from native Windows."
+    echo
+fi
 
 # Check if electron app directory exists
 if [ ! -d "apps/electron" ]; then
@@ -32,7 +38,7 @@ fi
 
 echo
 echo "================================"
-echo "HiDock Meeting Intelligence"
+echo "HiDock Local"
 echo "================================"
 echo
 echo "To stop the application, close the window or press Ctrl+C here."

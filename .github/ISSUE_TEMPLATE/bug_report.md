@@ -1,43 +1,34 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a problem in the local Electron app
 title: '[BUG] '
 labels: bug
 assignees: ''
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Problem
 
-**To Reproduce**
-Steps to reproduce the behavior:
+Describe what happened.
 
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+## Expected Behavior
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+Describe what you expected.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## Steps To Reproduce
 
-**Environment (please complete the following information):**
+1.
+2.
+3.
 
-- OS: [e.g. Windows 10, macOS 12.0, Ubuntu 20.04]
-- Application: [e.g. Desktop App, Web App]
-- Python Version (if desktop): [e.g. 3.9.0]
-- Browser (if web): [e.g. Chrome 96, Firefox 95]
-- HiDock Device Model: [e.g. H1, H1E, P1]
-- Firmware Version: [e.g. 1.2.3]
+## Environment
 
-**Additional context**
-Add any other context about the problem here.
+- OS:
+- Running from Windows native, macOS, Linux, or WSL:
+- Node.js version:
+- HiDock device model:
+- Transcription engine: Parakeet, Whisper, or none
+- Ollama enabled: yes/no
 
-**Logs**
-If applicable, please include relevant log output:
+## Logs
 
-```
-Paste log output here
-```
+Paste relevant app or terminal output.

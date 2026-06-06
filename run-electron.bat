@@ -1,7 +1,7 @@
 @echo off
-REM HiDock Meeting Intelligence - Launch Script
+REM HiDock Local - Launch Script
 setlocal
-echo Starting HiDock Meeting Intelligence...
+echo Starting HiDock Local...
 echo.
 
 REM Navigate to script directory (project root)
@@ -33,7 +33,7 @@ if not exist "node_modules" (
 
 echo.
 echo ================================
-echo HiDock Meeting Intelligence
+echo HiDock Local
 echo ================================
 echo.
 echo To stop the application, close the window or press Ctrl+C here.

@@ -1,7 +1,7 @@
 #!/bin/bash
-# HiDock Meeting Intelligence - Build Script
+# HiDock Local - Build Script
 
-echo "Building HiDock Meeting Intelligence..."
+echo "Building HiDock Local..."
 echo
 
 # Navigate to script directory (project root)
@@ -38,7 +38,7 @@ echo
 
 echo
 echo "================================"
-echo "Building Electron App"
+echo "Building HiDock Local Electron App"
 echo "================================"
 echo "Compiling main process (backend) and renderer (frontend)..."
 echo
