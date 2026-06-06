@@ -35,6 +35,18 @@ type GlobalKnowledgeResult = {
   semanticScore?: number
 }
 
+type GlobalSearchResponse = {
+  knowledge: any[]
+  people: any[]
+  projects: any[]
+  warnings?: string[]
+}
+
+type SemanticKnowledgeSearchResult = {
+  results: GlobalKnowledgeResult[]
+  warnings: string[]
+}
+
 const SYSTEM_PROMPT = `You are a helpful meeting assistant that answers questions based on meeting transcripts.
 
 Your capabilities:
@@ -586,11 +598,21 @@ ${transcript.substring(0, 8000)}`
     })) : []
   }
 
-  private async semanticKnowledgeSearch(query: string, limit: number): Promise<GlobalKnowledgeResult[]> {
+  private async semanticKnowledgeSearch(query: string, limit: number): Promise<SemanticKnowledgeSearchResult> {
     try {
       const vectorStore = getVectorStore()
       await vectorStore.initialize()
-      const semanticResults = await vectorStore.search(query, limit)
+      const stats = vectorStore.getIndexStats()
+      if (stats.documentCount > 0 && stats.currentModelDocumentCount === 0 && stats.incompatibleDocumentCount > 0) {
+        return {
+          results: [],
+          warnings: [
+            `Semantic search is unavailable because ${stats.incompatibleDocumentCount} indexed chunks use a different embedding provider or model. Rebuild the search index in Settings.`
+          ]
+        }
+      }
+
+      const semanticResults = await vectorStore.search(query, limit, { throwOnEmbeddingFailure: true })
       const knowledgeById = new Map<unknown, GlobalKnowledgeResult>()
 
       for (const result of semanticResults) {
@@ -603,10 +625,17 @@ ${transcript.substring(0, 8000)}`
         })
       }
 
-      return Array.from(knowledgeById.values())
+      return {
+        results: Array.from(knowledgeById.values()),
+        warnings: []
+      }
     } catch (err) {
       console.warn('RAGService:semanticKnowledgeSearch failed; falling back to lexical search:', err)
-      return []
+      const message = err instanceof Error ? err.message : 'Unknown semantic search error'
+      return {
+        results: [],
+        warnings: [`Semantic search unavailable: ${message}`]
+      }
     }
   }
 
@@ -639,11 +668,7 @@ ${transcript.substring(0, 8000)}`
    * B-EXP-003: Multi-term LIKE search with ranking by match count
    * (FTS5 is NOT available in sql.js WASM, so we use improved multi-term LIKE).
    */
-  async globalSearch(query: string, limit = 5): Promise<Result<{
-    knowledge: any[]
-    people: any[]
-    projects: any[]
-  }>> {
+  async globalSearch(query: string, limit = 5): Promise<Result<GlobalSearchResponse>> {
     try {
       const db = getDatabase()
 
@@ -662,7 +687,7 @@ ${transcript.substring(0, 8000)}`
 
         const knowledge = this.searchKnowledgeLexical(terms, limit)
         const semanticKnowledge = await this.semanticKnowledgeSearch(query, limit)
-        const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge, limit)
+        const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge.results, limit)
 
         const peopleRows = db.exec(`
           SELECT id, name, email, type FROM contacts
@@ -689,7 +714,12 @@ ${transcript.substring(0, 8000)}`
           status: v[3]
         })) : []
 
-        return success({ knowledge: mergedKnowledge, people, projects })
+        return success({
+          knowledge: mergedKnowledge,
+          people,
+          projects,
+          warnings: semanticKnowledge.warnings
+        })
       }
 
       // Multi-term search: match ANY term, rank by how many terms matched
@@ -731,7 +761,7 @@ ${transcript.substring(0, 8000)}`
       // 1. Search knowledge captures with explicit columns + multi-term ranking
       const knowledge = this.searchKnowledgeLexical(terms, limit)
       const semanticKnowledge = await this.semanticKnowledgeSearch(query, limit)
-      const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge, limit)
+      const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge.results, limit)
 
       // 2. Search people with explicit columns + multi-term ranking
       const pq = buildMultiTermQuery('contacts', ['name', 'email', 'company', 'role'], 'id, name, email, type', limit)
@@ -752,7 +782,12 @@ ${transcript.substring(0, 8000)}`
         status: v[3]
       })) : []
 
-      return success({ knowledge: mergedKnowledge, people, projects })
+      return success({
+        knowledge: mergedKnowledge,
+        people,
+        projects,
+        warnings: semanticKnowledge.warnings
+      })
     } catch (err) {
       console.error('RAGService:globalSearch error:', err)
       return error('DATABASE_ERROR', 'Global search failed', err)

@@ -348,6 +348,7 @@ export interface ElectronAPI {
       knowledge: any[]
       people: any[]
       projects: any[]
+      warnings?: string[]
     }>>
   }
 

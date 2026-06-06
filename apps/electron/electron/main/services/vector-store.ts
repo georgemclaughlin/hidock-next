@@ -381,7 +381,11 @@ class VectorStore {
     return result
   }
 
-  async search(query: string, topK = 5): Promise<SearchResult[]> {
+  async search(
+    query: string,
+    topK = 5,
+    options: { throwOnEmbeddingFailure?: boolean } = {}
+  ): Promise<SearchResult[]> {
     if (this.documents.size === 0) return []
 
     const embeddingService = getEmbeddingService()
@@ -389,6 +393,10 @@ class VectorStore {
     // Generate query embedding
     const queryEmbedding = await embeddingService.generateEmbedding(query, 'query')
     if (!queryEmbedding) {
+      if (options.throwOnEmbeddingFailure) {
+        const metadata = embeddingService.getModelMetadata()
+        throw new Error(`Failed to generate query embedding with ${metadata.provider} model ${metadata.model}`)
+      }
       console.error('Failed to generate query embedding')
       return []
     }

@@ -41,6 +41,32 @@ describe('Explore Page', () => {
     }, { timeout: 2000 })
   })
 
+  it('should surface non-fatal search warnings', async () => {
+    mockGlobalSearch.mockResolvedValueOnce({
+      success: true,
+      data: {
+        knowledge: [],
+        people: [],
+        projects: [],
+        warnings: ['Semantic search unavailable: Failed to generate query embedding']
+      }
+    })
+
+    render(
+      <MemoryRouter>
+        <Explore />
+      </MemoryRouter>
+    )
+
+    const input = screen.getByPlaceholderText(/Search anything/i)
+    fireEvent.change(input, { target: { value: 'embedding issue' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Search degraded')).toBeInTheDocument()
+      expect(screen.getByText('Semantic search unavailable: Failed to generate query embedding')).toBeInTheDocument()
+    }, { timeout: 2000 })
+  })
+
   // C-EXP-M01: Search error clears when query changes
   it('should clear search error when query changes', async () => {
     // First search that fails

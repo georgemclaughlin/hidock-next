@@ -63,6 +63,7 @@ export function Explore() {
   const [results, setResults] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchWarnings, setSearchWarnings] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<'all' | 'knowledge' | 'people' | 'projects'>('all')
 
   // C-EXP-004: Ref for autofocus on the search input
@@ -92,6 +93,7 @@ export function Explore() {
 
     setLoading(true)
     setSearchError(null)
+    setSearchWarnings([])
     setSearchDurationMs(null)
     // C-EXP-003: Reset pagination on new search
     setResultPage(1)
@@ -110,10 +112,12 @@ export function Explore() {
       // Unwrap Result<> wrapper
       if (result.success) {
         setResults(result.data)
+        setSearchWarnings(result.data.warnings ?? [])
       } else {
         // Handle error from Result wrapper
         const errorMsg = result.error.message || 'Search failed'
         setSearchError(errorMsg)
+        setSearchWarnings([])
         toast.error('Search failed', errorMsg)
         setResults({ knowledge: [], people: [], projects: [] })
       }
@@ -124,6 +128,7 @@ export function Explore() {
       console.error('Search failed:', error)
       const message = error instanceof Error ? error.message : 'An unexpected error occurred'
       setSearchError(message)
+      setSearchWarnings([])
       toast.error('Search failed', message)
       setResults({ knowledge: [], people: [], projects: [] })
     } finally {
@@ -137,6 +142,7 @@ export function Explore() {
     // C-EXP-M04: Clear stale results when query is empty
     if (!query.trim()) {
       setResults(null)
+      setSearchWarnings([])
       setSearchDurationMs(null)
     }
     // Debounce search by 300ms
@@ -175,6 +181,9 @@ export function Explore() {
   useEffect(() => {
     if (searchError) {
       setSearchError(null)
+    }
+    if (searchWarnings.length > 0) {
+      setSearchWarnings([])
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
@@ -222,6 +231,18 @@ export function Explore() {
               <div>
                 <p className="font-semibold text-destructive">Search failed</p>
                 <p className="text-muted-foreground mt-0.5">{searchError}</p>
+              </div>
+            </div>
+          )}
+
+          {!searchError && searchWarnings.length > 0 && (
+            <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm">
+              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-amber-700 dark:text-amber-300">Search degraded</p>
+                {searchWarnings.map((warning, index) => (
+                  <p key={`${warning}-${index}`} className="text-muted-foreground">{warning}</p>
+                ))}
               </div>
             </div>
           )}
