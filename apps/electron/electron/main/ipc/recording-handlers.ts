@@ -18,8 +18,8 @@ import {
   type Recording,
   type Transcript
 } from '../services/database'
-import { getRecordingFiles, deleteRecording as deleteRecordingFile, getRecordingsPath } from '../services/file-storage'
-import { copyFileSync, existsSync, statSync } from 'fs'
+import { getRecordingFiles, deleteRecording as deleteRecordingFile, getRecordingsPath, saveRecording } from '../services/file-storage'
+import { copyFileSync, existsSync, readFileSync, statSync } from 'fs'
 import { basename, join, extname } from 'path'
 import { randomUUID } from 'crypto'
 import {
@@ -52,6 +52,29 @@ import {
 
 export interface RecordingWithTranscript extends Recording {
   transcript?: Transcript
+}
+
+async function copyExternalRecording(
+  sourcePath: string,
+  targetFilename: string,
+  originalDate: Date
+): Promise<{ filename: string; filePath: string; fileSize: number }> {
+  if (extname(targetFilename).toLowerCase() === '.hda') {
+    const filePath = await saveRecording(targetFilename, readFileSync(sourcePath), undefined, originalDate)
+    return {
+      filename: basename(filePath),
+      filePath,
+      fileSize: statSync(filePath).size
+    }
+  }
+
+  const destinationPath = join(getRecordingsPath(), targetFilename)
+  copyFileSync(sourcePath, destinationPath)
+  return {
+    filename: targetFilename,
+    filePath: destinationPath,
+    fileSize: statSync(destinationPath).size
+  }
 }
 
 export function registerRecordingHandlers(): void {
@@ -427,7 +450,7 @@ export function registerRecordingHandlers(): void {
       const result = await dialog.showOpenDialog(focusedWindow || BrowserWindow.getAllWindows()[0], {
         title: 'Select Audio File',
         filters: [
-          { name: 'Audio Files', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'flac'] }
+          { name: 'Audio Files', extensions: ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'webm', 'hda'] }
         ],
         properties: ['openFile']
       })
@@ -450,23 +473,19 @@ export function registerRecordingHandlers(): void {
       const fileExtension = extname(originalFilename)
 
       // Generate a unique filename for the recordings folder
-      const recordingsPath = getRecordingsPath()
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')
       const newFilename = `external-${timestamp[0]}-${timestamp[1].substring(0, 8)}${fileExtension}`
-      const destinationPath = join(recordingsPath, newFilename)
-
-      // Copy the file to the recordings folder
-      copyFileSync(sourcePath, destinationPath)
+      const copied = await copyExternalRecording(sourcePath, newFilename, stats.mtime)
 
       // Create database entry
       const recordingId = randomUUID()
 
       const recording: Omit<Recording, 'created_at'> = {
         id: recordingId,
-        filename: newFilename,
+        filename: copied.filename,
         original_filename: originalFilename,
-        file_path: destinationPath,
-        file_size: stats.size,
+        file_path: copied.filePath,
+        file_size: copied.fileSize,
         duration_seconds: undefined, // Will be populated later if needed
         date_recorded: stats.mtime.toISOString(),
         meeting_id: undefined,
@@ -521,23 +540,19 @@ export function registerRecordingHandlers(): void {
       const originalFilename = basename(filePath)
 
       // Generate a unique filename for the recordings folder
-      const recordingsPath = getRecordingsPath()
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')
       const newFilename = `external-${timestamp[0]}-${timestamp[1].substring(0, 8)}${fileExtension}`
-      const destinationPath = join(recordingsPath, newFilename)
-
-      // Copy the file to the recordings folder
-      copyFileSync(filePath, destinationPath)
+      const copied = await copyExternalRecording(filePath, newFilename, stats.mtime)
 
       // Create database entry
       const recordingId = randomUUID()
 
       const recording: Omit<Recording, 'created_at'> = {
         id: recordingId,
-        filename: newFilename,
+        filename: copied.filename,
         original_filename: originalFilename,
-        file_path: destinationPath,
-        file_size: stats.size,
+        file_path: copied.filePath,
+        file_size: copied.fileSize,
         duration_seconds: undefined,
         date_recorded: stats.mtime.toISOString(),
         meeting_id: undefined,

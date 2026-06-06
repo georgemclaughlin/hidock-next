@@ -33,6 +33,7 @@ import { buildSearchCorpus } from '@/features/library/utils/buildSearchCorpus'
 import { useLibraryStore, useLibrarySorting } from '@/store/useLibraryStore'
 import { useOperations } from '@/hooks/useOperations'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 
 export function Library() {
   const navigate = useNavigate()
@@ -562,7 +563,9 @@ export function Library() {
         setBulkProgress({ current: i + 1, total: selectedRecordings.length })
 
         try {
-          const deleted = await window.electronAPI.recordings.delete(recording.id)
+          const deleted = isDeviceOnly(recording)
+            ? await getRecorderDeviceService().deleteRecording(recording.deviceFilename)
+            : await window.electronAPI.recordings.delete(recording.id)
           if (!deleted) {
             errors.push({ filename: recording.filename, error: new Error('Delete returned false') })
           }
@@ -623,7 +626,10 @@ export function Library() {
   const executeDeleteFromDevice = useCallback(async (recording: UnifiedRecording) => {
     setDeleting(recording.id)
     try {
-      const deleted = await window.electronAPI.recordings.delete(recording.id)
+      if (!('deviceFilename' in recording)) {
+        throw new Error('Recording is not available on device')
+      }
+      const deleted = await getRecorderDeviceService().deleteRecording(recording.deviceFilename)
       if (!deleted) {
         throw new Error('Delete returned false')
       }

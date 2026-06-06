@@ -38,7 +38,8 @@ vi.mock('../../services/database', () => ({
 vi.mock('../../services/file-storage', () => ({
   getRecordingFiles: vi.fn(),
   deleteRecording: vi.fn(),
-  getRecordingsPath: vi.fn(() => '/mock/recordings')
+  getRecordingsPath: vi.fn(() => '/mock/recordings'),
+  saveRecording: vi.fn()
 }))
 
 // Mock node:fs - must include default export for jsdom environment
@@ -49,6 +50,7 @@ vi.mock('fs', async () => {
     ...actual,
     copyFileSync: vi.fn(),
     existsSync: vi.fn(),
+    readFileSync: vi.fn(),
     statSync: vi.fn()
   }
 })
@@ -807,6 +809,46 @@ describe('Recording IPC Handlers', () => {
       const result = await handlers['recordings:getMeetingsNearDate'](null, '2025-06-15')
 
       expect(result).toEqual({ success: false, data: [], error: 'DB error' })
+    })
+  })
+
+  describe('recordings:addExternalByPath', () => {
+    it('normalizes imported HDA files through HDA-aware storage', async () => {
+      const { getRecordingById, insertRecording } = await import('../../services/database')
+      const { saveRecording } = await import('../../services/file-storage')
+      const { copyFileSync, existsSync, readFileSync, statSync } = await import('fs')
+      const mtime = new Date('2026-06-06T18:39:08.000Z')
+
+      vi.mocked(existsSync).mockReturnValue(true)
+      vi.mocked(readFileSync).mockReturnValue(Buffer.from([0xff, 0xf3, 0x40, 0x00]))
+      vi.mocked(saveRecording).mockResolvedValue('/mock/recordings/external-2026-06-06-18-39-08.mp3')
+      vi.mocked(statSync).mockImplementation((path) => ({
+        mtime,
+        size: String(path).endsWith('.mp3') ? 4 : 1234
+      }) as any)
+      vi.mocked(getRecordingById).mockReturnValue({
+        id: 'generated-uuid-1234',
+        filename: 'external-2026-06-06-18-39-08.mp3'
+      } as any)
+
+      const result = await handlers['recordings:addExternalByPath'](null, '/input/2026Jun06-133908-Rec27.hda')
+
+      expect(result.success).toBe(true)
+      expect(copyFileSync).not.toHaveBeenCalled()
+      expect(saveRecording).toHaveBeenCalledWith(
+        expect.stringMatching(/^external-.*\.hda$/),
+        Buffer.from([0xff, 0xf3, 0x40, 0x00]),
+        undefined,
+        mtime
+      )
+      expect(insertRecording).toHaveBeenCalledWith(expect.objectContaining({
+        filename: 'external-2026-06-06-18-39-08.mp3',
+        original_filename: '2026Jun06-133908-Rec27.hda',
+        file_path: '/mock/recordings/external-2026-06-06-18-39-08.mp3',
+        file_size: 4,
+        source: 'external',
+        is_imported: 1
+      }))
     })
   })
 

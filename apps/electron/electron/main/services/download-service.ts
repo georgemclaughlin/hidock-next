@@ -159,44 +159,16 @@ class DownloadService {
         ORDER BY created_at ASC
       `)
 
-      for (const item of items) {
-        const queueItem: DownloadQueueItem = {
-          id: item.id,
-          filename: item.filename,
-          fileSize: item.file_size,
-          progress: item.progress,
-          status: item.status,
-          error: item.error ?? undefined,
-          startedAt: item.started_at ? new Date(item.started_at) : undefined,
-          completedAt: item.completed_at ? new Date(item.completed_at) : undefined,
-          recordingDate: item.recording_date ? new Date(item.recording_date) : undefined
-        }
-        this.state.queue.set(item.filename, queueItem)
-      }
-
-      // Clear stale pending items (> 24h old) — these can never complete if the device
-      // was disconnected between sessions and left downloads in a perpetual pending state.
-      const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000
-      const now = Date.now()
-      const staleKeys: string[] = []
-      for (const [key, item] of this.state.queue) {
-        if (item.status === 'pending' && item.startedAt) {
-          const age = now - item.startedAt.getTime()
-          if (age > STALE_THRESHOLD_MS) {
-            staleKeys.push(key)
-          }
-        }
-      }
-      if (staleKeys.length > 0) {
-        for (const key of staleKeys) {
-          this.state.queue.delete(key)
-          this.removeFromDatabase(key)
-        }
-        console.log(`[DownloadService] Cleared ${staleKeys.length} stale pending item(s) older than 24h`)
+      // USB transfers are driven by the renderer and cannot resume across app
+      // restarts. Keep completed/failed history, but clear live work so reconnect
+      // auto-sync can reconcile from the actual device and requeue cleanly.
+      if (items.length > 0) {
+        run("DELETE FROM download_queue WHERE status IN ('pending', 'downloading')")
+        console.log(`[DownloadService] Cleared ${items.length} non-resumable pending download item(s) from previous session`)
       }
 
       this.markDirty()
-      console.log(`[DownloadService] Loaded ${items.length - staleKeys.length} items from database (${staleKeys.length} stale cleared)`)
+      console.log('[DownloadService] Loaded 0 resumable items from database')
     } catch (e) {
       console.error('[DownloadService] Failed to load queue from database:', e)
     }
