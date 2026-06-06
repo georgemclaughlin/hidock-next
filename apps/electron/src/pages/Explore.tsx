@@ -348,7 +348,11 @@ export function Explore() {
                     <div className="grid grid-cols-1 gap-3">
                       {/* B-EXP-002: Navigate to /library with selectedId in navigation state */}
                       {paginatedKnowledge.map(k => (
-                        <Card key={k.id} className="group hover:border-primary/30 cursor-pointer transition-all shadow-sm" onClick={() => navigate('/library', { state: { selectedId: k.id } })}>
+                        <Card
+                          key={`${k.id}-${k.sourceRecordingId ?? ''}`}
+                          className="group hover:border-primary/30 cursor-pointer transition-all shadow-sm"
+                          onClick={() => navigate('/library', { state: { selectedId: k.sourceRecordingId ?? k.id } })}
+                        >
                           <CardContent className="p-4 flex items-center justify-between gap-4">
                             <div className="min-w-0 flex-1">
                               {/* B-EXP-001: Highlight matching terms (highlightMatch HTML-escapes input to prevent XSS) */}
