@@ -134,6 +134,9 @@ function buildStages(
   const isProcessing = item?.status === 'processing' || recording.transcriptionStatus === 'processing'
   const isIndexing = isProcessing && (stage.includes('index') || (item?.progress ?? 0) >= 92)
   const isDiarizing = isProcessing && stage.includes('diar')
+  const isFinalizing = isProcessing && (stage.includes('final') || stage.includes('pars'))
+  const isAfterTranscription = isDiarizing || isFinalizing || isIndexing
+  const isAfterDiarization = isFinalizing || isIndexing
   const hasTranscript = Boolean(transcript?.full_text?.trim()) || recording.transcriptionStatus === 'complete'
   const hasDiarization = hasSpeakerSegments(transcript)
   const hasCurrentIndex = (indexStats?.currentModelDocumentCount ?? 0) > 0
@@ -159,7 +162,7 @@ function buildStages(
       }
     }
 
-    if (hasTranscript || isIndexing) {
+    if (hasTranscript || isAfterTranscription) {
       return {
         id: 'transcribe',
         label: 'Transcribe',
@@ -197,7 +200,7 @@ function buildStages(
   })()
 
   const diarize: PipelineStage = (() => {
-    if (hasDiarization || isIndexing) {
+    if (hasDiarization || isAfterDiarization) {
       return {
         id: 'diarize',
         label: 'Diarize',

@@ -79,6 +79,11 @@ export interface NativeEmbeddingDownloadResult {
   dimensions: number
 }
 
+export interface NativeTranscriptionProgress {
+  stage: string
+  progress: number
+}
+
 interface RunResult {
   stdout: string
   stderr: string
@@ -86,9 +91,11 @@ interface RunResult {
 
 interface RunNativeTranscriberOptions {
   onProgress?: (progress: NativeModelDownloadProgress) => void
+  onTranscriptionProgress?: (progress: NativeTranscriptionProgress) => void
 }
 
 const DOWNLOAD_PROGRESS_PREFIX = 'LR_PROGRESS '
+const TRANSCRIPTION_PROGRESS_PREFIX = 'LR_TRANSCRIBE_PROGRESS '
 
 function sidecarBinaryName(): string {
   return process.platform === 'win32' ? 'recorder-transcriber.exe' : 'recorder-transcriber'
@@ -152,6 +159,18 @@ function runNativeTranscriber(args: string[], options: RunNativeTranscriberOptio
       if (trimmed.startsWith(DOWNLOAD_PROGRESS_PREFIX)) {
         try {
           options.onProgress?.(JSON.parse(trimmed.slice(DOWNLOAD_PROGRESS_PREFIX.length)) as NativeModelDownloadProgress)
+          return
+        } catch {
+          stderrLines.push(line)
+          return
+        }
+      }
+
+      if (trimmed.startsWith(TRANSCRIPTION_PROGRESS_PREFIX)) {
+        try {
+          options.onTranscriptionProgress?.(
+            JSON.parse(trimmed.slice(TRANSCRIPTION_PROGRESS_PREFIX.length)) as NativeTranscriptionProgress
+          )
           return
         } catch {
           stderrLines.push(line)
@@ -263,18 +282,25 @@ export async function transcribeWithNativeModel(
     throw new Error(`${model.name} is not downloaded. Open Settings and click Download Model before transcribing.`)
   }
 
-  progressCallback?.('running native transcription and diarization', 20)
-  await runNativeJson<{ success: boolean; output: string }>([
-    'transcribe',
-    '--model-id',
-    modelId,
-    '--input',
-    inputPath,
-    '--output',
-    outputPath,
-    '--language',
-    language || 'auto'
-  ])
+  progressCallback?.('transcribing audio', 20)
+  await runNativeJson<{ success: boolean; output: string }>(
+    [
+      'transcribe',
+      '--model-id',
+      modelId,
+      '--input',
+      inputPath,
+      '--output',
+      outputPath,
+      '--language',
+      language || 'auto'
+    ],
+    {
+      onTranscriptionProgress: (progress) => {
+        progressCallback?.(progress.stage, progress.progress)
+      }
+    }
+  )
 
   progressCallback?.('parsing transcript', 85)
   const output = JSON.parse(readFileSync(outputPath, 'utf8')) as NativeTranscriptOutput

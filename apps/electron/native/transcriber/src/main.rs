@@ -36,6 +36,7 @@ use transcribe_rs::whisper_cpp::{WhisperEngine, WhisperInferenceParams};
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 const CLI_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 const DOWNLOAD_PROGRESS_PREFIX: &str = "LR_PROGRESS ";
+const TRANSCRIPTION_PROGRESS_PREFIX: &str = "LR_TRANSCRIBE_PROGRESS ";
 const TRANSCRIPTION_TAIL_GAP_SECS: f32 = 1.5;
 const TRANSCRIPTION_TAIL_CONTEXT_SECS: f32 = 2.0;
 const TRANSCRIPTION_TAIL_WORD_GRACE_SECS: f32 = 0.15;
@@ -173,6 +174,12 @@ struct DownloadProgressEvent<'a> {
     progress: u8,
     downloaded_bytes: Option<u64>,
     total_bytes: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct TranscriptionProgressEvent<'a> {
+    stage: &'a str,
+    progress: u8,
 }
 
 struct SerialEmbedder<E: Embedder> {
@@ -704,6 +711,14 @@ fn emit_download_progress(
     }
 }
 
+fn emit_transcription_progress(stage: &str, progress: u8) {
+    let event = TranscriptionProgressEvent { stage, progress };
+
+    if let Ok(json) = serde_json::to_string(&event) {
+        eprintln!("{TRANSCRIPTION_PROGRESS_PREFIX}{json}");
+    }
+}
+
 fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
@@ -735,9 +750,11 @@ fn transcribe(
     input: &Path,
     language: &str,
 ) -> Result<TranscriptOutput> {
+    emit_transcription_progress("loading audio", 10);
     let audio = read_audio_as_f32(input)?;
     let model_path = models_dir.join(&model.filename);
 
+    emit_transcription_progress("transcribing audio", 20);
     let result = match model.engine_type {
         #[cfg(windows)]
         EngineType::Whisper => {
@@ -775,9 +792,11 @@ fn transcribe(
 
     let mut segments = transcript_segments(result.segments);
     let text = transcript_text_from_segments(&segments).unwrap_or(result.text);
+    emit_transcription_progress("diarizing speakers", 72);
     if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
         eprintln!("Speaker diarization skipped: {error:#}");
     }
+    emit_transcription_progress("finalizing transcript", 84);
     smooth_short_speaker_runs(&mut segments);
     let segments = merge_transcript_segments(segments);
 
