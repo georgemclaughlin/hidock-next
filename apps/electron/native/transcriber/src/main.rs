@@ -10,13 +10,14 @@ use polyvoice::{
     types::{Profile, SampleRate, SpeakerTurn},
     Embedder, EmbedderError, ResNet34Adapter,
 };
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::UNIX_EPOCH;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
@@ -52,6 +53,7 @@ const TRANSCRIPT_SEGMENT_MAX_CHARS: usize = 320;
 const SHORT_SPEAKER_RUN_MAX_SECS: f64 = 3.2;
 const SHORT_SPEAKER_RUN_MAX_WORDS: usize = 3;
 const DEFAULT_TEXT_EMBEDDING_MODEL_ID: &str = "bge-small-en-v1.5-q";
+const PARAKEET_CHECKPOINT_VERSION: u8 = 1;
 
 #[derive(Parser)]
 #[command(name = "recorder-transcriber")]
@@ -171,6 +173,51 @@ struct TranscriptSegment {
     end: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     speaker: Option<String>,
+}
+
+struct TranscribeRunOutput {
+    transcript: TranscriptOutput,
+    checkpoint_dir: Option<PathBuf>,
+}
+
+struct ParakeetRunOutput {
+    result: transcribe_rs::TranscriptionResult,
+    checkpoint_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct ParakeetCheckpointManifest {
+    version: u8,
+    input_path: String,
+    input_size: u64,
+    input_modified_unix_nanos: String,
+    model_id: String,
+    sample_rate: u32,
+    audio_samples: usize,
+    primary_chunk_samples: usize,
+    overlap_samples: usize,
+    total_chunks: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ParakeetChunkCheckpoint {
+    version: u8,
+    chunk_index: usize,
+    total_chunks: usize,
+    text: String,
+    segments: Vec<CheckpointSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CheckpointSegment {
+    start: f32,
+    end: f32,
+    text: String,
+}
+
+struct ParakeetCheckpoint {
+    dir: PathBuf,
+    manifest: ParakeetCheckpointManifest,
 }
 
 #[derive(Debug, Serialize)]
@@ -337,10 +384,18 @@ fn run_cli() -> Result<()> {
             }
 
             let result = transcribe(&models_dir, &model, &input, &language, !disable_diarization)?;
-            let json = serde_json::to_vec_pretty(&result)?;
+            let json = serde_json::to_vec_pretty(&result.transcript)?;
             fs::write(&output, json).with_context(|| {
                 format!("Failed to write transcript output {}", output.display())
             })?;
+            if let Some(checkpoint_dir) = result.checkpoint_dir {
+                if let Err(error) = fs::remove_dir_all(&checkpoint_dir) {
+                    eprintln!(
+                        "Failed to remove transcription checkpoint {}: {error}",
+                        checkpoint_dir.display()
+                    );
+                }
+            }
             print_json(&serde_json::json!({ "success": true, "output": output }))
         }
     }
@@ -757,12 +812,13 @@ fn transcribe(
     input: &Path,
     language: &str,
     diarization_enabled: bool,
-) -> Result<TranscriptOutput> {
+) -> Result<TranscribeRunOutput> {
     emit_transcription_progress("loading audio", 10);
     let audio = read_audio_as_f32(input)?;
     let model_path = models_dir.join(&model.filename);
 
     emit_transcription_progress("transcribing audio", 20);
+    let mut checkpoint_dir = None;
     let result = match model.engine_type {
         #[cfg(windows)]
         EngineType::Whisper => {
@@ -794,7 +850,10 @@ fn transcribe(
                 timestamp_granularity: Some(TimestampGranularity::Word),
                 ..Default::default()
             };
-            transcribe_parakeet(&mut engine, &audio, &params, input)?
+            let output =
+                transcribe_parakeet(&mut engine, &audio, &params, input, models_dir, &model.id)?;
+            checkpoint_dir = output.checkpoint_dir;
+            output.result
         }
     };
 
@@ -819,10 +878,13 @@ fn transcribe(
     smooth_short_speaker_runs(&mut segments);
     let segments = merge_transcript_segments(segments);
 
-    Ok(TranscriptOutput {
-        text,
-        language: language.to_string(),
-        segments,
+    Ok(TranscribeRunOutput {
+        transcript: TranscriptOutput {
+            text,
+            language: language.to_string(),
+            segments,
+        },
+        checkpoint_dir,
     })
 }
 
@@ -845,13 +907,18 @@ fn transcribe_parakeet(
     audio: &[f32],
     params: &ParakeetParams,
     input: &Path,
-) -> Result<transcribe_rs::TranscriptionResult> {
+    models_dir: &Path,
+    model_id: &str,
+) -> Result<ParakeetRunOutput> {
     let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
     if audio_duration_secs <= PARAKEET_CHUNKING_THRESHOLD_SECS {
-        return transcribe_parakeet_with_tail_rescue(engine, audio, params, input);
+        return Ok(ParakeetRunOutput {
+            result: transcribe_parakeet_with_tail_rescue(engine, audio, params, input)?,
+            checkpoint_dir: None,
+        });
     }
 
-    transcribe_parakeet_chunked(engine, audio, params, input)
+    transcribe_parakeet_chunked(engine, audio, params, input, models_dir, model_id)
 }
 
 fn transcribe_parakeet_chunked(
@@ -859,10 +926,21 @@ fn transcribe_parakeet_chunked(
     audio: &[f32],
     params: &ParakeetParams,
     input: &Path,
-) -> Result<transcribe_rs::TranscriptionResult> {
+    models_dir: &Path,
+    model_id: &str,
+) -> Result<ParakeetRunOutput> {
     let primary_chunk_samples = seconds_to_samples(PARAKEET_CHUNK_SECS).max(1);
     let overlap_samples = seconds_to_samples(PARAKEET_CHUNK_OVERLAP_SECS);
     let total_chunks = audio.len().div_ceil(primary_chunk_samples).max(1);
+    let checkpoint = ParakeetCheckpoint::prepare(
+        models_dir,
+        input,
+        model_id,
+        audio.len(),
+        primary_chunk_samples,
+        overlap_samples,
+        total_chunks,
+    )?;
     let mut chunk_results = Vec::with_capacity(total_chunks);
 
     eprintln!(
@@ -877,6 +955,14 @@ fn transcribe_parakeet_chunked(
         let chunk_start_progress = parakeet_chunk_progress(chunk_index, total_chunks);
         let chunk_stage = format!("transcribing chunk {chunk_number} of {total_chunks}");
         emit_transcription_progress(&chunk_stage, chunk_start_progress);
+
+        if let Some(cached_chunk) = checkpoint.read_chunk(chunk_index)? {
+            eprintln!("Parakeet checkpoint: loaded chunk {chunk_number} of {total_chunks}");
+            chunk_results.push(cached_chunk.into_transcription_result());
+            let progress = parakeet_chunk_progress(chunk_number, total_chunks);
+            emit_transcription_progress(&chunk_stage, progress);
+            continue;
+        }
 
         let primary_start = chunk_index * primary_chunk_samples;
         if primary_start >= audio.len() {
@@ -921,24 +1007,246 @@ fn transcribe_parakeet_chunked(
             })
             .collect::<Vec<_>>();
         let text = transcription_text_from_segments(Some(&filtered_segments)).unwrap_or_default();
-        if !text.is_empty() {
-            chunk_results.push(transcribe_rs::TranscriptionResult {
-                text,
-                segments: Some(filtered_segments),
-            });
-        }
+        let chunk_checkpoint = ParakeetChunkCheckpoint::from_segments(
+            chunk_index,
+            total_chunks,
+            text,
+            filtered_segments,
+        );
+        checkpoint.write_chunk(&chunk_checkpoint)?;
+        chunk_results.push(chunk_checkpoint.into_transcription_result());
 
         let progress = parakeet_chunk_progress(chunk_number, total_chunks);
         emit_transcription_progress(&chunk_stage, progress);
     }
 
-    Ok(merge_transcription_results(chunk_results))
+    Ok(ParakeetRunOutput {
+        result: merge_transcription_results(chunk_results),
+        checkpoint_dir: Some(checkpoint.dir),
+    })
 }
 
 fn parakeet_chunk_progress(completed_chunks: usize, total_chunks: usize) -> u8 {
     20 + ((completed_chunks as f32 / total_chunks.max(1) as f32) * 50.0)
         .round()
         .clamp(0.0, 50.0) as u8
+}
+
+impl ParakeetCheckpoint {
+    fn prepare(
+        models_dir: &Path,
+        input: &Path,
+        model_id: &str,
+        audio_samples: usize,
+        primary_chunk_samples: usize,
+        overlap_samples: usize,
+        total_chunks: usize,
+    ) -> Result<Self> {
+        let metadata = fs::metadata(input)
+            .with_context(|| format!("Failed to stat input audio {}", input.display()))?;
+        let input_path = input
+            .canonicalize()
+            .unwrap_or_else(|_| input.to_path_buf())
+            .to_string_lossy()
+            .to_string();
+        let manifest = ParakeetCheckpointManifest {
+            version: PARAKEET_CHECKPOINT_VERSION,
+            input_path,
+            input_size: metadata.len(),
+            input_modified_unix_nanos: modified_unix_nanos(&metadata),
+            model_id: model_id.to_string(),
+            sample_rate: TARGET_SAMPLE_RATE,
+            audio_samples,
+            primary_chunk_samples,
+            overlap_samples,
+            total_chunks,
+        };
+        let dir = transcription_checkpoint_root(models_dir).join(checkpoint_key(&manifest));
+        let manifest_path = dir.join("manifest.json");
+
+        if dir.exists() {
+            let should_reset = match read_json_file::<ParakeetCheckpointManifest>(&manifest_path) {
+                Ok(existing) => existing != manifest,
+                Err(_) => true,
+            };
+
+            if should_reset {
+                fs::remove_dir_all(&dir).with_context(|| {
+                    format!("Failed to reset transcription checkpoint {}", dir.display())
+                })?;
+            }
+        }
+
+        fs::create_dir_all(&dir).with_context(|| {
+            format!(
+                "Failed to create transcription checkpoint directory {}",
+                dir.display()
+            )
+        })?;
+        if !manifest_path.exists() {
+            write_json_file_atomic(&manifest_path, &manifest)?;
+        }
+
+        Ok(Self { dir, manifest })
+    }
+
+    fn chunk_path(&self, chunk_index: usize) -> PathBuf {
+        self.dir.join(format!("chunk-{chunk_index:05}.json"))
+    }
+
+    fn read_chunk(&self, chunk_index: usize) -> Result<Option<ParakeetChunkCheckpoint>> {
+        let path = self.chunk_path(chunk_index);
+        let chunk = match read_json_file::<ParakeetChunkCheckpoint>(&path) {
+            Ok(chunk) => chunk,
+            Err(error)
+                if error
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io_error| io_error.kind() == ErrorKind::NotFound) =>
+            {
+                return Ok(None)
+            }
+            Err(error) => {
+                eprintln!(
+                    "Ignoring invalid transcription checkpoint chunk {}: {error:#}",
+                    path.display()
+                );
+                let _ = fs::remove_file(&path);
+                return Ok(None);
+            }
+        };
+
+        if chunk.version != PARAKEET_CHECKPOINT_VERSION
+            || chunk.chunk_index != chunk_index
+            || chunk.total_chunks != self.manifest.total_chunks
+        {
+            eprintln!(
+                "Ignoring mismatched transcription checkpoint chunk {}",
+                path.display()
+            );
+            let _ = fs::remove_file(&path);
+            return Ok(None);
+        }
+
+        Ok(Some(chunk))
+    }
+
+    fn write_chunk(&self, chunk: &ParakeetChunkCheckpoint) -> Result<()> {
+        write_json_file_atomic(&self.chunk_path(chunk.chunk_index), chunk)
+    }
+}
+
+impl ParakeetChunkCheckpoint {
+    fn from_segments(
+        chunk_index: usize,
+        total_chunks: usize,
+        text: String,
+        segments: Vec<transcribe_rs::TranscriptionSegment>,
+    ) -> Self {
+        Self {
+            version: PARAKEET_CHECKPOINT_VERSION,
+            chunk_index,
+            total_chunks,
+            text,
+            segments: segments
+                .into_iter()
+                .map(|segment| CheckpointSegment {
+                    start: segment.start,
+                    end: segment.end,
+                    text: segment.text,
+                })
+                .collect(),
+        }
+    }
+
+    fn into_transcription_result(self) -> transcribe_rs::TranscriptionResult {
+        let segments = self
+            .segments
+            .into_iter()
+            .map(|segment| transcribe_rs::TranscriptionSegment {
+                start: segment.start,
+                end: segment.end,
+                text: segment.text,
+            })
+            .collect::<Vec<_>>();
+
+        transcribe_rs::TranscriptionResult {
+            text: self.text,
+            segments: if segments.is_empty() {
+                None
+            } else {
+                Some(segments)
+            },
+        }
+    }
+}
+
+fn transcription_checkpoint_root(models_dir: &Path) -> PathBuf {
+    models_dir
+        .parent()
+        .unwrap_or(models_dir)
+        .join("cache")
+        .join("transcription-runs")
+}
+
+fn checkpoint_key(manifest: &ParakeetCheckpointManifest) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"parakeet-checkpoint-v1\0");
+    hasher.update(manifest.input_path.as_bytes());
+    hasher.update(manifest.input_size.to_le_bytes());
+    hasher.update(manifest.input_modified_unix_nanos.as_bytes());
+    hasher.update(manifest.model_id.as_bytes());
+    hasher.update(manifest.sample_rate.to_le_bytes());
+    hasher.update(manifest.audio_samples.to_le_bytes());
+    hasher.update(manifest.primary_chunk_samples.to_le_bytes());
+    hasher.update(manifest.overlap_samples.to_le_bytes());
+    hasher.update(manifest.total_chunks.to_le_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn modified_unix_nanos(metadata: &fs::Metadata) -> String {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos().to_string())
+        .unwrap_or_else(|| "0".to_string())
+}
+
+fn read_json_file<T: DeserializeOwned>(path: &Path) -> Result<T> {
+    let file = File::open(path)?;
+    serde_json::from_reader(file).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn write_json_file_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("Path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent)
+        .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+
+    let tmp_path = path.with_extension("json.tmp");
+    {
+        let mut file = File::create(&tmp_path)
+            .with_context(|| format!("Failed to create {}", tmp_path.display()))?;
+        let json = serde_json::to_vec_pretty(value)?;
+        file.write_all(&json)
+            .with_context(|| format!("Failed to write {}", tmp_path.display()))?;
+        file.sync_all()
+            .with_context(|| format!("Failed to sync {}", tmp_path.display()))?;
+    }
+
+    if path.exists() {
+        fs::remove_file(path).with_context(|| format!("Failed to replace {}", path.display()))?;
+    }
+    fs::rename(&tmp_path, path).with_context(|| {
+        format!(
+            "Failed to move {} to {}",
+            tmp_path.display(),
+            path.display()
+        )
+    })?;
+
+    Ok(())
 }
 
 fn seconds_to_samples(seconds: f32) -> usize {
@@ -1484,4 +1792,60 @@ fn resample_linear(samples: &[f32], source_rate: u32, target_rate: u32) -> Vec<f
     }
 
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::SystemTime;
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "recorder-transcriber-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn parakeet_checkpoint_round_trips_completed_chunk() {
+        let root = unique_test_dir("checkpoint-round-trip");
+        let models_dir = root.join("models");
+        let input = root.join("recording.mock");
+        fs::create_dir_all(&root).expect("create test root");
+        fs::write(&input, b"audio").expect("write input");
+
+        let checkpoint =
+            ParakeetCheckpoint::prepare(&models_dir, &input, "parakeet-v3", 32_000, 16_000, 320, 2)
+                .expect("prepare checkpoint");
+
+        let chunk = ParakeetChunkCheckpoint::from_segments(
+            0,
+            2,
+            "hello world".to_string(),
+            vec![transcribe_rs::TranscriptionSegment {
+                start: 0.0,
+                end: 1.0,
+                text: "hello world".to_string(),
+            }],
+        );
+        checkpoint.write_chunk(&chunk).expect("write chunk");
+
+        let resumed =
+            ParakeetCheckpoint::prepare(&models_dir, &input, "parakeet-v3", 32_000, 16_000, 320, 2)
+                .expect("prepare resumed checkpoint");
+        let cached = resumed
+            .read_chunk(0)
+            .expect("read chunk")
+            .expect("cached chunk");
+        let result = cached.into_transcription_result();
+
+        assert_eq!(result.text, "hello world");
+        assert_eq!(result.segments.expect("segments").len(), 1);
+
+        fs::remove_dir_all(&root).expect("remove test root");
+    }
 }
