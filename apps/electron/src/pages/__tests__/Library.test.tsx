@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { Library } from '../Library'
 
+const mockGetTranscriptsByRecordingIds = vi.fn().mockResolvedValue({})
+const mockOnTranscriptionCompleted = vi.fn()
+let transcriptionCompletedCallback: ((data: { recordingId: string }) => void) | null = null
+
 // Mock hooks
 vi.mock('@/hooks/useUnifiedRecordings', () => ({
   useUnifiedRecordings: vi.fn()
@@ -158,7 +162,7 @@ vi.mock('@/features/library/hooks', () => ({
 
 // Mock electronAPI
 global.window.electronAPI = {
-  transcripts: { getByRecordingIds: vi.fn().mockResolvedValue({}) },
+  transcripts: { getByRecordingIds: mockGetTranscriptsByRecordingIds },
   meetings: { getByIds: vi.fn().mockResolvedValue({}) },
   storage: { openFolder: vi.fn() },
   recordings: {
@@ -168,7 +172,8 @@ global.window.electronAPI = {
   },
   downloadService: {
     queueDownloads: vi.fn()
-  }
+  },
+  onTranscriptionCompleted: mockOnTranscriptionCompleted
 } as any
 
 import { useUnifiedRecordings } from '@/hooks/useUnifiedRecordings'
@@ -190,6 +195,12 @@ const mockRecording = {
 describe('Library', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    transcriptionCompletedCallback = null
+    mockGetTranscriptsByRecordingIds.mockResolvedValue({})
+    mockOnTranscriptionCompleted.mockImplementation((callback) => {
+      transcriptionCompletedCallback = callback
+      return vi.fn()
+    })
     vi.mocked(useUnifiedRecordings).mockReturnValue({
       recordings: [],
       loading: false,
@@ -258,6 +269,33 @@ describe('Library', () => {
       // Header shows recording count (text is split across elements)
       await waitFor(() => {
         expect(screen.getByText(/1.*capture/i)).toBeInTheDocument()
+      })
+    })
+
+    it('reloads a completed transcript without leaving the Library page', async () => {
+      vi.mocked(useUnifiedRecordings).mockReturnValue({
+        recordings: [{
+          ...mockRecording,
+          transcriptionStatus: 'processing' as const
+        }],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+        deviceConnected: false,
+        stats: { total: 1, deviceOnly: 0, localOnly: 1, both: 0, synced: 1, unsynced: 0, onSource: 0, locallyAvailable: 1 }
+      })
+
+      renderLibrary()
+
+      await waitFor(() => {
+        expect(mockOnTranscriptionCompleted).toHaveBeenCalled()
+      })
+
+      mockGetTranscriptsByRecordingIds.mockClear()
+      transcriptionCompletedCallback?.({ recordingId: 'test-123' })
+
+      await waitFor(() => {
+        expect(mockGetTranscriptsByRecordingIds).toHaveBeenCalledWith(['test-123'])
       })
     })
 

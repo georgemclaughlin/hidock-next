@@ -262,11 +262,42 @@ export function Library() {
   const [transcripts, setTranscripts] = useState<Map<string, Transcript>>(new Map())
   const [meetings, setMeetings] = useState<Map<string, Meeting>>(new Map())
 
+  const loadTranscriptsForRecordings = useCallback(async (
+    recordingIds: string[],
+    options: { signal?: AbortSignal; replace?: boolean } = {}
+  ) => {
+    if (recordingIds.length === 0) {
+      if (options.replace) {
+        setTranscripts(new Map())
+      }
+      return
+    }
+
+    try {
+      const transcriptsObj = await window.electronAPI.transcripts.getByRecordingIds(recordingIds)
+      if (options.signal?.aborted) return
+
+      const loadedTranscripts = new Map<string, Transcript>(Object.entries(transcriptsObj) as [string, Transcript][])
+      setTranscripts((current) => {
+        if (options.replace) return loadedTranscripts
+
+        const next = new Map(current)
+        for (const [recordingId, transcript] of loadedTranscripts) {
+          next.set(recordingId, transcript)
+        }
+        return next
+      })
+    } catch (e) {
+      if (options.signal?.aborted) return
+      console.error('[Library] Failed to load transcripts:', e)
+    }
+  }, [])
+
   // Memoize recording IDs that need enrichment to avoid unnecessary re-fetches
   const enrichmentKey = useMemo(() => {
     const localRecordingIds = recordings
       .filter((rec) => hasLocalPath(rec))
-      .map((rec) => rec.id)
+      .map((rec) => `${rec.id}:${rec.transcriptionStatus}`)
       .sort()
       .join(',')
     const meetingIds = recordings
@@ -318,6 +349,17 @@ export function Library() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enrichmentKey])
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onTranscriptionCompleted?.((data) => {
+      if (!data.recordingId) return
+      void loadTranscriptsForRecordings([data.recordingId])
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [loadTranscriptsForRecordings])
 
   // Filter recordings based on location and search
   const filteredRecordings = useMemo(() => {
