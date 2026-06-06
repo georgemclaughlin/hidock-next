@@ -5,6 +5,7 @@ import {
   getRecordingsForMeeting,
   updateRecordingStatus,
   updateRecordingTranscriptionStatus,
+  updateRecordingDuration,
   linkRecordingToMeeting,
   getTranscriptByRecordingId,
   getCandidatesForRecordingWithDetails,
@@ -47,7 +48,8 @@ import {
   UnlinkRecordingFromMeetingSchema,
   TranscribeRecordingSchema,
   UpdateRecordingStatusSchema,
-  UpdateTranscriptionStatusSchema
+  UpdateTranscriptionStatusSchema,
+  UpdateRecordingDurationSchema
 } from './validation'
 
 export interface RecordingWithTranscript extends Recording {
@@ -684,6 +686,28 @@ export function registerRecordingHandlers(): void {
       return { success: true, data: recording }
     } catch (error) {
       console.error('recordings:updateTranscriptionStatus error:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' }
+    }
+  })
+
+  // Update recording duration discovered from decoded audio metadata
+  ipcMain.handle('recordings:updateDuration', async (_, id: unknown, durationSeconds: unknown): Promise<{ success: boolean; data?: Recording; error?: string }> => {
+    try {
+      const result = UpdateRecordingDurationSchema.safeParse({ id, durationSeconds })
+      if (!result.success) {
+        console.error('recordings:updateDuration validation error:', result.error)
+        return { success: false, error: result.error.issues[0]?.message || 'Invalid request parameters' }
+      }
+
+      const roundedDuration = Math.max(1, Math.round(result.data.durationSeconds))
+      updateRecordingDuration(result.data.id, roundedDuration)
+      const recording = getRecordingById(result.data.id)
+      if (!recording) {
+        return { success: false, error: 'Recording not found after duration update' }
+      }
+      return { success: true, data: recording }
+    } catch (error) {
+      console.error('recordings:updateDuration error:', error)
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' }
     }
   })

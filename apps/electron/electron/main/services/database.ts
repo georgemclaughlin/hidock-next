@@ -2154,6 +2154,10 @@ export function updateRecordingTranscriptionStatus(id: string, transcriptionStat
   run('UPDATE recordings SET transcription_status = ? WHERE id = ?', [transcriptionStatus, id])
 }
 
+export function updateRecordingDuration(id: string, durationSeconds: number): void {
+  run('UPDATE recordings SET duration_seconds = ? WHERE id = ?', [durationSeconds, id])
+}
+
 export function linkRecordingToMeeting(
   recordingId: string,
   meetingId: string,

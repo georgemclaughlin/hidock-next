@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useUIStore } from '@/store/useUIStore'
+import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/components/ui/toaster'
 import { parseError, getErrorMessage } from '@/features/library/utils/errorHandling'
 import { generateWaveformData, decodeAudioData, getAudioMimeType } from '@/utils/audioUtils'
@@ -18,6 +19,7 @@ export function useAudioPlayback() {
   const audioBlobUrlRef = useRef<string | null>(null)
   const waveformAbortControllerRef = useRef<AbortController | null>(null)
   const playbackLockRef = useRef<Promise<void> | null>(null)
+  const savedDurationRef = useRef(new Map<string, number>())
 
   const {
     setCurrentlyPlaying,
@@ -25,6 +27,34 @@ export function useAudioPlayback() {
     setIsPlaying,
     setWaveformData
   } = useUIStore()
+
+  const saveDiscoveredDuration = useCallback(async (recordingId: string, duration: number) => {
+    if (!Number.isFinite(duration) || duration <= 0) return
+
+    const durationSeconds = Math.max(1, Math.round(duration))
+    const appState = useAppStore.getState()
+    const currentRecording = appState.unifiedRecordings.find((recording) => recording.id === recordingId)
+
+    if (currentRecording?.duration !== durationSeconds) {
+      appState.setUnifiedRecordings(appState.unifiedRecordings.map((recording) => (
+        recording.id === recordingId ? { ...recording, duration: durationSeconds } : recording
+      )))
+    }
+
+    if (savedDurationRef.current.get(recordingId) === durationSeconds) return
+    savedDurationRef.current.set(recordingId, durationSeconds)
+
+    try {
+      const result = await window.electronAPI?.recordings?.updateDuration?.(recordingId, durationSeconds)
+      if (result && !result.success) {
+        savedDurationRef.current.delete(recordingId)
+        console.warn(`[useAudioPlayback] Failed to save duration for ${recordingId}: ${result.error}`)
+      }
+    } catch (error) {
+      savedDurationRef.current.delete(recordingId)
+      console.warn(`[useAudioPlayback] Failed to save duration for ${recordingId}:`, error)
+    }
+  }, [])
 
   // ---- Play Audio ----
 
@@ -86,6 +116,13 @@ export function useAudioPlayback() {
             }
           }
 
+          const handleLoadedMetadata = () => {
+            if (audioRef.current) {
+              void saveDiscoveredDuration(recordingId, audioRef.current.duration)
+              setPlaybackProgress(audioRef.current.currentTime, audioRef.current.duration)
+            }
+          }
+
           const handlePlay = () => {
             if (shouldLogQa()) console.log('[QA-MONITOR][Operation] Audio play event fired')
             setIsPlaying(true)
@@ -122,6 +159,7 @@ export function useAudioPlayback() {
 
           // Add event listeners
           audioRef.current.addEventListener('timeupdate', handleTimeUpdate)
+          audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata)
           audioRef.current.addEventListener('play', handlePlay)
           audioRef.current.addEventListener('pause', handlePause)
           audioRef.current.addEventListener('ended', handleEnded)
@@ -133,6 +171,7 @@ export function useAudioPlayback() {
             const audio = audioRef.current
             if (audio) {
               audio.removeEventListener('timeupdate', handleTimeUpdate)
+              audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
               audio.removeEventListener('play', handlePlay)
               audio.removeEventListener('pause', handlePause)
               audio.removeEventListener('ended', handleEnded)
@@ -148,6 +187,7 @@ export function useAudioPlayback() {
         if (waveformLoadedForId !== recordingId) {
           try {
             const audioBuffer = await decodeAudioData(base64, mimeType)
+            void saveDiscoveredDuration(recordingId, audioBuffer.duration)
             const waveformData = await generateWaveformData(audioBuffer, 1000)
             setWaveformData(waveformData)
             useUIStore.getState().setWaveformLoadedFor(recordingId)
@@ -192,7 +232,7 @@ export function useAudioPlayback() {
     })()
 
     return playbackLockRef.current
-  }, [setCurrentlyPlaying, setPlaybackProgress, setIsPlaying, setWaveformData])
+  }, [setCurrentlyPlaying, setPlaybackProgress, setIsPlaying, setWaveformData, saveDiscoveredDuration])
 
   // ---- Waveform-Only Load ----
 
@@ -234,6 +274,8 @@ export function useAudioPlayback() {
 
       const mimeType = getAudioMimeType(filePath)
       const audioBuffer = await decodeAudioData(base64, mimeType)
+      void saveDiscoveredDuration(recordingId, audioBuffer.duration)
+      setPlaybackProgress(0, audioBuffer.duration)
 
       if (signal.aborted) return
 
@@ -254,7 +296,7 @@ export function useAudioPlayback() {
       setWaveformLoadingError(recordingId, getErrorMessage(libraryError.type))
       setWaveformData(null)
     }
-  }, [])
+  }, [saveDiscoveredDuration, setPlaybackProgress])
 
   // ---- Simple Controls ----
 

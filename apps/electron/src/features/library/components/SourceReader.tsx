@@ -696,6 +696,8 @@ export function SourceReader({
         <div id="source-audio-player-panel" className="border-b px-6 py-3 bg-background">
           <AudioPlayer
             key={recording.id}
+            recordingId={recording.id}
+            filePath={hasLocalPath(recording) ? recording.localPath : undefined}
             filename={recording.filename}
             onClose={handleCloseAudioPlayer}
           />

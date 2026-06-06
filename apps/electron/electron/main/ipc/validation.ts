@@ -180,6 +180,14 @@ export const UpdateTranscriptionStatusSchema = z.object({
   status: TranscriptionStatusSchema
 })
 
+/**
+ * Update recording duration request
+ */
+export const UpdateRecordingDurationSchema = z.object({
+  id: RecordingIdSchema,
+  durationSeconds: z.number().finite().positive().max(7 * 24 * 60 * 60)
+})
+
 // =============================================================================
 // Storage Handlers Schemas
 // =============================================================================

@@ -37,7 +37,10 @@ vi.mock('@/components/OperationController', () => ({
     play: vi.fn(),
     stop: vi.fn(),
     pause: vi.fn(),
-    resume: vi.fn()
+    resume: vi.fn(),
+    seek: vi.fn(),
+    setPlaybackRate: vi.fn(),
+    loadWaveformOnly: vi.fn()
   })
 }))
 

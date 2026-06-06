@@ -14,6 +14,8 @@ import { WaveformCanvas } from '@/components/WaveformCanvas'
 import { formatTimestamp } from '@/utils/audioUtils'
 
 interface AudioPlayerProps {
+  recordingId?: string
+  filePath?: string
   filename?: string
   onClose?: () => void
 }
@@ -24,7 +26,7 @@ interface AudioPlayerProps {
  * The actual audio playback is handled by OperationController.
  * This component displays the playback state, waveform, and controls.
  */
-export function AudioPlayer({ filename, onClose }: AudioPlayerProps) {
+export function AudioPlayer({ recordingId, filePath, filename, onClose }: AudioPlayerProps) {
   // Read playback state from UIStore
   const isPlaying = useUIStore((state) => state.isPlaying)
   const currentTime = useUIStore((state) => state.playbackCurrentTime)
@@ -43,13 +45,19 @@ export function AudioPlayer({ filename, onClose }: AudioPlayerProps) {
   // Local state for playback speed
   const [playbackRate, setPlaybackRate] = useState('1')
 
+  const isThisPlayerActive = recordingId ? currentlyPlayingId === recordingId : isPlaying
+
   const togglePlay = useCallback(() => {
-    if (isPlaying) {
+    if (isThisPlayerActive && isPlaying) {
       audioControls.pause()
+    } else if (isThisPlayerActive) {
+      audioControls.resume()
+    } else if (recordingId && filePath) {
+      audioControls.play(recordingId, filePath)
     } else {
       audioControls.resume()
     }
-  }, [isPlaying, audioControls])
+  }, [audioControls, filePath, isPlaying, isThisPlayerActive, recordingId])
 
   const handleStop = useCallback(() => {
     audioControls.stop()
@@ -146,7 +154,7 @@ export function AudioPlayer({ filename, onClose }: AudioPlayerProps) {
             onClick={togglePlay}
             className="h-10 w-10"
           >
-            {isPlaying ? (
+            {isThisPlayerActive && isPlaying ? (
               <Pause className="h-5 w-5" />
             ) : (
               <Play className="h-5 w-5" />

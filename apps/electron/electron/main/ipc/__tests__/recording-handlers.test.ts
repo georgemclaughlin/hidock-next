@@ -23,6 +23,7 @@ vi.mock('../../services/database', () => ({
   getRecordingsForMeeting: vi.fn(),
   updateRecordingStatus: vi.fn(),
   updateRecordingTranscriptionStatus: vi.fn(),
+  updateRecordingDuration: vi.fn(),
   linkRecordingToMeeting: vi.fn(),
   getTranscriptByRecordingId: vi.fn(),
   getCandidatesForRecordingWithDetails: vi.fn(),
@@ -122,7 +123,8 @@ vi.mock('../validation', () => ({
   UnlinkRecordingFromMeetingSchema: createSchemaMock('recordingId'),
   TranscribeRecordingSchema: createSchemaMock('recordingId'),
   UpdateRecordingStatusSchema: createSchemaMock('id'),
-  UpdateTranscriptionStatusSchema: createSchemaMock('id')
+  UpdateTranscriptionStatusSchema: createSchemaMock('id'),
+  UpdateRecordingDurationSchema: createSchemaMock('id')
 }))
 
 // Mock recording-watcher service
@@ -229,7 +231,8 @@ describe('Recording IPC Handlers', () => {
       'recordings:processQueue',
       'transcription:retry',
       'recordings:updateStatus',
-      'recordings:updateTranscriptionStatus'
+      'recordings:updateTranscriptionStatus',
+      'recordings:updateDuration'
     ]
 
     for (const channel of expectedChannels) {
@@ -850,6 +853,33 @@ describe('Recording IPC Handlers', () => {
         source: 'external',
         is_imported: 1
       }))
+    })
+  })
+
+  describe('recordings:updateDuration', () => {
+    it('should persist a rounded duration and return the updated recording', async () => {
+      const { updateRecordingDuration, getRecordingById } = await import('../../services/database')
+      const recordingId = '550e8400-e29b-41d4-a716-446655440000'
+      const mockRecording = {
+        id: recordingId,
+        filename: 'meeting.mp3',
+        duration_seconds: 1880
+      }
+      vi.mocked(getRecordingById).mockReturnValue(mockRecording as any)
+
+      const result = await handlers['recordings:updateDuration'](null, recordingId, 1879.6)
+
+      expect(updateRecordingDuration).toHaveBeenCalledWith(recordingId, 1880)
+      expect(result).toEqual({ success: true, data: mockRecording })
+    })
+
+    it('should reject invalid recording IDs', async () => {
+      const { updateRecordingDuration } = await import('../../services/database')
+
+      const result = await handlers['recordings:updateDuration'](null, 'not-a-uuid', 120)
+
+      expect(updateRecordingDuration).not.toHaveBeenCalled()
+      expect(result).toEqual({ success: false, error: 'id must be a valid UUID' })
     })
   })
 

@@ -119,7 +119,11 @@ vi.mock('@/components/OperationController', () => ({
   useAudioControls: vi.fn(() => ({
     play: vi.fn(),
     pause: vi.fn(),
+    resume: vi.fn(),
     stop: vi.fn(),
+    seek: vi.fn(),
+    setPlaybackRate: vi.fn(),
+    loadWaveformOnly: vi.fn(),
     isPlaying: false,
     currentTime: 0,
     duration: 0
