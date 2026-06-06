@@ -47,6 +47,7 @@ interface ProcessingPipelineTrackerProps {
   transcript?: Transcript
   onTranscribe?: () => void
   onOpenSettings?: () => void
+  variant?: 'section' | 'popover'
 }
 
 function getStatusLabel(status: StageStatus): string {
@@ -400,11 +401,71 @@ function StageButton({ stage }: { stage: PipelineStage }) {
   )
 }
 
+function StageStep({ stage }: { stage: PipelineStage }) {
+  return (
+    <div
+      className="group mx-auto flex min-w-0 max-w-28 flex-col items-center gap-0.5 rounded-md px-1.5 py-1 text-center"
+      title={stage.detail}
+    >
+      <div
+        className={cn(
+          'flex h-6 w-6 items-center justify-center rounded-full border-2 shadow-sm',
+          getStatusClassName(stage.status)
+        )}
+      >
+        {getStatusIcon(stage.status)}
+      </div>
+      <div className="max-w-full">
+        <div className="truncate text-[11px] font-semibold leading-tight text-foreground">{stage.label}</div>
+        <div className="truncate text-[9px] font-medium uppercase leading-tight tracking-normal text-muted-foreground">
+          {getStatusLabel(stage.status)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function getFocusStage(stages: PipelineStage[]): PipelineStage {
+  return (
+    stages.find((stage) => stage.status === 'running') ||
+    stages.find((stage) => stage.status === 'queued') ||
+    stages.find((stage) => stage.status === 'failed') ||
+    stages.find((stage) => stage.status === 'blocked') ||
+    stages.find((stage) => stage.status === 'ready') ||
+    stages.find((stage) => stage.status !== 'complete') ||
+    stages[stages.length - 1]
+  )
+}
+
+function PipelineStepper({
+  stages,
+  interactive
+}: {
+  stages: PipelineStage[]
+  interactive: boolean
+}) {
+  return (
+    <div className="grid grid-cols-4 items-start gap-1">
+      {stages.map((stage, index) => (
+        <div key={stage.id} className="relative min-w-0">
+          {index < stages.length - 1 && (
+            <div className="absolute left-1/2 right-[-50%] top-4 h-px bg-border" />
+          )}
+          <div className="relative z-10">
+            {interactive ? <StageButton stage={stage} /> : <StageStep stage={stage} />}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ProcessingPipelineTracker({
   recording,
   transcript,
   onTranscribe,
-  onOpenSettings
+  onOpenSettings,
+  variant = 'section'
 }: ProcessingPipelineTrackerProps) {
   const transcriptionItem = useTranscriptionStore((state) => {
     for (const item of state.queue.values()) {
@@ -441,28 +502,43 @@ export function ProcessingPipelineTracker({
     () => buildStages(recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, onTranscribe, onOpenSettings),
     [recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, onTranscribe, onOpenSettings]
   )
+  const completedStageCount = stages.filter((stage) => stage.status === 'complete').length
+
+  if (variant === 'popover') {
+    const focusStage = getFocusStage(stages)
+
+    return (
+      <div className="w-80 rounded-md bg-popover p-3 text-popover-foreground">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Processing</h3>
+          <span className="text-xs text-muted-foreground">
+            {completedStageCount}/{stages.length} complete
+          </span>
+        </div>
+        <PipelineStepper stages={stages} interactive={false} />
+        <div className="mt-3 rounded-md bg-muted/50 px-2.5 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold">{focusStage.label}</span>
+            <span className="text-[10px] font-medium uppercase text-muted-foreground">
+              {getStatusLabel(focusStage.status)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{focusStage.detail}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <section className="rounded-md border bg-background px-3 py-2">
       <div className="mb-0.5 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Processing</h3>
         <span className="text-xs text-muted-foreground">
-          {stages.filter((stage) => stage.status === 'complete').length}/{stages.length} complete
+          {completedStageCount}/{stages.length} complete
         </span>
       </div>
       <TooltipProvider>
-        <div className="grid grid-cols-4 items-start gap-1">
-          {stages.map((stage, index) => (
-            <div key={stage.id} className="relative min-w-0">
-              {index < stages.length - 1 && (
-                <div className="absolute left-1/2 right-[-50%] top-4 h-px bg-border" />
-              )}
-              <div className="relative z-10">
-                <StageButton stage={stage} />
-              </div>
-            </div>
-          ))}
-        </div>
+        <PipelineStepper stages={stages} interactive />
       </TooltipProvider>
     </section>
   )

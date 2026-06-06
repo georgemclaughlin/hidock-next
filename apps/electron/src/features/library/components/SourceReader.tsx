@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
@@ -308,6 +309,48 @@ export function SourceReader({
   }
 
   const canPlay = hasLocalPath(recording)
+  const canStartTranscription = Boolean(onTranscribe) && (
+    recording.transcriptionStatus === 'none' ||
+    recording.transcriptionStatus === 'error'
+  )
+  const showTranscriptionStatusButton = hasLocalPath(recording) && (
+    Boolean(onTranscribe) ||
+    recording.transcriptionStatus !== 'none'
+  )
+  const transcriptionStatusButton = (() => {
+    switch (recording.transcriptionStatus) {
+      case 'processing':
+        return {
+          label: 'In Progress',
+          icon: <RefreshCw className="h-4 w-4 animate-spin" />,
+          title: 'Transcription in progress'
+        }
+      case 'pending':
+        return {
+          label: 'Queued',
+          icon: <RefreshCw className="h-4 w-4" />,
+          title: 'Transcription queued'
+        }
+      case 'complete':
+        return {
+          label: 'Complete',
+          icon: <Check className="h-4 w-4" />,
+          title: 'Transcription complete'
+        }
+      case 'error':
+        return {
+          label: 'Retry',
+          icon: <RefreshCw className="h-4 w-4" />,
+          title: 'Retry transcription'
+        }
+      default:
+        return {
+          label: 'Transcribe',
+          icon: <Wand2 className="h-4 w-4" />,
+          title: 'Start AI transcription'
+        }
+    }
+  })()
   const recordingTitle = recording.title || meeting?.subject || recording.filename
   const recordedAtText = (() => {
     const date = new Date(recording.dateRecorded)
@@ -438,36 +481,33 @@ export function SourceReader({
                 </Button>
               )}
 
-              {hasLocalPath(recording) && recording.transcriptionStatus !== 'complete' && onTranscribe && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTranscribeClick}
-                  disabled={recording.transcriptionStatus === 'pending' || recording.transcriptionStatus === 'processing'}
-                  className="gap-2"
-                  title={
-                    recording.transcriptionStatus === 'pending' ? 'Transcription queued' :
-                    recording.transcriptionStatus === 'processing' ? 'Transcription in progress' :
-                    'Start AI transcription'
-                  }
-                >
-                  {recording.transcriptionStatus === 'processing' ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      In Progress
-                    </>
-                  ) : recording.transcriptionStatus === 'pending' ? (
-                    <>
-                      <RefreshCw className="h-4 w-4" />
-                      Queued
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="h-4 w-4" />
-                      Transcribe
-                    </>
-                  )}
-                </Button>
+              {showTranscriptionStatusButton && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={canStartTranscription ? handleTranscribeClick : undefined}
+                        aria-disabled={!canStartTranscription}
+                        className={`gap-2${canStartTranscription ? '' : ' cursor-default'}`}
+                        title={transcriptionStatusButton.title}
+                      >
+                        {transcriptionStatusButton.icon}
+                        {transcriptionStatusButton.label}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="end" className="max-w-none p-0">
+                      <ProcessingPipelineTracker
+                        recording={recording}
+                        transcript={transcript}
+                        onTranscribe={onTranscribe}
+                        onOpenSettings={onOpenSettings}
+                        variant="popover"
+                      />
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
 
               <Button
@@ -664,15 +704,8 @@ export function SourceReader({
 
       {/* Transcript Content */}
       <div className="flex-1 overflow-auto p-4">
-        <ProcessingPipelineTracker
-          recording={recording}
-          transcript={transcript}
-          onTranscribe={onTranscribe}
-          onOpenSettings={onOpenSettings}
-        />
-
         {transcript ? (
-          <div className="mt-4 space-y-3">
+          <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">Transcript</h3>
               <Button
