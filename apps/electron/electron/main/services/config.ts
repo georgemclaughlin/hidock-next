@@ -94,10 +94,10 @@ const DEFAULT_CONFIG: AppConfig = {
     localEngine: 'parakeet',
     autoTranscribe: false,
     language: 'auto',
-    localCommand: 'whisper',
-    localModel: 'base',
-    parakeetPythonCommand: 'python',
-    parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3'
+    localCommand: '',
+    localModel: 'whisper-small',
+    parakeetPythonCommand: '',
+    parakeetModel: 'parakeet-v3'
   },
   embeddings: {
     provider: 'ollama',
@@ -127,7 +127,28 @@ const DEFAULT_CONFIG: AppConfig = {
 
 let config: AppConfig = { ...DEFAULT_CONFIG }
 
-const LEGACY_DEFAULT_PARAKEET_MODEL = 'nvidia/parakeet-tdt-0.6b-v2'
+const LEGACY_DEFAULT_PARAKEET_MODELS = new Set([
+  'nvidia/parakeet-tdt-0.6b-v2',
+  'nvidia/parakeet-tdt-0.6b-v3'
+])
+
+function normalizeNativeWhisperModel(value?: string): string {
+  const model = value?.trim().toLowerCase()
+  if (model === 'whisper-medium' || model === 'medium') {
+    return 'whisper-medium'
+  }
+
+  return 'whisper-small'
+}
+
+function normalizeNativeParakeetModel(value?: string): string {
+  const model = value?.trim()
+  if (!model || LEGACY_DEFAULT_PARAKEET_MODELS.has(model)) {
+    return DEFAULT_CONFIG.transcription.parakeetModel
+  }
+
+  return model
+}
 
 function isLoopbackHttpUrl(value: string): boolean {
   try {
@@ -147,7 +168,7 @@ function isLoopbackHttpUrl(value: string): boolean {
 function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
   const allowRemoteOllama = value.privacy?.allowRemoteOllama === true
   const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl || DEFAULT_CONFIG.embeddings.ollamaBaseUrl
-  const parakeetModel = value.transcription?.parakeetModel?.trim()
+  const parakeetModel = normalizeNativeParakeetModel(value.transcription?.parakeetModel)
 
   return {
     ...value,
@@ -165,12 +186,10 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
       localEngine: value.transcription?.localEngine === 'whisper' ? 'whisper' : 'parakeet',
       autoTranscribe: value.transcription?.autoTranscribe === true,
       language: value.transcription?.language || DEFAULT_CONFIG.transcription.language,
-      localCommand: value.transcription?.localCommand || DEFAULT_CONFIG.transcription.localCommand,
-      localModel: value.transcription?.localModel || DEFAULT_CONFIG.transcription.localModel,
-      parakeetPythonCommand: value.transcription?.parakeetPythonCommand || DEFAULT_CONFIG.transcription.parakeetPythonCommand,
-      parakeetModel: !parakeetModel || parakeetModel === LEGACY_DEFAULT_PARAKEET_MODEL
-        ? DEFAULT_CONFIG.transcription.parakeetModel
-        : parakeetModel
+      localCommand: DEFAULT_CONFIG.transcription.localCommand,
+      localModel: normalizeNativeWhisperModel(value.transcription?.localModel),
+      parakeetPythonCommand: DEFAULT_CONFIG.transcription.parakeetPythonCommand,
+      parakeetModel
     },
     embeddings: {
       ...value.embeddings,

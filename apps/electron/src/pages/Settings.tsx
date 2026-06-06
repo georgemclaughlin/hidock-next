@@ -37,10 +37,8 @@ export function Settings() {
   const chatProvider = 'ollama' as const
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
   const [transcriptionEngine, setTranscriptionEngine] = useState<LocalTranscriptionEngine>('parakeet')
-  const [transcriptionCommand, setTranscriptionCommand] = useState('whisper')
-  const [transcriptionModel, setTranscriptionModel] = useState('base')
-  const [parakeetPythonCommand, setParakeetPythonCommand] = useState('python')
-  const [parakeetModel, setParakeetModel] = useState('nvidia/parakeet-tdt-0.6b-v3')
+  const [transcriptionModel, setTranscriptionModel] = useState('whisper-small')
+  const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
   const [modelDownloading, setModelDownloading] = useState(false)
   const [storageLoading, setStorageLoading] = useState(false)
@@ -52,9 +50,6 @@ export function Settings() {
     // Embeddings settings validation
     if (updates.transcription) {
       if (updates.transcription.localEngine === 'whisper') {
-        if (updates.transcription.localCommand !== undefined && !updates.transcription.localCommand.trim()) {
-          return 'Whisper command is required'
-        }
         if (updates.transcription.localModel !== undefined && !updates.transcription.localModel.trim()) {
           return 'Whisper model is required'
         }
@@ -63,9 +58,6 @@ export function Settings() {
         }
       }
       if (updates.transcription.localEngine === 'parakeet') {
-        if (updates.transcription.parakeetPythonCommand !== undefined && !updates.transcription.parakeetPythonCommand.trim()) {
-          return 'Parakeet Python command is required'
-        }
         if (updates.transcription.parakeetModel !== undefined && !updates.transcription.parakeetModel.trim()) {
           return 'Parakeet model is required'
         }
@@ -96,18 +88,14 @@ export function Settings() {
     if (!config) return false
     return (
       transcriptionEngine !== config.transcription.localEngine ||
-      transcriptionCommand !== config.transcription.localCommand ||
       transcriptionModel !== config.transcription.localModel ||
-      parakeetPythonCommand !== config.transcription.parakeetPythonCommand ||
       parakeetModel !== config.transcription.parakeetModel ||
       transcriptionLanguage !== config.transcription.language
     )
   }, [
     config,
     transcriptionEngine,
-    transcriptionCommand,
     transcriptionModel,
-    parakeetPythonCommand,
     parakeetModel,
     transcriptionLanguage
   ])
@@ -133,9 +121,7 @@ export function Settings() {
     if (config) {
       setOllamaUrl(config.embeddings.ollamaBaseUrl)
       setTranscriptionEngine(config.transcription.localEngine)
-      setTranscriptionCommand(config.transcription.localCommand)
       setTranscriptionModel(config.transcription.localModel)
-      setParakeetPythonCommand(config.transcription.parakeetPythonCommand)
       setParakeetModel(config.transcription.parakeetModel)
       setTranscriptionLanguage(config.transcription.language)
       // C-CHAT: Load RAG context window size
@@ -225,19 +211,15 @@ export function Settings() {
       return
     }
 
-    const previousCommand = config?.transcription.localCommand || 'whisper'
-    const previousModel = config?.transcription.localModel || 'base'
+    const previousModel = config?.transcription.localModel || 'whisper-small'
     const previousEngine = config?.transcription.localEngine || 'parakeet'
-    const previousParakeetPythonCommand = config?.transcription.parakeetPythonCommand || 'python'
-    const previousParakeetModel = config?.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v3'
+    const previousParakeetModel = config?.transcription.parakeetModel || 'parakeet-v3'
     const previousLanguage = config?.transcription.language || 'auto'
 
-    const transcriptionUpdates = {
+    const transcriptionUpdates: Partial<AppConfig['transcription']> = {
       provider: 'local' as const,
       localEngine: transcriptionEngine,
-      localCommand: transcriptionCommand.trim(),
       localModel: transcriptionModel.trim(),
-      parakeetPythonCommand: parakeetPythonCommand.trim(),
       parakeetModel: parakeetModel.trim(),
       language: transcriptionLanguage.trim() || 'auto'
     }
@@ -256,9 +238,7 @@ export function Settings() {
       toast.success('Settings Saved', 'Local transcription settings updated')
     } catch (error) {
       setTranscriptionEngine(previousEngine)
-      setTranscriptionCommand(previousCommand)
       setTranscriptionModel(previousModel)
-      setParakeetPythonCommand(previousParakeetPythonCommand)
       setParakeetModel(previousParakeetModel)
       setTranscriptionLanguage(previousLanguage)
       try { await loadConfig() } catch { /* best effort reload */ }
@@ -362,59 +342,40 @@ export function Settings() {
 
               {transcriptionEngine === 'parakeet' ? (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="parakeetPythonCommand" className="text-sm font-medium">Python Command</label>
-                      <Input
-                        id="parakeetPythonCommand"
-                        value={parakeetPythonCommand}
-                        onChange={(e) => setParakeetPythonCommand(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                        disabled={saving || modelDownloading}
-                        aria-label="Parakeet Python command"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="parakeetModel" className="text-sm font-medium">Model</label>
-                      <Input
-                        id="parakeetModel"
-                        value={parakeetModel}
-                        onChange={(e) => setParakeetModel(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                        disabled={saving || modelDownloading}
-                        aria-label="Parakeet model"
-                        className="mt-1"
-                      />
-                    </div>
+                  <div>
+                    <label htmlFor="parakeetModel" className="text-sm font-medium">Model</label>
+                    <Select
+                      value={parakeetModel}
+                      onValueChange={setParakeetModel}
+                      disabled={saving || modelDownloading}
+                    >
+                      <SelectTrigger id="parakeetModel" aria-label="Parakeet model" className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="parakeet-v3">Parakeet V3</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </>
               ) : (
                 <>
-                  <div>
-                    <label htmlFor="transcriptionCommand" className="text-sm font-medium">Command</label>
-                    <Input
-                      id="transcriptionCommand"
-                      value={transcriptionCommand}
-                      onChange={(e) => setTranscriptionCommand(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                      disabled={saving}
-                      aria-label="Whisper command"
-                      className="mt-1"
-                    />
-                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="transcriptionModel" className="text-sm font-medium">Model</label>
-                      <Input
-                        id="transcriptionModel"
+                      <Select
                         value={transcriptionModel}
-                        onChange={(e) => setTranscriptionModel(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                        onValueChange={setTranscriptionModel}
                         disabled={saving || modelDownloading}
-                        aria-label="Whisper model"
-                        className="mt-1"
-                      />
+                      >
+                        <SelectTrigger id="transcriptionModel" aria-label="Whisper model" className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="whisper-small">Whisper Small</SelectItem>
+                          <SelectItem value="whisper-medium">Whisper Medium</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label htmlFor="transcriptionLanguage" className="text-sm font-medium">Language</label>

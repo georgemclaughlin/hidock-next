@@ -41,19 +41,7 @@ echo.
 echo ================================
 echo Building Local Recorder Electron App
 echo ================================
-echo Compiling local transcription sidecar...
-echo.
-
-call npm run build:transcriber
-
-if errorlevel 1 (
-    echo.
-    echo Sidecar build failed. Please check the error messages above.
-    pause
-    exit /b 1
-)
-
-echo Compiling main process (backend) and renderer (frontend)...
+echo Compiling required Rust sidecar, main process, and renderer...
 echo.
 call npm run build
 

@@ -9,7 +9,6 @@ Use Windows PowerShell or Command Prompt:
 ```powershell
 cd path\to\local-recorder\apps\electron
 npm install
-npm run build:transcriber
 npm run dev
 ```
 
@@ -26,7 +25,6 @@ Use WSL for code and build checks:
 ```bash
 cd /home/george/code/local-recorder/apps/electron
 npm install
-npm run build:transcriber
 npm run build
 npm run test:run
 ```
@@ -37,13 +35,13 @@ For this project, native Windows is the pragmatic path when testing real device 
 
 ## Rust Sidecar
 
-Local transcription uses a Rust sidecar. Install Rust and CMake in the environment where you build the sidecar:
+Local transcription requires a Rust sidecar. Install Rust and CMake in the environment where you build or run the app:
 
 ```bash
 npm run build:transcriber
 ```
 
-If the Electron app runs from Windows, build the sidecar from Windows so `native/transcriber/target/release/recorder-transcriber.exe` exists. A Linux sidecar built in WSL cannot be launched by the Windows Electron process.
+`npm run dev`, `npm run build`, and packaged build scripts also build and verify the sidecar. If the Electron app runs from Windows, build from Windows so `native/transcriber/target/release/recorder-transcriber.exe` exists. A Linux sidecar built in WSL cannot be launched by the Windows Electron process.
 
 Linux/WSL packaging can also require libudev development headers for the app's existing USB native module:
 
@@ -57,12 +55,4 @@ If packaging from WSL/Linux fails while rebuilding the existing `usb` native mod
 CXXFLAGS="-std=c++17" npm run build:unpack
 ```
 
-## Python Fallback
-
-Python is only needed for the legacy Parakeet fallback path when the Rust sidecar is unavailable. If the Electron app runs from Windows, the Parakeet Python command must point to a Windows Python executable. A WSL Python path will not be visible to the Windows Electron process.
-
-Example Windows path:
-
-```text
-C:\Users\you\venvs\parakeet\Scripts\python.exe
-```
+There is no Python or CLI fallback path. If the sidecar is missing at runtime, Local Recorder stops during startup and asks you to build the sidecar for the current OS.

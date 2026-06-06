@@ -62,10 +62,9 @@ The app can still open external links through Electron shell behavior, but recor
 
 1. A recording is queued for transcription.
 2. `services/transcription.ts` selects the configured local engine.
-3. The native sidecar runs Parakeet or Whisper locally.
-4. Python/CLI transcription commands remain fallback paths when the sidecar is unavailable.
-5. Transcript text is written to SQLite.
-6. The vector store attempts to index the transcript through local Ollama embeddings.
+3. The required native sidecar runs Parakeet or Whisper locally.
+4. Transcript text is written to SQLite.
+5. The vector store attempts to index the transcript through local Ollama embeddings.
 
 ### Chat/Search
 

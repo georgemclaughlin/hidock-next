@@ -73,15 +73,27 @@ export function getNativeTranscriberPath(): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null
 }
 
-export function isNativeTranscriberAvailable(): boolean {
-  return getNativeTranscriberPath() !== null
+export function getNativeTranscriberRequiredMessage(): string {
+  return [
+    'Native transcription sidecar is required but was not found.',
+    'Run npm run build:transcriber from apps/electron in the same operating system that runs Local Recorder, then restart the app.'
+  ].join(' ')
+}
+
+export function getRequiredNativeTranscriberPath(): string {
+  const binaryPath = getNativeTranscriberPath()
+  if (!binaryPath) {
+    throw new Error(getNativeTranscriberRequiredMessage())
+  }
+  return binaryPath
+}
+
+export function assertNativeTranscriberAvailable(): string {
+  return getRequiredNativeTranscriberPath()
 }
 
 function runNativeTranscriber(args: string[]): Promise<RunResult> {
-  const binaryPath = getNativeTranscriberPath()
-  if (!binaryPath) {
-    throw new Error('Native transcription sidecar is not built. Run npm run build:transcriber from apps/electron.')
-  }
+  const binaryPath = getRequiredNativeTranscriberPath()
 
   return new Promise((resolvePromise, reject) => {
     const child = spawn(binaryPath, ['--data-dir', getDataPath(), ...args], {

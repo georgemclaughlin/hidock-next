@@ -34,10 +34,10 @@ vi.mock('@/store/domain/useConfigStore', () => ({
         transcription: {
           provider: 'local' as const,
           localEngine: 'parakeet' as const,
-          localCommand: 'whisper',
-          localModel: 'base',
-          parakeetPythonCommand: 'python',
-          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
+          localCommand: '',
+          localModel: 'whisper-small',
+          parakeetPythonCommand: '',
+          parakeetModel: 'parakeet-v3',
           autoTranscribe: false,
           language: 'auto'
         },
@@ -68,10 +68,10 @@ global.window.electronAPI = {
         transcription: {
           provider: 'local',
           localEngine: 'parakeet',
-          localCommand: 'whisper',
-          localModel: 'base',
-          parakeetPythonCommand: 'python',
-          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
+          localCommand: '',
+          localModel: 'whisper-small',
+          parakeetPythonCommand: '',
+          parakeetModel: 'parakeet-v3',
           autoTranscribe: false,
           language: 'auto'
         },
@@ -124,7 +124,6 @@ describe('Settings Page', () => {
     render(<Settings />)
 
     expect(screen.getByLabelText('Local transcription engine')).toBeInTheDocument()
-    expect(screen.getByLabelText('Parakeet Python command')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet model')).toBeInTheDocument()
     expect(screen.getByLabelText('Download parakeet model')).toBeInTheDocument()
   })
@@ -137,7 +136,7 @@ describe('Settings Page', () => {
     await waitFor(() => {
       expect(mockDownloadTranscriptionModel).toHaveBeenCalledWith(
         'parakeet',
-        'nvidia/parakeet-tdt-0.6b-v3'
+        'parakeet-v3'
       )
     })
   })

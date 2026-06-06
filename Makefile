@@ -22,7 +22,7 @@ transcriber:
 	cd $(ELECTRON_DIR) && npm run build:transcriber
 
 build:
-	cd $(ELECTRON_DIR) && npm run build:transcriber && npm run build
+	cd $(ELECTRON_DIR) && npm run build
 
 test:
 	cd $(ELECTRON_DIR) && npm run test:run

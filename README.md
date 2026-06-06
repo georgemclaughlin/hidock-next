@@ -16,7 +16,7 @@ The Electron app is designed around these constraints:
 
 - Recordings are downloaded over USB from the device.
 - Recordings, transcripts, indexes, and app data are stored on the local computer.
-- Speech-to-text is local: Parakeet by default, Whisper as a fallback.
+- Speech-to-text is local through the required Rust sidecar: Parakeet by default, Whisper as an alternate engine.
 - Transcript chat/search uses local Ollama by default.
 - External calendar sync is disabled.
 - Hosted transcription and hosted LLM providers are not included in the supported path.
@@ -44,7 +44,6 @@ git clone <your-fork-url>
 cd local-recorder
 cd apps\electron
 npm install
-npm run build:transcriber
 npm run dev
 ```
 
@@ -60,7 +59,6 @@ You can also use the root helper:
 git clone <your-fork-url>
 cd local-recorder/apps/electron
 npm install
-npm run build:transcriber
 npm run build
 ```
 
@@ -72,7 +70,7 @@ npm run dev
 
 ## Local Transcription
 
-Parakeet is the default engine. The supported path is a Rust native sidecar based on `transcribe-rs`, following the same local model approach used by Handy. The sidecar runs Whisper and Parakeet locally on CPU-capable runtimes and decodes common audio formats, including OGG imports.
+Parakeet is the default engine. Transcription requires the Rust native sidecar based on `transcribe-rs`, following the same local model approach used by Handy. The sidecar runs Whisper and Parakeet locally on CPU-capable runtimes and decodes common audio formats, including OGG imports.
 
 Build the sidecar:
 
@@ -80,6 +78,8 @@ Build the sidecar:
 cd apps/electron
 npm run build:transcriber
 ```
+
+`npm run dev`, `npm run build`, and packaged build scripts also build and verify the sidecar before continuing. If the sidecar is missing at runtime, the app stops during startup and asks you to build it for the current OS.
 
 Then use `Settings -> Local Transcription -> Download Model` to download the selected local model. The app stores models under the local app data directory and does not upload recordings or transcripts.
 
@@ -89,24 +89,7 @@ The default Parakeet model is:
 parakeet-v3
 ```
 
-Whisper uses the local sidecar model catalog too. The default `base`/`small` setting maps to `whisper-small`; `medium` maps to `whisper-medium`.
-
-The old Python/CLI fields remain as fallback settings for development. If the sidecar binary is missing, Parakeet can still use a local Python/NeMo environment and Whisper can still use a local `whisper` command.
-
-Example Parakeet fallback setup:
-
-```powershell
-python -m venv .venv-parakeet
-.\.venv-parakeet\Scripts\Activate.ps1
-pip install torch torchaudio "nemo_toolkit[asr]"
-python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v3')"
-```
-
-Then set the app's Parakeet Python command to the venv Python path, for example:
-
-```text
-C:\path\to\.venv-parakeet\Scripts\python.exe
-```
+Whisper uses the local sidecar model catalog too. The app stores native model IDs: `whisper-small` or `whisper-medium`.
 
 ## Local Ollama
 

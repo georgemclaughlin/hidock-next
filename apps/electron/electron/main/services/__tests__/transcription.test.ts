@@ -18,7 +18,8 @@ const mockUpdateRecordingStatus = vi.fn()
 const mockUpdateQueueItem = vi.fn()
 const mockGetQueueItems = vi.fn()
 const mockGetRecordingById = vi.fn()
-let mockSpawnStderr = 'local transcription failed'
+const mockTranscribeWithNativeModel = vi.fn()
+const mockGetNativeModelIdForEngine = vi.fn((engine: string, _configuredModel?: string) => engine === 'parakeet' ? 'parakeet-v3' : 'whisper-small')
 
 // Mock database
 vi.mock('../database', () => ({
@@ -58,10 +59,10 @@ vi.mock('../config', () => ({
     transcription: {
       provider: 'local',
       localEngine: 'parakeet',
-      localCommand: 'whisper',
-      localModel: 'base',
-      parakeetPythonCommand: 'python',
-      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
+      localCommand: '',
+      localModel: 'whisper-small',
+      parakeetPythonCommand: '',
+      parakeetModel: 'parakeet-v3',
       language: 'auto'
     }
   }))
@@ -69,28 +70,17 @@ vi.mock('../config', () => ({
 
 vi.mock('../native-transcriber', () => ({
   downloadNativeTranscriptionModel: vi.fn(),
-  getNativeModelIdForEngine: vi.fn(),
-  isNativeTranscriberAvailable: vi.fn(() => false),
+  getNativeModelIdForEngine: (engine: string, configuredModel?: string) => mockGetNativeModelIdForEngine(engine, configuredModel),
   listNativeTranscriptionModels: vi.fn(),
-  transcribeWithNativeModel: vi.fn()
+  transcribeWithNativeModel: (
+    engine: string,
+    modelId: string,
+    inputPath: string,
+    outputPath: string,
+    language: string,
+    progressCallback?: (stage: string, progress: number) => void
+  ) => mockTranscribeWithNativeModel(engine, modelId, inputPath, outputPath, language, progressCallback)
 }))
-
-// Mock local transcription command - make it fail
-vi.mock('child_process', async () => {
-  const { EventEmitter } = await import('events')
-  return {
-    spawn: vi.fn(() => {
-      const child = new EventEmitter() as any
-      child.stdout = new EventEmitter()
-      child.stderr = new EventEmitter()
-      setImmediate(() => {
-        child.stderr.emit('data', Buffer.from(mockSpawnStderr))
-        child.emit('close', 1)
-      })
-      return child
-    })
-  }
-})
 
 // Mock fs - simple approach that works in jsdom environment
 vi.mock('fs', async (importOriginal) => {
@@ -113,7 +103,7 @@ vi.mock('../vector-store', () => ({
 describe('Transcription Service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockSpawnStderr = 'local transcription failed'
+    mockTranscribeWithNativeModel.mockRejectedValue(new Error('Native transcription sidecar is required but was not found.'))
   })
 
   describe('BUG-TX-001: recordings.status stuck at transcribing after failure', () => {
@@ -161,13 +151,7 @@ describe('Transcription Service', () => {
       expect(hasFailureCall).toBe(true)
     })
 
-    it('should explain missing NeMo dependency for Parakeet', async () => {
-      mockSpawnStderr = [
-        'Traceback (most recent call last):',
-        '  File "<string>", line 12, in <module>',
-        "ImportError: No module named 'nemo'"
-      ].join('\n')
-
+    it('should report missing required native transcription sidecar', async () => {
       const mockQueueItem = {
         id: 'queue-1',
         recording_id: 'rec-123',
@@ -191,9 +175,15 @@ describe('Transcription Service', () => {
         (call: any[]) => call[0] === 'queue-1' && call[1] === 'failed'
       )
 
-      expect(failureCall?.[2]).toContain('NVIDIA NeMo is not installed')
-      expect(failureCall?.[2]).toContain('nemo_toolkit[asr]')
-      expect(failureCall?.[2]).toContain('nvidia/parakeet-tdt-0.6b-v3')
+      expect(mockTranscribeWithNativeModel).toHaveBeenCalledWith(
+        'parakeet',
+        'parakeet-v3',
+        '/recordings/test.wav',
+        '/tmp/recorder-transcription-test/native-parakeet.json',
+        'auto',
+        expect.any(Function)
+      )
+      expect(failureCall?.[2]).toContain('Native transcription sidecar is required')
     })
   })
 })

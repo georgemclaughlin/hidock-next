@@ -40,18 +40,7 @@ echo
 echo "================================"
 echo "Building Local Recorder Electron App"
 echo "================================"
-echo "Compiling local transcription sidecar..."
-echo
-
-npm run build:transcriber
-
-if [ $? -ne 0 ]; then
-    echo
-    echo "Sidecar build failed. Please check the error messages above."
-    exit 1
-fi
-
-echo "Compiling main process (backend) and renderer (frontend)..."
+echo "Compiling required Rust sidecar, main process, and renderer..."
 echo
 npm run build
 

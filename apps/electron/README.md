@@ -27,7 +27,6 @@ Linux/WSL packaging may also need libudev development headers for the existing U
 
 ```bash
 npm install
-npm run build:transcriber
 ```
 
 ## Run
@@ -85,13 +84,15 @@ Typical local data:
 
 ## Local Transcription
 
-The app supports two local engines through a Rust sidecar built with `transcribe-rs`.
+The app supports two local engines through a required Rust sidecar built with `transcribe-rs`.
 
 Build or refresh the sidecar:
 
 ```bash
 npm run build:transcriber
 ```
+
+`npm run dev`, `npm run build`, and packaged build scripts also build and verify the sidecar before continuing. If the sidecar is missing at runtime, app startup fails with an explicit error.
 
 Use `Settings -> Local Transcription -> Download Model` to download the selected model. Model files are stored under the local app data directory.
 
@@ -110,19 +111,8 @@ Parakeet V3 uses Handy's INT8 Parakeet V3 package and can run without a GPU. It 
 Whisper uses GGML models through the same sidecar. The app maps:
 
 ```text
-base/small -> whisper-small
-medium     -> whisper-medium
-```
-
-If the sidecar is missing, the old fallback fields still work:
-
-- Parakeet fallback uses the configured Python command with an embedded NeMo runner.
-- Whisper fallback uses the configured local `whisper` command.
-
-Example Parakeet fallback pre-cache command:
-
-```bash
-python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v3')"
+whisper-small
+whisper-medium
 ```
 
 ## Local Ollama

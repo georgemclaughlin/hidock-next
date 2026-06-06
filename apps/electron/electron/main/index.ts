@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, session, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, session, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
@@ -38,6 +38,7 @@ import {
   startTranscriptionProcessor,
   stopTranscriptionProcessor
 } from './services/transcription'
+import { assertNativeTranscriberAvailable } from './services/native-transcriber'
 
 let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
@@ -131,6 +132,10 @@ async function initializeServices(): Promise<void> {
   updateSplashStatus('Loading configuration...', 10)
   await initializeConfig()
   console.log('Config initialized')
+
+  updateSplashStatus('Checking local transcriber...', 15)
+  const transcriberPath = assertNativeTranscriberAvailable()
+  console.log(`Native transcription sidecar found: ${transcriberPath}`)
 
   updateSplashStatus('Setting up storage...', 20)
   await initializeFileStorage()
@@ -256,7 +261,16 @@ app.whenReady().then(async () => {
   })
 
   // Initialize all services before creating window (shows progress in splash)
-  await initializeServices()
+  try {
+    await initializeServices()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('Startup failed:', error)
+    updateSplashStatus(`Startup failed: ${message}`, 100)
+    dialog.showErrorBox('Local Recorder failed to start', message)
+    app.quit()
+    return
+  }
 
   createWindow()
 

@@ -140,8 +140,8 @@ vi.mock('../../services/transcription', () => ({
   processQueueManually: vi.fn().mockResolvedValue(undefined),
   downloadParakeetModel: vi.fn().mockResolvedValue({
     success: true,
-    model: 'nvidia/parakeet-tdt-0.6b-v3',
-    message: 'Parakeet model is cached locally.'
+    model: 'parakeet-v3',
+    message: 'Parakeet V3 is downloaded for local transcription.'
   })
 }))
 
@@ -151,10 +151,10 @@ vi.mock('../../services/config', () => ({
     transcription: {
       provider: 'local',
       localEngine: 'parakeet',
-      localCommand: 'whisper',
-      localModel: 'base',
-      parakeetPythonCommand: 'python',
-      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
+      localCommand: '',
+      localModel: 'whisper-small',
+      parakeetPythonCommand: '',
+      parakeetModel: 'parakeet-v3',
       autoTranscribe: true,
       language: 'auto'
     }
@@ -869,29 +869,29 @@ describe('Recording IPC Handlers', () => {
 
       const result = await handlers['transcription:downloadParakeetModel'](
         null,
-        'python',
-        'nvidia/parakeet-tdt-0.6b-v3'
+        undefined,
+        'parakeet-v3'
       )
 
-      expect(downloadParakeetModel).toHaveBeenCalledWith('python', 'nvidia/parakeet-tdt-0.6b-v3')
+      expect(downloadParakeetModel).toHaveBeenCalledWith(undefined, 'parakeet-v3')
       expect(result).toEqual({
         success: true,
-        model: 'nvidia/parakeet-tdt-0.6b-v3',
-        message: 'Parakeet model is cached locally.'
+        model: 'parakeet-v3',
+        message: 'Parakeet V3 is downloaded for local transcription.'
       })
     })
 
-    it('should return an error when the Parakeet download fails', async () => {
+    it('should return an error when the native Parakeet download fails', async () => {
       const { downloadParakeetModel } = await import('../../services/transcription')
-      vi.mocked(downloadParakeetModel).mockRejectedValueOnce(new Error('No module named nemo'))
+      vi.mocked(downloadParakeetModel).mockRejectedValueOnce(new Error('Native transcription sidecar is required but was not found.'))
 
       const result = await handlers['transcription:downloadParakeetModel'](
         null,
-        'python',
-        'nvidia/parakeet-tdt-0.6b-v3'
+        undefined,
+        'parakeet-v3'
       )
 
-      expect(result).toEqual({ success: false, error: 'No module named nemo' })
+      expect(result).toEqual({ success: false, error: 'Native transcription sidecar is required but was not found.' })
     })
   })
 })
