@@ -43,6 +43,22 @@ export function validateFilename(filename: string): string {
   return sanitized
 }
 
+function storageExtensionForHda(data: Buffer): '.mp3' | '.wav' {
+  if (data.length >= 4 && data.subarray(0, 4).toString('ascii') === 'RIFF') {
+    return '.wav'
+  }
+
+  if (data.length >= 3 && data.subarray(0, 3).toString('ascii') === 'ID3') {
+    return '.mp3'
+  }
+
+  if (data.length >= 2 && data[0] === 0xff && (data[1] & 0xe0) === 0xe0) {
+    return '.mp3'
+  }
+
+  return '.mp3'
+}
+
 export interface StorageInfo {
   dataPath: string
   recordingsPath: string
@@ -103,13 +119,13 @@ export async function saveRecording(
   // Validate input filename to prevent any path traversal in the source
   validateFilename(baseFilename)
 
-  // Preserve the original device filename, just change .hda to .wav
-  // Device format: 2025Dec15-100105-Rec22.hda -> 2025Dec15-100105-Rec22.wav
+  // Preserve the original device filename stem and store HDA with an extension
+  // matching the payload. Current HiDock/Hinote HDA payloads are MPEG/MP3.
   let cleanFilename = baseFilename
   const ext = extname(baseFilename).toLowerCase()
   const isHdaFile = ext === '.hda'
   if (isHdaFile) {
-    cleanFilename = baseFilename.slice(0, -4) + '.wav'
+    cleanFilename = baseFilename.slice(0, -4) + storageExtensionForHda(data)
   }
 
   // Validate the final path stays within recordings directory

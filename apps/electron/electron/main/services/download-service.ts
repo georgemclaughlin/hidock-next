@@ -461,15 +461,23 @@ class DownloadService {
         return { success: false, error: errMsg }
       }
 
-      // Save the file with the original recording date if available
+      // Save the file with the original recording date if available.
+      // saveRecording() stores HDA with an extension matching the payload.
       const filePath = await saveRecording(filename, data, undefined, item.recordingDate)
 
       // Update database
+      const localFilename = basename(filePath)
       const wavFilename = filename.replace(/\.hda$/i, '.wav')
-      addSyncedFile(filename, basename(filePath), filePath, data.length)
+      const normalizedFilename = DownloadService.normalizeFilename(filename)
+      addSyncedFile(filename, localFilename, filePath, data.length)
       markRecordingDownloaded(filename, filePath)
 
-      // Also try to mark by wav name if different
+      if (normalizedFilename !== filename) {
+        addSyncedFile(normalizedFilename, localFilename, filePath, data.length)
+        markRecordingDownloaded(normalizedFilename, filePath)
+      }
+
+      // Also try to mark by wav name for legacy downloads/database rows.
       if (wavFilename !== filename) {
         markRecordingDownloaded(wavFilename, filePath)
       }

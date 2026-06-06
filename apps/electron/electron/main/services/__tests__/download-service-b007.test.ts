@@ -80,6 +80,9 @@ vi.mock('fs', async (importOriginal) => {
 })
 
 // Need to import AFTER mocks
+import { existsSync } from 'fs'
+import { addSyncedFile, markRecordingDownloaded } from '../database'
+import { saveRecording } from '../file-storage'
 import { getDownloadService, normalizeHdaFilename, type DownloadQueueItem } from '../download-service'
 
 describe('DownloadService B-007 Fixes', () => {
@@ -88,6 +91,8 @@ describe('DownloadService B-007 Fixes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsFileSynced.mockReturnValue(false)
+    vi.mocked(existsSync).mockReturnValue(false)
+    vi.mocked(saveRecording).mockResolvedValue('/mock/path/file.wav')
     service = getDownloadService()
     // Clear the queue for test isolation
     const state = service.getState()
@@ -121,6 +126,23 @@ describe('DownloadService B-007 Fixes', () => {
 
     it('should only replace the last .hda extension', () => {
       expect(normalizeHdaFilename('file.hda.backup.hda')).toBe('file.hda.backup.mp3')
+    })
+
+    it('should save HDA downloads through HDA-aware storage and register the MP3 alias', async () => {
+      const data = Buffer.from([0xff, 0xf3, 0x40, 0x00])
+      vi.mocked(existsSync).mockImplementation((path) => String(path) === '/mock/recordings')
+      vi.mocked(saveRecording).mockResolvedValue('/mock/recordings/recording.mp3')
+
+      service.queueDownloads([{ filename: 'recording.hda', size: data.length }])
+      const result = await service.processDownload('recording.hda', data)
+
+      expect(result.success).toBe(true)
+      expect(saveRecording).toHaveBeenCalledWith('recording.hda', data, undefined, undefined)
+      expect(addSyncedFile).toHaveBeenCalledWith('recording.hda', 'recording.mp3', '/mock/recordings/recording.mp3', data.length)
+      expect(addSyncedFile).toHaveBeenCalledWith('recording.mp3', 'recording.mp3', '/mock/recordings/recording.mp3', data.length)
+      expect(markRecordingDownloaded).toHaveBeenCalledWith('recording.hda', '/mock/recordings/recording.mp3')
+      expect(markRecordingDownloaded).toHaveBeenCalledWith('recording.mp3', '/mock/recordings/recording.mp3')
+      expect(markRecordingDownloaded).toHaveBeenCalledWith('recording.wav', '/mock/recordings/recording.mp3')
     })
   })
 

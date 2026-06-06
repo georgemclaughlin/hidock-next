@@ -2875,6 +2875,45 @@ describe('RecorderDeviceService - List Recordings Debounce', () => {
     expect(result.length).toBe(1)
     expect(result[0].filename).toBe('new.wav')
   })
+
+  it('should adopt returned file count when device count is unavailable', async () => {
+    const service = new RecorderDeviceService()
+    const serviceAny = service as any
+
+    serviceAny.state.connected = true
+    serviceAny.initializationComplete = true
+    serviceAny.state.recordingCount = 0
+
+    mockJensen.listFiles.mockResolvedValue([
+      {
+        name: '2026Jun06-133812-Rec01.hda',
+        length: 1024,
+        duration: 10,
+        time: new Date('2026-06-06T18:38:12.000Z'),
+        version: 1,
+        signature: 'sig1'
+      },
+      {
+        name: '2026Jun06-133813-Rec02.hda',
+        length: 2048,
+        duration: 20,
+        time: new Date('2026-06-06T18:38:13.000Z'),
+        version: 1,
+        signature: 'sig2'
+      }
+    ])
+
+    const result = await service.listRecordings()
+
+    expect(result).toHaveLength(2)
+    expect(serviceAny.state.recordingCount).toBe(2)
+    expect(serviceAny.cachedRecordingCount).toBe(2)
+    expect(mockJensen.listFiles).toHaveBeenCalledWith(expect.any(Function), 0)
+
+    const logs = service.getActivityLog()
+    const listLog = logs.find((log: any) => log.message === 'CMD: List Files')
+    expect(listLog?.details).toContain('count unknown')
+  })
 })
 
 describe('RecorderDeviceService - List Recordings Lock Cases', () => {

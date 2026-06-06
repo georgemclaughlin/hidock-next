@@ -935,8 +935,11 @@ class RecorderDeviceService {
       }
     }
 
-    // Use already-known recording count from device init
-    const expectedFileCount = this.state.recordingCount || 0
+    // Use already-known recording count from device init. Some firmware does not
+    // expose card/file count, so zero can mean "unknown" before listFiles returns.
+    const expectedFileCount = this.state.recordingCount > 0 ? this.state.recordingCount : 0
+    const hasKnownFileCount = expectedFileCount > 0
+    const expectedFileCountLabel = hasKnownFileCount ? `${expectedFileCount}` : 'unknown'
 
     // Check cache — if recording count hasn't changed, ALWAYS return cache (even with forceRefresh).
     // The only reason to re-scan USB is if the device has NEW recordings (count changed).
@@ -951,7 +954,7 @@ class RecorderDeviceService {
       onProgress?.(expectedFileCount, expectedFileCount)
       return this.cachedRecordings!
     }
-    if (shouldLogQa()) console.log(`[RecorderDevice] >>> listRecordings: CACHE MISS (cached=${this.cachedRecordingCount}, device=${expectedFileCount}), scanning device`)
+    if (shouldLogQa()) console.log(`[RecorderDevice] >>> listRecordings: CACHE MISS (cached=${this.cachedRecordingCount}, device=${expectedFileCountLabel}), scanning device`)
 
     // Prevent concurrent requests - use synchronous lock to prevent TOCTOU race
     // Check both the lock flag (set synchronously) and promise (set after lock)
@@ -982,7 +985,7 @@ class RecorderDeviceService {
           })
         ])
         clearTimeout(timeoutId!)
-        onProgress?.(result.length, expectedFileCount)
+        onProgress?.(result.length, hasKnownFileCount ? expectedFileCount : result.length)
         return result
       } catch (error) {
         clearTimeout(timeoutId!)
@@ -1002,18 +1005,34 @@ class RecorderDeviceService {
     this.listRecordingsLock = true
 
     // User-visible scan start entry in Activity Log
-    this.logActivity('info', 'Scanning device files...', `Requesting file list (${expectedFileCount} total on device)`)
+    this.logActivity(
+      'info',
+      'Scanning device files...',
+      hasKnownFileCount
+        ? `Requesting file list (${expectedFileCount} total on device)`
+        : 'Requesting file list (device count unknown)'
+    )
 
     // Only log to console (DEBUG), not activity log - cache invalidation is internal detail
     if (!forceRefresh && this.cachedRecordings !== null && shouldLogQa()) {
-      console.log(`[RecorderDevice] Cache invalid: cached=${this.cachedRecordingCount}, device=${expectedFileCount}`)
+      console.log(`[RecorderDevice] Cache invalid: cached=${this.cachedRecordingCount}, device=${expectedFileCountLabel}`)
     }
 
-    this.logActivity('usb-out', 'CMD: List Files', `Requesting list of ${expectedFileCount} total files on device`)
-    if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: CALLING JENSEN.LISTFILES(), expected:', expectedFileCount)
+    this.logActivity(
+      'usb-out',
+      'CMD: List Files',
+      hasKnownFileCount
+        ? `Requesting list of ${expectedFileCount} total files on device`
+        : 'Requesting file list from device; count unknown'
+    )
+    if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: CALLING JENSEN.LISTFILES(), expected:', expectedFileCountLabel)
 
     // BUG-002: Update connection status so UI shows scan progress instead of frozen "ready"
-    this.updateStatus('counting-files', `Scanning files (0/${expectedFileCount})...`, 0)
+    this.updateStatus(
+      'counting-files',
+      hasKnownFileCount ? `Scanning files (0/${expectedFileCount})...` : 'Scanning files...',
+      0
+    )
 
     // Send initial progress immediately so UI shows 0/N
     onProgress?.(0, expectedFileCount)
@@ -1037,7 +1056,7 @@ class RecorderDeviceService {
       animationProgress = Math.floor(easeOut * expectedFileCount)
       onProgress?.(animationProgress, expectedFileCount)
       const pct = expectedFileCount > 0 ? Math.round((animationProgress / expectedFileCount) * 100) : 0
-      if (pct !== lastStatusUpdateProgress && pct % 5 === 0) {
+      if (hasKnownFileCount && pct !== lastStatusUpdateProgress && pct % 5 === 0) {
         lastStatusUpdateProgress = pct
         this.updateStatus('counting-files', `Scanning files (${animationProgress}/${expectedFileCount})...`, pct)
       }
@@ -1050,9 +1069,14 @@ class RecorderDeviceService {
           if (filesFound > animationProgress) {
             animationCancelled = true
             clearInterval(animationInterval)
-            onProgress?.(filesFound, expectedFiles)
-            const pct = expectedFiles > 0 ? Math.round((filesFound / expectedFiles) * 100) : 0
-            this.updateStatus('counting-files', `Scanning files (${filesFound}/${expectedFiles})...`, pct)
+            const progressExpectedFiles = expectedFiles > 0 ? expectedFiles : filesFound
+            onProgress?.(filesFound, progressExpectedFiles)
+            const pct = progressExpectedFiles > 0 ? Math.round((filesFound / progressExpectedFiles) * 100) : 0
+            this.updateStatus(
+              'counting-files',
+              progressExpectedFiles > 0 ? `Scanning files (${filesFound}/${progressExpectedFiles})...` : 'Scanning files...',
+              pct
+            )
           }
         }, expectedFileCount)
 
@@ -1076,10 +1100,15 @@ class RecorderDeviceService {
         }
 
         const recordings = files.map((f) => this.fileInfoToRecording(f))
+        const actualFileCount = recordings.length
 
         // Update cache
         this.cachedRecordings = recordings
-        this.cachedRecordingCount = expectedFileCount
+        this.cachedRecordingCount = actualFileCount
+        if (this.state.recordingCount !== actualFileCount) {
+          this.state.recordingCount = actualFileCount
+          this.notifyStateChange()
+        }
 
         // Fix 6: Reset failure counters on success
         this.listRecordingsFailureCount = 0
