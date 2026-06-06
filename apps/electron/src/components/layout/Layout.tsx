@@ -9,7 +9,6 @@ import {
   BookOpen,
   Bot,
   Compass,
-  ListTodo,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -64,12 +63,6 @@ const navigationSections: NavigationSection[] = [
       { name: 'People', href: '/people', icon: Users },
       { name: 'Projects', href: '/projects', icon: Folder },
       { name: 'Calendar', href: '/calendar', icon: Calendar }
-    ]
-  },
-  {
-    title: 'ACTIONS',
-    items: [
-      { name: 'Actionables', href: '/actionables', icon: ListTodo }
     ]
   },
   {

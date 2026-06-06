@@ -456,13 +456,6 @@ export function Library() {
     }
   }
 
-  const handleGenerateOutput = useCallback(
-    (recording: UnifiedRecording) => {
-      navigate('/actionables', { state: { sourceId: recording.knowledgeCaptureId || recording.id, action: 'generate' } })
-    },
-    [navigate]
-  )
-
   const handleBulkDownload = async () => {
     if (!deviceConnected) return
     const deviceOnlyRecordings = filteredRecordings.filter((r) => isDeviceOnly(r))
@@ -702,13 +695,6 @@ export function Library() {
       handleDelete(recording)
     },
     [handleDelete]
-  )
-
-  const handleGenerateOutputCallback = useCallback(
-    (recording: UnifiedRecording) => {
-      handleGenerateOutput(recording)
-    },
-    [handleGenerateOutput]
   )
 
   const handleToggleTranscriptCallback = useCallback(
@@ -977,7 +963,6 @@ export function Library() {
                           onDownload={() => handleDownloadCallback(recording)}
                           onDelete={() => handleDeleteCallback(recording)}
                           onTranscribe={() => queueTranscription(recording)}
-                          onGenerateOutput={() => handleGenerateOutputCallback(recording)}
                           isDownloading={isDeviceOnly(recording) && isDownloading(recording.deviceFilename)}
                           downloadProgress={
                             isDeviceOnly(recording) ? downloadQueue.get(recording.deviceFilename)?.progress : undefined
@@ -1040,7 +1025,6 @@ export function Library() {
                           onDownload={() => handleDownloadCallback(recording)}
                           onDelete={() => handleDeleteCallback(recording)}
                           onTranscribe={() => queueTranscription(recording)}
-                          onGenerateOutput={() => handleGenerateOutputCallback(recording)}
                           onToggleTranscript={() => handleToggleTranscriptCallback(recording.id)}
                           onNavigateToMeeting={handleNavigateToMeeting}
                         />

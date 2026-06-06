@@ -15,7 +15,6 @@ import { registerDownloadServiceHandlers } from '../services/download-service'
 import { registerIntegrityHandlers } from './integrity-handlers'
 import { registerKnowledgeHandlers } from './knowledge-handlers'
 import { registerAssistantHandlers } from './assistant-handlers'
-import { registerActionablesHandlers } from './actionables-handlers'
 import { registerMeetingsHandlers } from './meetings-handlers'
 import { registerJensenHandlers } from './jensen-handlers'
 
@@ -38,7 +37,6 @@ export function registerIpcHandlers(): void {
   registerIntegrityHandlers()
   registerKnowledgeHandlers()
   registerAssistantHandlers()
-  registerActionablesHandlers()
   registerMeetingsHandlers()
   registerJensenHandlers()
 

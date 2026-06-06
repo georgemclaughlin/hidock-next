@@ -20,7 +20,6 @@ const Library = lazyWithRetry(() => import('@/pages/Library'))
 const People = lazyWithRetry(() => import('@/pages/People'))
 const PersonDetail = lazyWithRetry(() => import('@/pages/PersonDetail'))
 const Projects = lazyWithRetry(() => import('@/pages/Projects'))
-const Actionables = lazyWithRetry(() => import('@/pages/Actionables'))
 const Settings = lazyWithRetry(() => import('@/pages/Settings'))
 
 function App(): React.ReactElement {
@@ -163,16 +162,6 @@ function App(): React.ReactElement {
               <ErrorBoundary>
                 <Suspense fallback={<LoadingSpinner message="Loading projects..." />}>
                   <Projects />
-                </Suspense>
-              </ErrorBoundary>
-            }
-          />
-          <Route
-            path="/actionables"
-            element={
-              <ErrorBoundary>
-                <Suspense fallback={<LoadingSpinner message="Loading actionables..." />}>
-                  <Actionables />
                 </Suspense>
               </ErrorBoundary>
             }

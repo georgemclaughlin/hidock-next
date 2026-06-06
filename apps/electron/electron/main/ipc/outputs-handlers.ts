@@ -2,7 +2,7 @@
  * Outputs IPC Handlers
  *
  * Handles output generation IPC communication using the Result pattern.
- * Includes server-side rate limiting (B-ACT-001).
+ * Includes server-side rate limiting.
  */
 
 import { ipcMain, clipboard, dialog, BrowserWindow } from 'electron'
@@ -11,10 +11,8 @@ import { getOutputGeneratorService } from '../services/output-generator'
 import { success, error, Result } from '../types/api'
 import { GenerateOutputRequestSchema } from '../validation/outputs'
 import type { OutputTemplate, GenerateOutputResponse } from '../types/api'
-import { run, runInTransaction, queryOne } from '../services/database'
-import { randomUUID } from 'crypto'
 
-// B-ACT-001: Server-side rate limiting — sliding window per actionable/knowledge capture
+// Server-side rate limiting — sliding window per knowledge capture/context
 const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 5
 const generationTimestamps: Map<string, number[]> = new Map()
@@ -74,8 +72,7 @@ export function registerOutputsHandlers(): void {
           return error('VALIDATION_ERROR', 'Invalid generate request', parsed.error.format())
         }
 
-        // B-ACT-001: Server-side rate limiting per knowledge capture or actionable
-        const rateLimitKey = parsed.data.actionableId || parsed.data.knowledgeCaptureId || 'global'
+        const rateLimitKey = parsed.data.knowledgeCaptureId || parsed.data.meetingId || parsed.data.projectId || parsed.data.contactId || 'global'
         if (!checkRateLimit(rateLimitKey)) {
           return error(
             'RATE_LIMITED',
@@ -84,26 +81,6 @@ export function registerOutputsHandlers(): void {
         }
 
         const result = await generator.generate(parsed.data)
-
-        // If actionableId was provided, link the result
-        if (parsed.data.actionableId) {
-          try {
-            const outputId = randomUUID()
-            const now = new Date().toISOString()
-            
-            runInTransaction(() => {
-              // Create output entry
-              run('INSERT INTO outputs (id, knowledge_capture_id, template_id, template_name, content, generated_at) VALUES (?, ?, ?, ?, ?, ?)',
-                [outputId, parsed.data.knowledgeCaptureId || '', parsed.data.templateId, parsed.data.templateId, result.content, now])
-              
-              // Update actionable status and link artifact
-              run('UPDATE actionables SET status = ?, artifact_id = ?, generated_at = ?, updated_at = ? WHERE id = ?',
-                ['generated', outputId, now, now, parsed.data.actionableId])
-            })
-          } catch (linkError) {
-            console.error('Failed to link output to actionable:', linkError)
-          }
-        }
 
         return success({
           content: result.content,
@@ -189,59 +166,6 @@ export function registerOutputsHandlers(): void {
       } catch (err) {
         console.error('outputs:saveToFile error:', err)
         return error('INTERNAL_ERROR', 'Failed to save file', err)
-      }
-    }
-  )
-
-  /**
-   * B-ACT-004: Get existing output for an actionable by its artifact_id
-   */
-  ipcMain.handle(
-    'outputs:getByActionableId',
-    async (_, actionableId: unknown): Promise<Result<GenerateOutputResponse | null>> => {
-      try {
-        if (typeof actionableId !== 'string' || !actionableId) {
-          return error('VALIDATION_ERROR', 'actionableId must be a non-empty string')
-        }
-
-        // Look up the actionable to get its artifact_id
-        const actionable = queryOne<{ artifact_id: string | null }>(
-          'SELECT artifact_id FROM actionables WHERE id = ?',
-          [actionableId]
-        )
-
-        if (!actionable) {
-          return error('NOT_FOUND', `Actionable ${actionableId} not found`)
-        }
-
-        if (!actionable.artifact_id) {
-          // No output generated yet
-          return success(null)
-        }
-
-        // Fetch the output by artifact_id
-        const output = queryOne<{
-          content: string
-          template_id: string
-          generated_at: string
-        }>(
-          'SELECT content, template_id, generated_at FROM outputs WHERE id = ?',
-          [actionable.artifact_id]
-        )
-
-        if (!output) {
-          // artifact_id references a missing output — stale reference
-          return success(null)
-        }
-
-        return success({
-          content: output.content,
-          templateId: output.template_id as any,
-          generatedAt: output.generated_at
-        })
-      } catch (err) {
-        console.error('outputs:getByActionableId error:', err)
-        return error('INTERNAL_ERROR', 'Failed to get output for actionable', err)
       }
     }
   )

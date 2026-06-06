@@ -23,7 +23,6 @@ export interface GenerateOutputOptions {
   projectId?: string
   contactId?: string
   knowledgeCaptureId?: string
-  actionableId?: string
 }
 
 export interface GenerateOutputResult {

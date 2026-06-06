@@ -254,7 +254,6 @@ export interface GenerateOutputRequest {
   projectId?: string
   contactId?: string
   knowledgeCaptureId?: string
-  actionableId?: string
 }
 
 /**

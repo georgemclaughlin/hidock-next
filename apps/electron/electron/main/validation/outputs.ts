@@ -33,8 +33,7 @@ export const GenerateOutputRequestSchema = z.object({
   meetingId: UUIDSchema.optional(),
   projectId: UUIDSchema.optional(),
   contactId: UUIDSchema.optional(),
-  knowledgeCaptureId: UUIDSchema.optional(),
-  actionableId: UUIDSchema.optional()
+  knowledgeCaptureId: UUIDSchema.optional()
 }).refine(
   (data) => data.meetingId || data.projectId || data.contactId || data.knowledgeCaptureId,
   { message: 'At least one context (meetingId, projectId, contactId, or knowledgeCaptureId) must be provided' }

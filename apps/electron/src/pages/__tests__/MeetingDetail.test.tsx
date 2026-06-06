@@ -37,7 +37,6 @@ vi.mock('@/components/ui/toaster', () => ({
 
 // Mock electronAPI
 const mockGetDetails = vi.fn()
-const mockGetByMeeting = vi.fn()
 const mockUpdate = vi.fn()
 const mockSelectMeeting = vi.fn()
 const mockGetCandidates = vi.fn()
@@ -52,9 +51,6 @@ beforeEach(() => {
     recordings: {
       selectMeeting: mockSelectMeeting,
       getCandidates: mockGetCandidates,
-    },
-    actionables: {
-      getByMeeting: mockGetByMeeting,
     },
   }
 })
@@ -91,7 +87,6 @@ const validMeetingDetails = {
     updated_at: '2026-03-01T00:00:00.000Z',
   },
   recordings: [],
-  actionables: [],
 }
 
 describe('MeetingDetail', () => {
@@ -106,8 +101,6 @@ describe('MeetingDetail', () => {
         },
       }
       mockGetDetails.mockResolvedValue(details)
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       await waitFor(() => {
@@ -117,8 +110,6 @@ describe('MeetingDetail', () => {
 
     it('should calculate correct duration for valid dates', async () => {
       mockGetDetails.mockResolvedValue(validMeetingDetails)
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       await waitFor(() => {
@@ -130,8 +121,6 @@ describe('MeetingDetail', () => {
   describe('Empty recordings state', () => {
     it('should show empty state when no recordings are linked', async () => {
       mockGetDetails.mockResolvedValue(validMeetingDetails)
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       await waitFor(() => {
@@ -166,8 +155,6 @@ describe('MeetingDetail', () => {
         ],
       }
       mockGetDetails.mockResolvedValue(detailsWithRecordings)
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       await waitFor(() => {
@@ -179,8 +166,6 @@ describe('MeetingDetail', () => {
   describe('Loading and error states', () => {
     it('should show loading state initially', () => {
       mockGetDetails.mockReturnValue(new Promise(() => {})) // never resolves
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       expect(screen.getByText('Loading meeting details...')).toBeInTheDocument()
@@ -211,8 +196,6 @@ describe('MeetingDetail', () => {
   describe('Attendees display', () => {
     it('should show attendees when present', async () => {
       mockGetDetails.mockResolvedValue(validMeetingDetails)
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       await waitFor(() => {
@@ -236,8 +219,6 @@ describe('MeetingDetail', () => {
         },
       }
       mockGetDetails.mockResolvedValue(details)
-      mockGetByMeeting.mockResolvedValue([])
-
       renderMeetingDetail('m1')
 
       await waitFor(() => {

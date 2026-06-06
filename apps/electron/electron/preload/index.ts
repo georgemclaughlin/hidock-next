@@ -71,7 +71,6 @@ import type { Contact, ContactWithMeetings, Project, ProjectWithMeetings } from 
 import type { MigrationAPI } from './migration-types'
 import type { 
   KnowledgeCapture, 
-  Actionable, 
   Conversation, 
   Message 
 } from '../../src/types/knowledge'
@@ -198,14 +197,6 @@ export interface ElectronAPI {
     update: (id: string, updates: Partial<KnowledgeCapture>) => Promise<{ success: boolean; error?: string }>
   }
 
-  // Actionables
-  actionables: {
-    getAll: (options?: { status?: string }) => Promise<Actionable[]>
-    getByMeeting: (meetingId: string) => Promise<Actionable[]>
-    updateStatus: (id: string, status: string) => Promise<{ success: boolean; error?: string }>
-    generateOutput: (actionableId: string) => Promise<{ success: boolean; error?: string; data?: any }>
-  }
-
   // Assistant
   assistant: {
     getConversations: () => Promise<Conversation[]>
@@ -276,7 +267,6 @@ export interface ElectronAPI {
   outputs: {
     getTemplates: () => Promise<Result<OutputTemplate[]>>
     generate: (request: GenerateOutputRequest) => Promise<Result<GenerateOutputResponse>>
-    getByActionableId: (actionableId: string) => Promise<Result<GenerateOutputResponse | null>>
     copyToClipboard: (content: string) => Promise<Result<void>>
     saveToFile: (content: string, suggestedName?: string) => Promise<Result<string>>
   }
@@ -626,13 +616,6 @@ const electronAPI: ElectronAPI = {
     update: (id, updates) => callIPC('knowledge:update', id, updates)
   },
 
-  actionables: {
-    getAll: (options) => callIPC('actionables:getAll', options),
-    getByMeeting: (meetingId) => callIPC('actionables:getByMeeting', meetingId),
-    updateStatus: (id, status) => callIPC('actionables:updateStatus', id, status),
-    generateOutput: (actionableId) => callIPC('actionables:generateOutput', actionableId)
-  },
-
   assistant: {
     getConversations: () => callIPC('assistant:getConversations'),
     createConversation: (title) => callIPC('assistant:createConversation', title),
@@ -705,7 +688,6 @@ const electronAPI: ElectronAPI = {
   outputs: {
     getTemplates: () => callIPC('outputs:getTemplates'),
     generate: (request) => callIPC('outputs:generate', request),
-    getByActionableId: (actionableId) => callIPC('outputs:getByActionableId', actionableId),
     copyToClipboard: (content) => callIPC('outputs:copyToClipboard', content),
     saveToFile: (content, suggestedName) => callIPC('outputs:saveToFile', content, suggestedName)
   },

@@ -52,7 +52,6 @@ export interface CleanupSuggestion {
   reason: string
   hasTranscript: boolean
   hasMeeting: boolean
-  actionableId?: string
 }
 
 export class StoragePolicyService {
@@ -202,8 +201,7 @@ export class StoragePolicyService {
           sizeBytes: recording.file_size ?? null,
           reason: `Exceeds ${tier} tier retention (${maxAge} days) by ${ageInDays - maxAge} days`,
           hasTranscript: recording.transcription_status === 'complete',
-          hasMeeting: !!recording.meeting_id,
-          actionableId: (recording as any).actionable_id // If linked
+          hasMeeting: !!recording.meeting_id
         })
       }
     }

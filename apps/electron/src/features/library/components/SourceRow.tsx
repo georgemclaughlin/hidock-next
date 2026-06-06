@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Play, X, AlertCircle, Download, Trash2, Wand2, FileText, RefreshCw } from 'lucide-react'
+import { Play, X, AlertCircle, Download, Trash2, Wand2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -28,7 +28,6 @@ interface SourceRowProps {
   onDownload?: () => void
   onDelete?: () => void
   onTranscribe?: () => void
-  onGenerateOutput?: () => void
   // Download state for device-only recordings
   isDownloading?: boolean
   downloadProgress?: number
@@ -50,7 +49,6 @@ export const SourceRow = memo(function SourceRow({
   onDownload,
   onDelete,
   onTranscribe,
-  onGenerateOutput,
   isDownloading = false,
   downloadProgress,
   deviceConnected = false
@@ -139,17 +137,6 @@ export const SourceRow = memo(function SourceRow({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-              )}
-
-              {onGenerateOutput && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={(e) => { e.stopPropagation(); onGenerateOutput(); }}
-                  title="Generate artifact from this capture"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                </Button>
               )}
 
               {hasLocalPath(recording) && recording.transcriptionStatus !== 'complete' && onTranscribe && (

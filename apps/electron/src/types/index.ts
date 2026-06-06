@@ -23,14 +23,11 @@
  * "explicitly empty" (null) values, improving type safety.
  */
 
-import type { Actionable } from './knowledge'
-
 // =============================================================================
 // Re-export store types
 // =============================================================================
 
 export * from './stores'
-export type { Actionable } from './knowledge'
 
 // =============================================================================
 // Existing Types
@@ -104,7 +101,6 @@ export interface RecordingWithTranscript extends Recording {
 export interface MeetingDetails {
   meeting: Meeting
   recordings: RecordingWithTranscript[]
-  actionables?: Actionable[]
 }
 
 export interface ChatMessage {
