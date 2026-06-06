@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "npm run build:transcriber && npm run require:transcriber && electron-vite dev",
     "build": "npm run build:transcriber && npm run require:transcriber && electron-vite build",
-    "build:transcriber": "cd native/transcriber && cargo build --release",
+    "build:transcriber": "node scripts/build-transcriber.mjs",
     "require:transcriber": "node scripts/require-transcriber.mjs",
     "check:transcriber": "cd native/transcriber && cargo check",
     "preview": "npm run require:transcriber && electron-vite preview",
