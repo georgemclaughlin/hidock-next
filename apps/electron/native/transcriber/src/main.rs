@@ -42,6 +42,10 @@ const TRANSCRIPTION_TAIL_CONTEXT_SECS: f32 = 2.0;
 const TRANSCRIPTION_TAIL_WORD_GRACE_SECS: f32 = 0.15;
 const MIN_TAIL_RETRY_SECS: f32 = 1.0;
 const MIN_TAIL_RETRY_RMS: f32 = 0.0015;
+const PARAKEET_CHUNKING_THRESHOLD_SECS: f32 = 10.0 * 60.0;
+const PARAKEET_CHUNK_SECS: f32 = 5.0 * 60.0;
+const PARAKEET_CHUNK_OVERLAP_SECS: f32 = 2.0;
+const DIARIZATION_MAX_FULL_AUDIO_SECS: f32 = 60.0 * 60.0;
 const TRANSCRIPT_SEGMENT_MERGE_GAP_SECS: f64 = 0.8;
 const TRANSCRIPT_SEGMENT_MAX_SECS: f64 = 18.0;
 const TRANSCRIPT_SEGMENT_MAX_CHARS: usize = 320;
@@ -786,15 +790,22 @@ fn transcribe(
                 timestamp_granularity: Some(TimestampGranularity::Word),
                 ..Default::default()
             };
-            transcribe_parakeet_with_tail_rescue(&mut engine, &audio, &params, input)?
+            transcribe_parakeet(&mut engine, &audio, &params, input)?
         }
     };
 
     let mut segments = transcript_segments(result.segments);
     let text = transcript_text_from_segments(&segments).unwrap_or(result.text);
     emit_transcription_progress("diarizing speakers", 72);
-    if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
-        eprintln!("Speaker diarization skipped: {error:#}");
+    let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
+    if audio_duration_secs <= DIARIZATION_MAX_FULL_AUDIO_SECS {
+        if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
+            eprintln!("Speaker diarization skipped: {error:#}");
+        }
+    } else {
+        eprintln!(
+            "Speaker diarization skipped: audio duration {audio_duration_secs:.1}s exceeds {DIARIZATION_MAX_FULL_AUDIO_SECS:.1}s full-audio limit"
+        );
     }
     emit_transcription_progress("finalizing transcript", 84);
     smooth_short_speaker_runs(&mut segments);
@@ -819,6 +830,148 @@ fn transcribe_parakeet_with_tail_rescue(
 
     rescue_parakeet_tail(engine, audio, params, &mut result, input)?;
     Ok(result)
+}
+
+fn transcribe_parakeet(
+    engine: &mut ParakeetModel,
+    audio: &[f32],
+    params: &ParakeetParams,
+    input: &Path,
+) -> Result<transcribe_rs::TranscriptionResult> {
+    let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
+    if audio_duration_secs <= PARAKEET_CHUNKING_THRESHOLD_SECS {
+        return transcribe_parakeet_with_tail_rescue(engine, audio, params, input);
+    }
+
+    transcribe_parakeet_chunked(engine, audio, params, input)
+}
+
+fn transcribe_parakeet_chunked(
+    engine: &mut ParakeetModel,
+    audio: &[f32],
+    params: &ParakeetParams,
+    input: &Path,
+) -> Result<transcribe_rs::TranscriptionResult> {
+    let primary_chunk_samples = seconds_to_samples(PARAKEET_CHUNK_SECS).max(1);
+    let overlap_samples = seconds_to_samples(PARAKEET_CHUNK_OVERLAP_SECS);
+    let total_chunks = audio.len().div_ceil(primary_chunk_samples).max(1);
+    let mut chunk_results = Vec::with_capacity(total_chunks);
+
+    eprintln!(
+        "Parakeet chunked transcription: {:.1}s audio, {total_chunks} chunks of {:.1}s with {:.1}s overlap",
+        audio.len() as f32 / TARGET_SAMPLE_RATE as f32,
+        PARAKEET_CHUNK_SECS,
+        PARAKEET_CHUNK_OVERLAP_SECS
+    );
+
+    for chunk_index in 0..total_chunks {
+        let primary_start = chunk_index * primary_chunk_samples;
+        if primary_start >= audio.len() {
+            break;
+        }
+
+        let primary_end = ((chunk_index + 1) * primary_chunk_samples).min(audio.len());
+        let slice_start = if chunk_index == 0 {
+            0
+        } else {
+            primary_start.saturating_sub(overlap_samples)
+        };
+        let slice_end = if primary_end >= audio.len() {
+            audio.len()
+        } else {
+            (primary_end + overlap_samples).min(audio.len())
+        };
+
+        let mut chunk_result = transcribe_parakeet_with_tail_rescue(
+            engine,
+            &audio[slice_start..slice_end],
+            params,
+            input,
+        )
+        .with_context(|| {
+            format!(
+                "Parakeet chunk {} of {} failed for {}",
+                chunk_index + 1,
+                total_chunks,
+                input.display()
+            )
+        })?;
+        chunk_result.offset_timestamps(samples_to_seconds(slice_start));
+
+        let filtered_segments = chunk_result
+            .segments
+            .take()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|segment| {
+                segment_belongs_to_primary_window(segment, primary_start, primary_end)
+            })
+            .collect::<Vec<_>>();
+        let text = transcription_text_from_segments(Some(&filtered_segments)).unwrap_or_default();
+        if !text.is_empty() {
+            chunk_results.push(transcribe_rs::TranscriptionResult {
+                text,
+                segments: Some(filtered_segments),
+            });
+        }
+
+        let progress = 20
+            + (((chunk_index + 1) as f32 / total_chunks as f32) * 50.0)
+                .round()
+                .clamp(0.0, 50.0) as u8;
+        emit_transcription_progress("transcribing audio", progress);
+    }
+
+    Ok(merge_transcription_results(chunk_results))
+}
+
+fn seconds_to_samples(seconds: f32) -> usize {
+    (seconds * TARGET_SAMPLE_RATE as f32).round().max(0.0) as usize
+}
+
+fn samples_to_seconds(samples: usize) -> f32 {
+    samples as f32 / TARGET_SAMPLE_RATE as f32
+}
+
+fn segment_belongs_to_primary_window(
+    segment: &transcribe_rs::TranscriptionSegment,
+    primary_start_samples: usize,
+    primary_end_samples: usize,
+) -> bool {
+    if segment.text.trim().is_empty() {
+        return false;
+    }
+
+    let primary_start = samples_to_seconds(primary_start_samples);
+    let primary_end = samples_to_seconds(primary_end_samples);
+    let midpoint = (segment.start + segment.end) / 2.0;
+
+    midpoint >= primary_start && midpoint < primary_end
+}
+
+fn merge_transcription_results(
+    results: Vec<transcribe_rs::TranscriptionResult>,
+) -> transcribe_rs::TranscriptionResult {
+    let text = results
+        .iter()
+        .map(|result| result.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let segments = results
+        .into_iter()
+        .filter_map(|result| result.segments)
+        .flatten()
+        .collect::<Vec<_>>();
+
+    transcribe_rs::TranscriptionResult {
+        text,
+        segments: if segments.is_empty() {
+            None
+        } else {
+            Some(segments)
+        },
+    }
 }
 
 fn rescue_parakeet_tail(
