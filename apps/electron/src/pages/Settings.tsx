@@ -25,6 +25,12 @@ const RAG_DEFAULTS = {
 
 type LocalTranscriptionEngine = AppConfig['transcription']['localEngine']
 
+type TranscriptionModelOption = {
+  id: string
+  name: string
+  engine_type: LocalTranscriptionEngine
+}
+
 export function Settings() {
   // SM-09 fix: Use granular selectors
   const { config, loadConfig, updateConfig, configLoading } = useConfigStore()
@@ -41,6 +47,7 @@ export function Settings() {
   const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
   const [modelDownloading, setModelDownloading] = useState(false)
+  const [transcriptionModels, setTranscriptionModels] = useState<TranscriptionModelOption[]>([])
   const [storageLoading, setStorageLoading] = useState(false)
   // C-CHAT: RAG context window — default matches config.ts (10)
   const [ragContextSize, setRagContextSize] = useState<number>(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
@@ -100,6 +107,32 @@ export function Settings() {
     transcriptionLanguage
   ])
 
+  const parakeetModelOptions = useMemo(
+    () => transcriptionModels.filter((model) => model.engine_type === 'parakeet'),
+    [transcriptionModels]
+  )
+  const whisperModelOptions = useMemo(
+    () => transcriptionModels.filter((model) => model.engine_type === 'whisper'),
+    [transcriptionModels]
+  )
+  const availableTranscriptionEngines = useMemo<LocalTranscriptionEngine[]>(() => {
+    if (transcriptionModels.length === 0) return ['parakeet', 'whisper']
+
+    return [
+      parakeetModelOptions.length > 0 ? 'parakeet' : null,
+      whisperModelOptions.length > 0 ? 'whisper' : null
+    ].filter((engine): engine is LocalTranscriptionEngine => Boolean(engine))
+  }, [parakeetModelOptions.length, transcriptionModels.length, whisperModelOptions.length])
+  const parakeetSelectOptions = parakeetModelOptions.length > 0
+    ? parakeetModelOptions
+    : [{ id: 'parakeet-v3', name: 'Parakeet V3', engine_type: 'parakeet' as const }]
+  const whisperSelectOptions = whisperModelOptions.length > 0
+    ? whisperModelOptions
+    : [
+        { id: 'whisper-small', name: 'Whisper Small', engine_type: 'whisper' as const },
+        { id: 'whisper-medium', name: 'Whisper Medium', engine_type: 'whisper' as const }
+      ]
+
   // Stable loadConfig with useCallback for dependency array
   const loadConfigStable = useCallback(async () => {
     try {
@@ -115,6 +148,7 @@ export function Settings() {
   useEffect(() => {
     loadConfigStable()
     loadStorageInfo()
+    loadTranscriptionModels()
   }, [loadConfigStable])
 
   useEffect(() => {
@@ -128,6 +162,37 @@ export function Settings() {
       setRagContextSize(config.chat.maxContextChunks)
     }
   }, [config])
+
+  useEffect(() => {
+    if (transcriptionModels.length === 0) return
+
+    if (!availableTranscriptionEngines.includes(transcriptionEngine) && availableTranscriptionEngines.length > 0) {
+      setTranscriptionEngine(availableTranscriptionEngines[0])
+    }
+    if (parakeetModelOptions.length > 0 && !parakeetModelOptions.some((model) => model.id === parakeetModel)) {
+      setParakeetModel(parakeetModelOptions[0].id)
+    }
+    if (whisperModelOptions.length > 0 && !whisperModelOptions.some((model) => model.id === transcriptionModel)) {
+      setTranscriptionModel(whisperModelOptions[0].id)
+    }
+  }, [
+    availableTranscriptionEngines,
+    parakeetModel,
+    parakeetModelOptions,
+    transcriptionEngine,
+    transcriptionModel,
+    transcriptionModels.length,
+    whisperModelOptions
+  ])
+
+  const loadTranscriptionModels = async () => {
+    try {
+      const models = await window.electronAPI.recordings.getTranscriptionModels()
+      setTranscriptionModels(models)
+    } catch (error) {
+      console.error('Failed to load transcription models:', error)
+    }
+  }
 
   const loadStorageInfo = async () => {
     try {
@@ -334,8 +399,12 @@ export function Settings() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="parakeet">Parakeet</SelectItem>
-                    <SelectItem value="whisper">Whisper</SelectItem>
+                    {availableTranscriptionEngines.includes('parakeet') && (
+                      <SelectItem value="parakeet">Parakeet</SelectItem>
+                    )}
+                    {availableTranscriptionEngines.includes('whisper') && (
+                      <SelectItem value="whisper">Whisper</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -353,7 +422,9 @@ export function Settings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="parakeet-v3">Parakeet V3</SelectItem>
+                        {parakeetSelectOptions.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -372,8 +443,9 @@ export function Settings() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="whisper-small">Whisper Small</SelectItem>
-                          <SelectItem value="whisper-medium">Whisper Medium</SelectItem>
+                          {whisperSelectOptions.map((model) => (
+                            <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

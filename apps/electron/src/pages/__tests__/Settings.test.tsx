@@ -98,6 +98,24 @@ global.window.electronAPI = {
   },
   recordings: {
     downloadParakeetModel: vi.fn(),
+    getTranscriptionModels: vi.fn().mockResolvedValue([
+      {
+        id: 'parakeet-v3',
+        name: 'Parakeet V3',
+        description: 'CPU-optimized Parakeet V3 INT8 model.',
+        size_mb: 456,
+        is_downloaded: false,
+        engine_type: 'parakeet'
+      },
+      {
+        id: 'whisper-small',
+        name: 'Whisper Small',
+        description: 'CPU-capable Whisper model with modest resource usage.',
+        size_mb: 465,
+        is_downloaded: false,
+        engine_type: 'whisper'
+      }
+    ]),
     downloadTranscriptionModel: mockDownloadTranscriptionModel
   }
 } as any
