@@ -16,16 +16,18 @@ No hosted transcription provider is configured in this supported path.
 
 - Node.js 20+
 - npm
+- Rust and CMake for the local transcription sidecar
 - Electron-compatible desktop environment
 - USB access to the HiDock device
-- Optional: local Parakeet Python environment
-- Optional: local Whisper command
 - Optional: Ollama for transcript chat/search
+
+Linux/WSL packaging may also need libudev development headers for the existing USB native module, for example `sudo apt install libudev-dev`. If the `usb` native rebuild fails with C++ language feature errors, run packaging with `CXXFLAGS="-std=c++17"`.
 
 ## Install
 
 ```bash
 npm install
+npm run build:transcriber
 ```
 
 ## Run
@@ -83,35 +85,45 @@ Typical local data:
 
 ## Local Transcription
 
-The app supports two local engines.
+The app supports two local engines through a Rust sidecar built with `transcribe-rs`.
+
+Build or refresh the sidecar:
+
+```bash
+npm run build:transcriber
+```
+
+Use `Settings -> Local Transcription -> Download Model` to download the selected model. Model files are stored under the local HiDock data directory.
 
 ### Parakeet
 
 Default engine:
 
 ```text
-nvidia/parakeet-tdt-0.6b-v3
+parakeet-v3
 ```
 
-The app runs the configured Python command with a small embedded NeMo runner. Transcription sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`, so the model must already exist in the local Hugging Face cache or be referenced by a local `.nemo` path.
+Parakeet V3 uses Handy's INT8 Parakeet V3 package and can run without a GPU. It is the default engine.
 
-Example model pre-cache command:
+### Whisper
+
+Whisper uses GGML models through the same sidecar. The app maps:
+
+```text
+base/small -> whisper-small
+medium     -> whisper-medium
+```
+
+If the sidecar is missing, the old fallback fields still work:
+
+- Parakeet fallback uses the configured Python command with an embedded NeMo runner.
+- Whisper fallback uses the configured local `whisper` command.
+
+Example Parakeet fallback pre-cache command:
 
 ```bash
 python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v3')"
 ```
-
-Set `Settings -> Local Transcription -> Python Command` to the Python executable that has NeMo installed. Use `Settings -> Local Transcription -> Download Model` to cache the configured model from the app.
-
-### Whisper
-
-Whisper fallback expects a local command named `whisper` by default:
-
-```bash
-pip install -U openai-whisper
-```
-
-Set `Settings -> Speech to Text -> Engine` to `Whisper` and adjust the command/model fields as needed.
 
 ## Local Ollama
 

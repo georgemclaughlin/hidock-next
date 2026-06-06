@@ -42,7 +42,7 @@ export function Settings() {
   const [parakeetPythonCommand, setParakeetPythonCommand] = useState('python')
   const [parakeetModel, setParakeetModel] = useState('nvidia/parakeet-tdt-0.6b-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
-  const [parakeetDownloading, setParakeetDownloading] = useState(false)
+  const [modelDownloading, setModelDownloading] = useState(false)
   const [storageLoading, setStorageLoading] = useState(false)
   // C-CHAT: RAG context window — default matches config.ts (10)
   const [ragContextSize, setRagContextSize] = useState<number>(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
@@ -275,34 +275,31 @@ export function Settings() {
     await window.electronAPI.storage.openFolder(folder)
   }
 
-  const handleDownloadParakeetModel = async () => {
-    if (parakeetDownloading) return
+  const handleDownloadTranscriptionModel = async () => {
+    if (modelDownloading) return
 
-    const pythonCommand = parakeetPythonCommand.trim()
-    const model = parakeetModel.trim()
-    if (!pythonCommand) {
-      toast.error('Validation Error', 'Parakeet Python command is required')
-      return
-    }
+    const model = transcriptionEngine === 'whisper'
+      ? transcriptionModel.trim()
+      : parakeetModel.trim()
     if (!model) {
-      toast.error('Validation Error', 'Parakeet model is required')
+      toast.error('Validation Error', `${transcriptionEngine === 'whisper' ? 'Whisper' : 'Parakeet'} model is required`)
       return
     }
 
-    setParakeetDownloading(true)
+    setModelDownloading(true)
     try {
-      const result = await window.electronAPI.recordings.downloadParakeetModel(pythonCommand, model)
+      const result = await window.electronAPI.recordings.downloadTranscriptionModel(transcriptionEngine, model)
       if (result.success) {
-        toast.success('Parakeet Model Ready', result.message || `Model "${model}" is cached locally`)
+        toast.success('Model Ready', result.message || `Model "${model}" is ready for local transcription`)
       } else {
-        toast.error('Parakeet Download Failed', result.error || 'Failed to download Parakeet model')
+        toast.error('Model Download Failed', result.error || 'Failed to download transcription model')
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to download Parakeet model'
-      toast.error('Parakeet Download Failed', message)
-      console.error('Failed to download Parakeet model:', error)
+      const message = error instanceof Error ? error.message : 'Failed to download transcription model'
+      toast.error('Model Download Failed', message)
+      console.error('Failed to download transcription model:', error)
     } finally {
-      setParakeetDownloading(false)
+      setModelDownloading(false)
     }
   }
 
@@ -373,7 +370,7 @@ export function Settings() {
                         value={parakeetPythonCommand}
                         onChange={(e) => setParakeetPythonCommand(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                        disabled={saving || parakeetDownloading}
+                        disabled={saving || modelDownloading}
                         aria-label="Parakeet Python command"
                         className="mt-1"
                       />
@@ -385,25 +382,12 @@ export function Settings() {
                         value={parakeetModel}
                         onChange={(e) => setParakeetModel(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                        disabled={saving || parakeetDownloading}
+                        disabled={saving || modelDownloading}
                         aria-label="Parakeet model"
                         className="mt-1"
                       />
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    onClick={handleDownloadParakeetModel}
-                    disabled={saving || parakeetDownloading}
-                    aria-label="Download Parakeet model"
-                  >
-                    {parakeetDownloading ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" aria-hidden="true" />
-                    )}
-                    {parakeetDownloading ? 'Downloading Model' : 'Download Model'}
-                  </Button>
                 </>
               ) : (
                 <>
@@ -427,7 +411,7 @@ export function Settings() {
                         value={transcriptionModel}
                         onChange={(e) => setTranscriptionModel(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                        disabled={saving}
+                        disabled={saving || modelDownloading}
                         aria-label="Whisper model"
                         className="mt-1"
                       />
@@ -439,7 +423,7 @@ export function Settings() {
                         value={transcriptionLanguage}
                         onChange={(e) => setTranscriptionLanguage(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                        disabled={saving}
+                        disabled={saving || modelDownloading}
                         aria-label="Transcription language"
                         aria-describedby="transcriptionLanguage-description"
                         className="mt-1"
@@ -451,6 +435,20 @@ export function Settings() {
                   </div>
                 </>
               )}
+
+              <Button
+                variant="outline"
+                onClick={handleDownloadTranscriptionModel}
+                disabled={saving || modelDownloading}
+                aria-label={`Download ${transcriptionEngine} model`}
+              >
+                {modelDownloading ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+                )}
+                {modelDownloading ? 'Downloading Model' : 'Download Model'}
+              </Button>
 
               <Button
                 onClick={handleSaveTranscription}

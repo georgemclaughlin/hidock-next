@@ -160,6 +160,15 @@ export interface ElectronAPI {
     cancelAllTranscriptions: () => Promise<{ success: boolean; count: number }>
     updateQueueItem: (id: string, status: string, errorMessage?: string) => Promise<boolean>
     downloadParakeetModel: (pythonCommand: string, model: string) => Promise<{ success: boolean; model?: string; message?: string; error?: string }>
+    getTranscriptionModels: () => Promise<Array<{
+      id: string
+      name: string
+      description: string
+      size_mb: number
+      is_downloaded: boolean
+      engine_type: 'parakeet' | 'whisper'
+    }>>
+    downloadTranscriptionModel: (engine?: 'parakeet' | 'whisper', model?: string) => Promise<{ success: boolean; model?: string; message?: string; error?: string }>
   }
 
   // Database - Transcripts
@@ -578,6 +587,8 @@ const electronAPI: ElectronAPI = {
     cancelAllTranscriptions: () => callIPC('transcription:cancelAll'),
     updateQueueItem: (id: string, status: string, errorMessage?: string) => callIPC('transcription:updateQueueItem', id, status, errorMessage),
     downloadParakeetModel: (pythonCommand: string, model: string) => callIPC('transcription:downloadParakeetModel', pythonCommand, model),
+    getTranscriptionModels: () => callIPC('transcription:listModels'),
+    downloadTranscriptionModel: (engine?: 'parakeet' | 'whisper', model?: string) => callIPC('transcription:downloadModel', engine, model),
   },
 
   transcripts: {

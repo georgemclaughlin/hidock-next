@@ -41,10 +41,20 @@ echo.
 echo ================================
 echo Building HiDock Local Electron App
 echo ================================
-echo Compiling main process (backend) and renderer (frontend)...
+echo Compiling local transcription sidecar...
 echo.
 
-REM Build the electron app (compiles both frontend and backend)
+call npm run build:transcriber
+
+if errorlevel 1 (
+    echo.
+    echo Sidecar build failed. Please check the error messages above.
+    pause
+    exit /b 1
+)
+
+echo Compiling main process (backend) and renderer (frontend)...
+echo.
 call npm run build
 
 if errorlevel 1 (

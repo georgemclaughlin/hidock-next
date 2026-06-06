@@ -67,6 +67,14 @@ vi.mock('../config', () => ({
   }))
 }))
 
+vi.mock('../native-transcriber', () => ({
+  downloadNativeTranscriptionModel: vi.fn(),
+  getNativeModelIdForEngine: vi.fn(),
+  isNativeTranscriberAvailable: vi.fn(() => false),
+  listNativeTranscriptionModels: vi.fn(),
+  transcribeWithNativeModel: vi.fn()
+}))
+
 // Mock local transcription command - make it fail
 vi.mock('child_process', async () => {
   const { EventEmitter } = await import('events')

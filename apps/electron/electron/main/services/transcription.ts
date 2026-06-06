@@ -21,6 +21,15 @@ import {
 } from './database'
 import { BrowserWindow } from 'electron'
 import { getVectorStore } from './vector-store'
+import {
+  downloadNativeTranscriptionModel,
+  getNativeModelIdForEngine,
+  isNativeTranscriberAvailable,
+  listNativeTranscriptionModels,
+  transcribeWithNativeModel,
+  type NativeTranscriptionEngine,
+  type NativeTranscriptionModel
+} from './native-transcriber'
 
 let mainWindow: BrowserWindow | null = null
 let isProcessing = false
@@ -451,12 +460,31 @@ async function transcribeWithWhisper(
   progressCallback?: (stage: string, progress: number) => void
 ): Promise<LocalTranscriptionResult> {
   const config = getConfig()
+  const model = config.transcription.localModel || 'base'
+
+  if (isNativeTranscriberAvailable()) {
+    const outputPath = join(outputDir, 'native-whisper.json')
+    const result = await transcribeWithNativeModel(
+      'whisper',
+      getNativeModelIdForEngine('whisper', model),
+      inputPath,
+      outputPath,
+      config.transcription.language || 'auto',
+      progressCallback
+    )
+
+    return {
+      output: result.output,
+      provider: result.provider,
+      model: result.model
+    }
+  }
+
   const command = config.transcription.localCommand?.trim()
   if (!command) {
     throw new Error('Whisper command is not configured.')
   }
 
-  const model = config.transcription.localModel || 'base'
   const args = [
     inputPath,
     '--model',
@@ -486,12 +514,31 @@ async function transcribeWithParakeet(
   progressCallback?: (stage: string, progress: number) => void
 ): Promise<LocalTranscriptionResult> {
   const config = getConfig()
+  const model = config.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v3'
+
+  if (isNativeTranscriberAvailable()) {
+    const outputPath = join(outputDir, 'native-parakeet.json')
+    const result = await transcribeWithNativeModel(
+      'parakeet',
+      getNativeModelIdForEngine('parakeet', model),
+      inputPath,
+      outputPath,
+      config.transcription.language || 'auto',
+      progressCallback
+    )
+
+    return {
+      output: result.output,
+      provider: result.provider,
+      model: result.model
+    }
+  }
+
   const command = config.transcription.parakeetPythonCommand?.trim()
   if (!command) {
     throw new Error('Parakeet Python command is not configured.')
   }
 
-  const model = config.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v3'
   const outputPath = join(outputDir, 'parakeet.json')
 
   await runLocalTranscriptionCommand(
@@ -529,6 +576,10 @@ export async function downloadParakeetModel(
   pythonCommandOverride?: string,
   modelOverride?: string
 ): Promise<ParakeetModelDownloadResult> {
+  if (isNativeTranscriberAvailable()) {
+    return downloadNativeTranscriptionModel(getNativeModelIdForEngine('parakeet', modelOverride))
+  }
+
   const config = getConfig()
   const command = pythonCommandOverride?.trim() || config.transcription.parakeetPythonCommand?.trim()
   if (!command) {
@@ -562,6 +613,37 @@ export async function downloadParakeetModel(
     model,
     message: `Parakeet model "${model}" is cached locally.`
   }
+}
+
+export async function listLocalTranscriptionModels(): Promise<NativeTranscriptionModel[]> {
+  if (!isNativeTranscriberAvailable()) {
+    return []
+  }
+
+  return listNativeTranscriptionModels()
+}
+
+export async function downloadLocalTranscriptionModel(
+  engineOverride?: NativeTranscriptionEngine,
+  modelOverride?: string
+): Promise<ParakeetModelDownloadResult> {
+  const config = getConfig()
+  const engine = engineOverride || config.transcription.localEngine
+
+  if (isNativeTranscriberAvailable()) {
+    const configuredModel = modelOverride || (
+      engine === 'whisper'
+        ? config.transcription.localModel
+        : config.transcription.parakeetModel
+    )
+    return downloadNativeTranscriptionModel(getNativeModelIdForEngine(engine, configuredModel))
+  }
+
+  if (engine === 'parakeet') {
+    return downloadParakeetModel(undefined, modelOverride)
+  }
+
+  throw new Error('Native transcription sidecar is required to download Whisper models. Run npm run build:transcriber from apps/electron.')
 }
 
 function normalizeTranscriptText(output: WhisperJsonOutput): string {

@@ -34,7 +34,9 @@ import {
   cancelTranscription,
   cancelAllTranscriptions,
   processQueueManually,
-  downloadParakeetModel
+  downloadParakeetModel,
+  downloadLocalTranscriptionModel,
+  listLocalTranscriptionModels
 } from '../services/transcription'
 import {
   GetRecordingByIdSchema,
@@ -341,6 +343,28 @@ export function registerRecordingHandlers(): void {
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to download Parakeet model'
         console.error('transcription:downloadParakeetModel error:', error)
+        return { success: false, error: message }
+      }
+    }
+  )
+
+  ipcMain.handle('transcription:listModels', async (): Promise<any[]> => {
+    try {
+      return await listLocalTranscriptionModels()
+    } catch (error) {
+      console.error('transcription:listModels error:', error)
+      return []
+    }
+  })
+
+  ipcMain.handle(
+    'transcription:downloadModel',
+    async (_, engine?: 'parakeet' | 'whisper', model?: string): Promise<{ success: boolean; model?: string; message?: string; error?: string }> => {
+      try {
+        return await downloadLocalTranscriptionModel(engine, model)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to download transcription model'
+        console.error('transcription:downloadModel error:', error)
         return { success: false, error: message }
       }
     }

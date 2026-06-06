@@ -40,10 +40,19 @@ echo
 echo "================================"
 echo "Building HiDock Local Electron App"
 echo "================================"
-echo "Compiling main process (backend) and renderer (frontend)..."
+echo "Compiling local transcription sidecar..."
 echo
 
-# Build the electron app (compiles both frontend and backend)
+npm run build:transcriber
+
+if [ $? -ne 0 ]; then
+    echo
+    echo "Sidecar build failed. Please check the error messages above."
+    exit 1
+fi
+
+echo "Compiling main process (backend) and renderer (frontend)..."
+echo
 npm run build
 
 if [ $? -eq 0 ]; then

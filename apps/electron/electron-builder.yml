@@ -12,6 +12,12 @@ files:
 asarUnpack:
   - '**/*.node'
   - '**/usb/**'
+extraResources:
+  - from: native/transcriber/target/release
+    to: native
+    filter:
+      - hidock-transcriber
+      - hidock-transcriber.exe
 win:
   target:
     - target: nsis

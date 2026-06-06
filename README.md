@@ -29,9 +29,11 @@ Manual export is still possible. If a user copies a transcript into ChatGPT, Mic
 
 - Node.js 20 or newer
 - npm
+- Rust and CMake for building the local transcription sidecar
 - A HiDock H1, H1E, P1, or compatible recorder
 - Optional: Ollama for local transcript chat/search
-- Optional: a local Parakeet or Whisper environment for transcription
+
+Linux/WSL packaging may also need libudev development headers for the existing USB native module, for example `sudo apt install libudev-dev`. If the `usb` native rebuild fails with C++ language feature errors, run packaging with `CXXFLAGS="-std=c++17"`.
 
 For Windows users, run the Electron app from native Windows PowerShell or Command Prompt when you need the GUI and USB device access. WSL is fine for editing, building, and tests, but it usually needs extra display and USB forwarding setup to run Electron reliably.
 
@@ -44,6 +46,7 @@ git clone https://github.com/sgeraldes/hidock-next.git
 cd hidock-next
 cd apps\electron
 npm install
+npm run build:transcriber
 npm run dev
 ```
 
@@ -59,6 +62,7 @@ You can also use the root helper:
 git clone https://github.com/sgeraldes/hidock-next.git
 cd hidock-next/apps/electron
 npm install
+npm run build:transcriber
 npm run build
 ```
 
@@ -70,15 +74,28 @@ npm run dev
 
 ## Local Transcription
 
-Parakeet is the default engine. The app launches a configured Python command and expects the model to already be available locally. The default model is:
+Parakeet is the default engine. The supported path is a Rust native sidecar based on `transcribe-rs`, following the same local model approach used by Handy. The sidecar runs Whisper and Parakeet locally on CPU-capable runtimes and decodes common audio formats, including OGG imports.
 
-```text
-nvidia/parakeet-tdt-0.6b-v3
+Build the sidecar:
+
+```bash
+cd apps/electron
+npm run build:transcriber
 ```
 
-Because the app forces offline model loading for Parakeet transcription, pre-cache the model before relying on it offline. On Windows, use a Windows Python environment if you run the Electron app from Windows.
+Then use `Settings -> Local Transcription -> Download Model` to download the selected local model. The app stores models under the local HiDock data directory and does not upload recordings or transcripts.
 
-Example Parakeet setup:
+The default Parakeet model is:
+
+```text
+parakeet-v3
+```
+
+Whisper uses the local sidecar model catalog too. The default `base`/`small` setting maps to `whisper-small`; `medium` maps to `whisper-medium`.
+
+The old Python/CLI fields remain as fallback settings for development. If the sidecar binary is missing, Parakeet can still use a local Python/NeMo environment and Whisper can still use a local `whisper` command.
+
+Example Parakeet fallback setup:
 
 ```powershell
 python -m venv .venv-parakeet
@@ -91,14 +108,6 @@ Then set the app's Parakeet Python command to the venv Python path, for example:
 
 ```text
 C:\path\to\.venv-parakeet\Scripts\python.exe
-```
-
-You can also use `Settings -> Local Transcription -> Download Model` to cache the configured Parakeet model after the Python environment has NeMo installed.
-
-Whisper fallback uses a local `whisper` command:
-
-```bash
-pip install -U openai-whisper
 ```
 
 ## Local Ollama

@@ -7,8 +7,8 @@ This fork is scoped to local device management and local transcript processing.
 - USB communication with HiDock devices
 - Local download of recordings
 - Local playback
-- Local Parakeet transcription
-- Local Whisper transcription
+- Local Parakeet transcription through the Rust sidecar
+- Local Whisper transcription through the Rust sidecar
 - Local SQLite storage
 - Local transcript indexing
 - Local Ollama chat/search
@@ -39,6 +39,10 @@ Expected local network use:
 
 - `http://localhost:11434` for Ollama
 - USB device communication
+
+Expected user-initiated external network use:
+
+- Model downloads when the user clicks `Settings -> Local Transcription -> Download Model`
 
 Remote Ollama URLs are blocked in local-only mode unless the user explicitly allows them.
 

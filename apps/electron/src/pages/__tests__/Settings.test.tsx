@@ -6,7 +6,7 @@ import { Settings } from '../Settings'
 const mockLoadConfig = vi.fn()
 const mockUpdateConfig = vi.fn()
 const mockSyncCalendar = vi.fn()
-const mockDownloadParakeetModel = vi.fn()
+const mockDownloadTranscriptionModel = vi.fn()
 
 // Mock the stores
 vi.mock('@/store/useAppStore', () => ({
@@ -97,16 +97,17 @@ global.window.electronAPI = {
     openFolder: vi.fn()
   },
   recordings: {
-    downloadParakeetModel: mockDownloadParakeetModel
+    downloadParakeetModel: vi.fn(),
+    downloadTranscriptionModel: mockDownloadTranscriptionModel
   }
 } as any
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockDownloadParakeetModel.mockResolvedValue({
+  mockDownloadTranscriptionModel.mockResolvedValue({
     success: true,
-    model: 'nvidia/parakeet-tdt-0.6b-v3',
-    message: 'Parakeet model is cached locally.'
+    model: 'parakeet-v3',
+    message: 'Parakeet V3 is downloaded for local transcription.'
   })
 })
 
@@ -125,17 +126,17 @@ describe('Settings Page', () => {
     expect(screen.getByLabelText('Local transcription engine')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet Python command')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet model')).toBeInTheDocument()
-    expect(screen.getByLabelText('Download Parakeet model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Download parakeet model')).toBeInTheDocument()
   })
 
   it('should download the configured Parakeet model', async () => {
     render(<Settings />)
 
-    fireEvent.click(screen.getByLabelText('Download Parakeet model'))
+    fireEvent.click(screen.getByLabelText('Download parakeet model'))
 
     await waitFor(() => {
-      expect(mockDownloadParakeetModel).toHaveBeenCalledWith(
-        'python',
+      expect(mockDownloadTranscriptionModel).toHaveBeenCalledWith(
+        'parakeet',
         'nvidia/parakeet-tdt-0.6b-v3'
       )
     })
