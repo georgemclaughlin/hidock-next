@@ -27,6 +27,10 @@ export interface AppConfig {
     dataPath: string
     maxRecordingsGB: number
   }
+  privacy: {
+    localOnly: boolean
+    allowRemoteOllama: boolean
+  }
   calendar: {
     icsUrl: string
     syncEnabled: boolean
@@ -34,11 +38,14 @@ export interface AppConfig {
     lastSyncAt: string | null
   }
   transcription: {
-    provider: 'gemini'
-    geminiApiKey: string
-    geminiModel: string
+    provider: 'local'
+    localEngine: 'parakeet' | 'whisper'
     autoTranscribe: boolean
     language: string
+    localCommand: string
+    localModel: string
+    parakeetPythonCommand: string
+    parakeetModel: string
   }
   embeddings: {
     provider: 'ollama'
@@ -48,8 +55,7 @@ export interface AppConfig {
     chunkOverlap: number
   }
   chat: {
-    provider: 'gemini' | 'ollama'
-    geminiModel: string
+    provider: 'ollama'
     ollamaModel: string
     maxContextChunks: number
   }
@@ -73,18 +79,25 @@ const DEFAULT_CONFIG: AppConfig = {
     dataPath: join(app.getPath('home'), 'HiDock'),
     maxRecordingsGB: 50
   },
+  privacy: {
+    localOnly: true,
+    allowRemoteOllama: false
+  },
   calendar: {
     icsUrl: '',
-    syncEnabled: true,
+    syncEnabled: false,
     syncIntervalMinutes: 15,
     lastSyncAt: null
   },
   transcription: {
-    provider: 'gemini',
-    geminiApiKey: '',
-    geminiModel: 'gemini-3-pro-preview', // Best model for audio transcription
-    autoTranscribe: true,
-    language: 'es'
+    provider: 'local',
+    localEngine: 'parakeet',
+    autoTranscribe: false,
+    language: 'auto',
+    localCommand: 'whisper',
+    localModel: 'base',
+    parakeetPythonCommand: 'python',
+    parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2'
   },
   embeddings: {
     provider: 'ollama',
@@ -94,8 +107,7 @@ const DEFAULT_CONFIG: AppConfig = {
     chunkOverlap: 50
   },
   chat: {
-    provider: 'gemini',
-    geminiModel: 'gemini-2.0-flash',
+    provider: 'ollama',
     ollamaModel: 'llama3.2',
     maxContextChunks: 10
   },
@@ -114,6 +126,61 @@ const DEFAULT_CONFIG: AppConfig = {
 }
 
 let config: AppConfig = { ...DEFAULT_CONFIG }
+
+function isLoopbackHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    const hostname = parsed.hostname.toLowerCase()
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '[::1]'
+    )
+  } catch {
+    return false
+  }
+}
+
+function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
+  const allowRemoteOllama = value.privacy?.allowRemoteOllama === true
+  const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl || DEFAULT_CONFIG.embeddings.ollamaBaseUrl
+
+  return {
+    ...value,
+    privacy: {
+      localOnly: true,
+      allowRemoteOllama
+    },
+    calendar: {
+      ...value.calendar,
+      icsUrl: '',
+      syncEnabled: false
+    },
+    transcription: {
+      provider: 'local',
+      localEngine: value.transcription?.localEngine === 'whisper' ? 'whisper' : 'parakeet',
+      autoTranscribe: value.transcription?.autoTranscribe === true,
+      language: value.transcription?.language || DEFAULT_CONFIG.transcription.language,
+      localCommand: value.transcription?.localCommand || DEFAULT_CONFIG.transcription.localCommand,
+      localModel: value.transcription?.localModel || DEFAULT_CONFIG.transcription.localModel,
+      parakeetPythonCommand: value.transcription?.parakeetPythonCommand || DEFAULT_CONFIG.transcription.parakeetPythonCommand,
+      parakeetModel: value.transcription?.parakeetModel || DEFAULT_CONFIG.transcription.parakeetModel
+    },
+    embeddings: {
+      ...value.embeddings,
+      provider: 'ollama',
+      ollamaBaseUrl: allowRemoteOllama || isLoopbackHttpUrl(ollamaBaseUrl)
+        ? ollamaBaseUrl
+        : DEFAULT_CONFIG.embeddings.ollamaBaseUrl
+    },
+    chat: {
+      provider: 'ollama',
+      ollamaModel: value.chat?.ollamaModel || DEFAULT_CONFIG.chat.ollamaModel,
+      maxContextChunks: value.chat?.maxContextChunks || DEFAULT_CONFIG.chat.maxContextChunks
+    }
+  }
+}
 
 export function getConfigPath(): string {
   return join(app.getPath('userData'), 'config.json')
@@ -135,14 +202,14 @@ export async function initializeConfig(): Promise<void> {
         savedConfig.calendar.icsUrl = decryptSensitive(savedConfig.calendar.icsUrl)
       }
       // Merge with defaults to handle new fields
-      config = deepMerge(DEFAULT_CONFIG, savedConfig)
+      config = normalizeLocalOnlyConfig(deepMerge(DEFAULT_CONFIG, savedConfig))
     } else {
       // Create config file with defaults
       await saveConfig(DEFAULT_CONFIG)
     }
   } catch (error) {
     console.error('Error loading config:', error)
-    config = { ...DEFAULT_CONFIG }
+    config = normalizeLocalOnlyConfig({ ...DEFAULT_CONFIG })
   }
 }
 
@@ -150,8 +217,17 @@ export function getConfig(): AppConfig {
   return { ...config }
 }
 
+export function getConfigValue(path: string): unknown {
+  return path.split('.').reduce<unknown>((value, key) => {
+    if (value && typeof value === 'object' && key in value) {
+      return (value as Record<string, unknown>)[key]
+    }
+    return undefined
+  }, config)
+}
+
 export async function saveConfig(newConfig: Partial<AppConfig>): Promise<void> {
-  config = deepMerge(config, newConfig)
+  config = normalizeLocalOnlyConfig(deepMerge(config, newConfig))
 
   const configPath = getConfigPath()
   const configDir = join(configPath, '..')

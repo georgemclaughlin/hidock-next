@@ -1,31 +1,23 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
-import { readFile, existsSync } from 'fs'
-import { promisify } from 'util'
-import { extname } from 'path'
-
-const readFileAsync = promisify(readFile)
+import { spawn } from 'child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { basename, extname, join } from 'path'
+import crypto from 'crypto'
 import { getConfig } from './config'
 import {
+  getMeetingById,
   getRecordingById,
-  updateRecordingTranscriptionStatus,
   insertTranscript,
+  updateRecordingTranscriptionStatus,
   getQueueItems,
   updateQueueItem,
   updateQueueProgress,
-  getMeetingById,
-  findCandidateMeetingsForRecording,
-  addRecordingMeetingCandidate,
-  linkRecordingToMeeting,
-  updateKnowledgeCaptureTitle,
   removeFromQueueByRecordingId,
   cancelPendingTranscriptions,
-  run,
-  queryOne,
   acquireTranscriptionLock,
   releaseTranscriptionLock,
   clearStaleTranscriptionLock,
-  resetStuckTranscriptions,
-  type Transcript
+  resetStuckTranscriptions
 } from './database'
 import { BrowserWindow } from 'electron'
 import { getVectorStore } from './vector-store'
@@ -104,38 +96,14 @@ async function processQueue(): Promise<void> {
   }
 
   try {
-    const config = getConfig()
-    if (!config.transcription.geminiApiKey) {
-      console.error('[Transcription] Cannot process queue: Gemini API key not configured')
-
-      // Mark all pending items as failed with clear error message
-      const pendingItems = getQueueItems('pending')
-      const processingItems = getQueueItems('processing')
-
-      const allStuckItems = [...pendingItems, ...processingItems]
-      if (allStuckItems.length > 0) {
-        console.log(`[Transcription] Marking ${allStuckItems.length} stuck items as failed (no API key)`)
-
-        for (const item of allStuckItems) {
-          updateQueueItem(item.id, 'failed', 'Gemini API key not configured. Please add your API key in Settings.')
-          updateRecordingTranscriptionStatus(item.recording_id, 'error')
-          notifyRenderer('transcription:failed', {
-            queueItemId: item.id,
-            recordingId: item.recording_id,
-            error: 'Gemini API key not configured. Please add your API key in Settings.'
-          })
-        }
-      }
-
-      return
-    }
     // spec-014: Retry failed items with max attempts
     // B-TXN-001: Exponential backoff before retrying failed items
     // C-005: Skip non-retryable errors (missing files, missing API key)
     const NON_RETRYABLE_ERRORS = [
       'Recording not found',
       'Recording file not found',
-      'Gemini API key not configured',
+      'Local transcription provider is disabled',
+      'Local transcription command is not configured',
       'no local file'
     ]
     const failedItems = getQueueItems('failed')
@@ -275,90 +243,249 @@ export async function processQueueManually(): Promise<void> {
   return processQueue()
 }
 
-interface ActionableDetection {
-  type: 'meeting_minutes' | 'interview_feedback' | 'status_report' |
-        'decision_log' | 'action_items' | 'research_summary'
-  confidence: number // 0.0 to 1.0
-  suggestedTitle: string
-  reason: string // Why detected
-  suggestedTemplate?: string
-  suggestedRecipients?: string[]
+interface WhisperJsonSegment {
+  text?: string
+  start?: number
+  end?: number
+  speaker?: string
 }
 
-async function detectActionables(
-  transcriptText: string,
-  knowledgeCaptureId: string,
-  metadata: { title?: string; questions?: string[] }
-): Promise<ActionableDetection[]> {
-  const config = getConfig()
-  if (!config.transcription.geminiApiKey) {
-    console.log('[Actionable Detection] Gemini API key not configured, skipping')
-    return []
+interface WhisperJsonOutput {
+  text?: string
+  language?: string
+  segments?: WhisperJsonSegment[]
+}
+
+interface LocalTranscriptionResult {
+  output: WhisperJsonOutput
+  provider: 'local-parakeet' | 'local-whisper'
+  model: string
+}
+
+interface RunCommandOptions {
+  env?: NodeJS.ProcessEnv
+}
+
+const PARAKEET_RUNNER_SCRIPT = `
+import json
+import os
+import sys
+import traceback
+
+audio_path = sys.argv[1]
+output_path = sys.argv[2]
+model_name = sys.argv[3]
+
+try:
+    import nemo.collections.asr as nemo_asr
+
+    try:
+        import torch
+    except Exception:
+        torch = None
+
+    if os.path.isfile(model_name) and model_name.endswith(".nemo"):
+        asr_model = nemo_asr.models.ASRModel.restore_from(restore_path=model_name)
+    else:
+        asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name=model_name)
+
+    if torch is not None and torch.cuda.is_available():
+        asr_model = asr_model.to("cuda")
+
+    try:
+        results = asr_model.transcribe([audio_path], timestamps=True)
+    except TypeError:
+        results = asr_model.transcribe([audio_path])
+
+    item = results[0]
+    text = item if isinstance(item, str) else getattr(item, "text", str(item))
+    timestamps = {} if isinstance(item, str) else (getattr(item, "timestamp", None) or {})
+    segments = []
+
+    if isinstance(timestamps, dict):
+        for segment in timestamps.get("segment", []) or []:
+            if isinstance(segment, dict):
+                segments.append({
+                    "start": segment.get("start"),
+                    "end": segment.get("end"),
+                    "text": segment.get("segment") or segment.get("text") or ""
+                })
+
+    language = "en" if "parakeet-tdt-0.6b-v2" in model_name else ""
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump({"text": text, "language": language, "segments": segments}, handle, ensure_ascii=False)
+except Exception:
+    traceback.print_exc()
+    sys.exit(1)
+`
+
+function runLocalTranscriptionCommand(
+  command: string,
+  args: string[],
+  progressCallback?: (stage: string, progress: number) => void,
+  options: RunCommandOptions = {}
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    progressCallback?.('launching local transcription', 10)
+
+    const child = spawn(command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      env: options.env ? { ...process.env, ...options.env } : process.env
+    })
+
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk)
+    })
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk)
+    })
+
+    child.on('error', (error) => {
+      reject(new Error(`Failed to start local transcription command "${command}": ${error.message}`))
+    })
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        progressCallback?.('parsing transcript', 85)
+        resolve()
+        return
+      }
+
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim()
+      const detail = stderr || stdout || `process exited with code ${code}`
+      reject(new Error(`Local transcription command failed: ${detail}`))
+    })
+  })
+}
+
+function readWhisperOutput(outputDir: string, inputPath: string): WhisperJsonOutput {
+  const baseName = basename(inputPath, extname(inputPath))
+  const jsonPath = join(outputDir, `${baseName}.json`)
+  const txtPath = join(outputDir, `${baseName}.txt`)
+
+  if (existsSync(jsonPath)) {
+    return JSON.parse(readFileSync(jsonPath, 'utf8')) as WhisperJsonOutput
   }
 
-  // Skip very short transcripts
-  const wordCount = transcriptText.split(/\s+/).filter(w => w.length > 0).length
-  if (wordCount < 100) {
-    console.log('[Actionable Detection] Transcript too short (<100 words), skipping')
-    return []
-  }
-
-  // Truncate very long transcripts to last 5000 words
-  const words = transcriptText.split(/\s+/)
-  const truncatedText = words.length > 5000 ? words.slice(-5000).join(' ') : transcriptText
-
-  const prompt = `Analyze this meeting transcript and detect if the speaker intends to create any outputs or documents.
-
-Transcript:
-${truncatedText}
-
-Meeting Title: ${metadata.title || 'Unknown'}
-Questions: ${metadata.questions?.join(', ') || 'None'}
-
-Detect if speaker mentions need to:
-1. Send meeting minutes/notes
-2. Write interview feedback/evaluation
-3. Create status report/update
-4. Document decisions
-5. Share action items
-6. Compile research/findings
-
-For each detected intent, return:
-- type: The type of actionable (meeting_minutes, interview_feedback, status_report, decision_log, action_items, research_summary)
-- confidence: 0.0-1.0 (how confident you are)
-- suggestedTitle: Brief title for the actionable (e.g., "Send meeting notes to team")
-- reason: Why you detected this (quote from transcript)
-- suggestedTemplate: Template name to use (e.g., "meeting_minutes", "interview_feedback")
-- suggestedRecipients: Who should receive it (if mentioned)
-
-Return as JSON array. If no actionables detected, return empty array [].
-Only include detections with confidence >= 0.6.`
-
-  try {
-    const genAI = new GoogleGenerativeAI(config.transcription.geminiApiKey)
-    const model = genAI.getGenerativeModel({ model: config.transcription.geminiModel || 'gemini-2.0-flash-exp' })
-
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text()
-
-    // Extract JSON from response (might be wrapped in markdown code blocks)
-    const jsonMatch = responseText.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) {
-      console.log('[Actionable Detection] No JSON array found in response')
-      return []
+  if (existsSync(txtPath)) {
+    return {
+      text: readFileSync(txtPath, 'utf8')
     }
-
-    const detections = JSON.parse(jsonMatch[0]) as ActionableDetection[]
-
-    // Filter out low-confidence detections
-    const filtered = detections.filter(d => d.confidence >= 0.6)
-    console.log(`[Actionable Detection] Detected ${filtered.length} actionables for ${knowledgeCaptureId}`)
-
-    return filtered
-  } catch (error) {
-    console.error('[Actionable Detection] Failed:', error)
-    return [] // Fail gracefully
   }
+
+  throw new Error(`Local transcription command did not create ${jsonPath}`)
+}
+
+async function transcribeWithWhisper(
+  inputPath: string,
+  outputDir: string,
+  progressCallback?: (stage: string, progress: number) => void
+): Promise<LocalTranscriptionResult> {
+  const config = getConfig()
+  const command = config.transcription.localCommand?.trim()
+  if (!command) {
+    throw new Error('Whisper command is not configured.')
+  }
+
+  const model = config.transcription.localModel || 'base'
+  const args = [
+    inputPath,
+    '--model',
+    model,
+    '--output_format',
+    'json',
+    '--output_dir',
+    outputDir
+  ]
+
+  if (config.transcription.language && config.transcription.language !== 'auto') {
+    args.push('--language', config.transcription.language)
+  }
+
+  await runLocalTranscriptionCommand(command, args, progressCallback)
+
+  return {
+    output: readWhisperOutput(outputDir, inputPath),
+    provider: 'local-whisper',
+    model
+  }
+}
+
+async function transcribeWithParakeet(
+  inputPath: string,
+  outputDir: string,
+  progressCallback?: (stage: string, progress: number) => void
+): Promise<LocalTranscriptionResult> {
+  const config = getConfig()
+  const command = config.transcription.parakeetPythonCommand?.trim()
+  if (!command) {
+    throw new Error('Parakeet Python command is not configured.')
+  }
+
+  const model = config.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v2'
+  const outputPath = join(outputDir, 'parakeet.json')
+
+  await runLocalTranscriptionCommand(
+    command,
+    ['-c', PARAKEET_RUNNER_SCRIPT, inputPath, outputPath, model],
+    progressCallback,
+    {
+      env: {
+        HF_HUB_OFFLINE: '1',
+        TRANSFORMERS_OFFLINE: '1'
+      }
+    }
+  )
+
+  if (!existsSync(outputPath)) {
+    throw new Error(`Parakeet command did not create ${outputPath}`)
+  }
+
+  return {
+    output: JSON.parse(readFileSync(outputPath, 'utf8')) as WhisperJsonOutput,
+    provider: 'local-parakeet',
+    model
+  }
+}
+
+function normalizeTranscriptText(output: WhisperJsonOutput): string {
+  const text = output.text?.trim()
+  if (text) return text
+
+  const segmentText = output.segments
+    ?.map((segment) => segment.text?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .trim()
+
+  if (segmentText) return segmentText
+  throw new Error('Local transcription output did not contain transcript text')
+}
+
+function countWords(text: string): number {
+  const matches = text.trim().match(/\S+/g)
+  return matches ? matches.length : 0
+}
+
+function buildSpeakersJson(output: WhisperJsonOutput): string | undefined {
+  if (!output.segments?.some((segment) => segment.speaker)) {
+    return undefined
+  }
+
+  return JSON.stringify(
+    output.segments.map((segment) => ({
+      speaker: segment.speaker,
+      start: segment.start,
+      end: segment.end,
+      text: segment.text
+    }))
+  )
 }
 
 async function transcribeRecording(
@@ -375,306 +502,51 @@ async function transcribeRecording(
   }
 
   const config = getConfig()
-  if (!config.transcription.geminiApiKey) {
-    throw new Error('Gemini API key not configured')
+  if (config.transcription.provider !== 'local') {
+    throw new Error('Local transcription provider is disabled.')
   }
 
-  console.log(`Transcribing: ${recording.filename}`)
-  // AI-13: Use standard enum values matching Recording.transcription_status
   updateRecordingTranscriptionStatus(recordingId, 'processing')
+  progressCallback?.('preparing local transcription', 5)
 
-  progressCallback?.('reading_file', 5) // spec-014: progress reporting
-
-  // Read the audio file asynchronously to avoid blocking the main process
-  const audioBuffer = await readFileAsync(recording.file_path)
-  const base64Audio = audioBuffer.toString('base64')
-
-  // Determine MIME type
-  const ext = extname(recording.file_path).toLowerCase()
-  const mimeTypes: Record<string, string> = {
-    '.wav': 'audio/wav',
-    '.mp3': 'audio/mp3',
-    '.m4a': 'audio/mp4',
-    '.ogg': 'audio/ogg',
-    '.webm': 'audio/webm',
-    '.hda': 'audio/mp3' // HiDock H1E outputs MPEG MP3 format
-  }
-  const mimeType = mimeTypes[ext] || 'audio/wav'
-
-  // Initialize Gemini
-  const genAI = new GoogleGenerativeAI(config.transcription.geminiApiKey)
-  const model = genAI.getGenerativeModel({ model: config.transcription.geminiModel || 'gemini-2.0-flash-exp' })
-
-  // Find candidate meetings for this recording's time window
-  const candidateMeetings = findCandidateMeetingsForRecording(recordingId)
-  console.log(`Found ${candidateMeetings.length} candidate meetings for recording ${recordingId}`)
-
-  // Build meeting context for better transcription
-  let meetingContext = ''
-  if (candidateMeetings.length > 0) {
-    meetingContext = `\n\nPOSSIBLE MEETING CONTEXT (use this to improve transcription accuracy):
-${candidateMeetings.map((m, i) => `
-Meeting ${i + 1}: "${m.subject}"
-  Time: ${new Date(m.start_time).toLocaleString()} - ${new Date(m.end_time).toLocaleString()}
-  ${m.organizer_name ? `Organizer: ${m.organizer_name}` : ''}
-  ${m.location ? `Location: ${m.location}` : ''}
-  ${m.description ? `Description: ${m.description.slice(0, 200)}...` : ''}
-`).join('\n')}`
-  }
-
-  progressCallback?.('transcribing', 20) // spec-014: progress reporting
-
-  // First, transcribe the audio with meeting context
-  const transcriptionPrompt = `Transcribe this audio recording.
-The audio may be in Spanish or English - transcribe in the original language.
-Provide a clean, accurate transcription of all speech.
-If there are multiple speakers, try to indicate speaker changes with "Speaker 1:", "Speaker 2:", etc.
-${meetingContext}
-Return ONLY the transcription, no additional commentary.`
-
-  const transcriptionResult = await model.generateContent([
-    {
-      inlineData: {
-        mimeType,
-        data: base64Audio
-      }
-    },
-    { text: transcriptionPrompt }
-  ])
-
-  const fullText = transcriptionResult.response.text()
-
-  progressCallback?.('analyzing', 50) // spec-014: progress reporting
-
-  // Build meeting selection prompt if there are multiple candidates
-  let meetingSelectionSection = ''
-  if (candidateMeetings.length > 1) {
-    meetingSelectionSection = `
-5. IMPORTANT - Meeting Selection: Based on the transcript content, determine which meeting this recording most likely belongs to.
-   Analyze mentions of topics, people, projects, or context clues to select the best match.
-
-   Available meetings:
-${candidateMeetings.map((m, i) => `   ${i + 1}. "${m.subject}" (ID: ${m.id})`).join('\n')}
-
-   Include in your response:
-   "selected_meeting_id": "the meeting ID that best matches",
-   "meeting_confidence": 0.0 to 1.0 (how confident you are),
-   "selection_reason": "why you selected this meeting"`
-  } else if (candidateMeetings.length === 1) {
-    meetingSelectionSection = `
-5. Meeting Selection: There is one candidate meeting near this recording's time:
-   1. "${candidateMeetings[0].subject}" (ID: ${candidateMeetings[0].id})
-
-   Determine if this recording actually belongs to this meeting based on topics, people, and context.
-   If the content does NOT match the meeting subject, set meeting_confidence to 0.0 and selected_meeting_id to "none".
-
-   "selected_meeting_id": "the meeting ID if it matches, or \\"none\\" if it doesn't",
-   "meeting_confidence": 0.0 to 1.0,
-   "selection_reason": "why you selected or rejected this meeting"`
-  }
-
-  // Now analyze the transcription for summary, action items, etc.
-  const analysisPrompt = `Analyze this meeting transcript and provide:
-1. A brief summary (2-3 sentences)
-2. A list of action items mentioned (as a JSON array of strings)
-3. Key topics discussed (as a JSON array of strings)
-4. Key points or decisions made (as a JSON array of strings)
-5. A short, descriptive title for this recording (3-8 words that capture the essence)
-6. 4-5 specific, context-aware questions that could be asked about this recording
-   - Questions should be SPECIFIC to the content (e.g., "What was decided about the Q3 marketing budget?")
-   - Avoid generic questions (e.g., "What was discussed?" or "Tell me more")
-   - Questions should help users quickly understand key decisions, action items, and outcomes
-
-IMPORTANT: Respond in the SAME LANGUAGE as the transcript. If the transcript is in Spanish, write the summary, action items, topics, key points, title, and questions in Spanish. If English, respond in English.
-${meetingSelectionSection}
-
-Transcript:
-${fullText}
-
-Respond in JSON format:
-{
-  "summary": "...",
-  "action_items": ["...", "..."],
-  "topics": ["...", "..."],
-  "key_points": ["...", "..."],
-  "title_suggestion": "Brief Descriptive Title (3-8 words)",
-  "question_suggestions": ["Specific question about decision 1?", "Specific question about action item 2?", "..."],
-  "language": "es" or "en"${candidateMeetings.length > 0 ? `,
-  "selected_meeting_id": "...",
-  "meeting_confidence": 0.0,
-  "selection_reason": "..."` : ''}
-}`
-
-  const analysisResult = await model.generateContent(analysisPrompt)
-  const analysisText = analysisResult.response.text()
-
-  // Parse the analysis JSON
-  let analysis: {
-    summary?: string
-    action_items?: string[]
-    topics?: string[]
-    key_points?: string[]
-    title_suggestion?: string
-    question_suggestions?: string[]
-    language?: string
-    selected_meeting_id?: string
-    meeting_confidence?: number
-    selection_reason?: string
-  } = {}
-
+  const outputDir = mkdtempSync(join(tmpdir(), 'hidock-transcription-'))
   try {
-    // Extract JSON from the response (might be wrapped in markdown code blocks)
-    const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      analysis = JSON.parse(jsonMatch[0])
-    }
-  } catch (e) {
-    console.warn('Failed to parse analysis JSON:', e)
-    analysis = { summary: 'Analysis failed', language: 'unknown' }
-  }
+    const result = config.transcription.localEngine === 'whisper'
+      ? await transcribeWithWhisper(recording.file_path, outputDir, progressCallback)
+      : await transcribeWithParakeet(recording.file_path, outputDir, progressCallback)
+    const fullText = normalizeTranscriptText(result.output)
+    const transcriptId = crypto.randomUUID()
+    const language = result.output.language || config.transcription.language || 'unknown'
+    const meeting = recording.meeting_id ? getMeetingById(recording.meeting_id) : undefined
 
-  // Process AI meeting selection
-  if (candidateMeetings.length > 0) {
-    // Add all candidates to the database
-    for (const meeting of candidateMeetings) {
-      const isSelected = analysis.selected_meeting_id === meeting.id
-      const confidence = isSelected ? (analysis.meeting_confidence || 0.5) : 0.1
-      const reason = isSelected ? (analysis.selection_reason || 'Time overlap') : 'Time overlap only'
-
-      addRecordingMeetingCandidate(recordingId, meeting.id, confidence, reason, isSelected)
-    }
-
-    // If AI selected a meeting with sufficient confidence, link it
-    const MIN_LINK_CONFIDENCE = 0.4
-    if (analysis.selected_meeting_id && analysis.selected_meeting_id !== 'none') {
-      const selectedMeeting = candidateMeetings.find(m => m.id === analysis.selected_meeting_id)
-      const confidence = analysis.meeting_confidence || 0
-      if (selectedMeeting && confidence >= MIN_LINK_CONFIDENCE) {
-        linkRecordingToMeeting(
-          recordingId,
-          selectedMeeting.id,
-          confidence,
-          'ai_transcript_match'
-        )
-        console.log(`AI matched recording to meeting: "${selectedMeeting.subject}" (confidence: ${confidence})`)
-      } else if (selectedMeeting && confidence < MIN_LINK_CONFIDENCE) {
-        console.log(`AI match rejected (low confidence ${confidence}): "${selectedMeeting.subject}"`)
-      }
-    }
-  }
-
-  // Count words
-  const wordCount = fullText.split(/\s+/).filter((w) => w.length > 0).length
-
-  // Create transcript record
-  const transcript: Omit<Transcript, 'created_at'> = {
-    id: `trans_${recordingId}`,
-    recording_id: recordingId,
-    full_text: fullText,
-    language: analysis.language || 'unknown',
-    summary: analysis.summary,
-    action_items: analysis.action_items ? JSON.stringify(analysis.action_items) : undefined,
-    topics: analysis.topics ? JSON.stringify(analysis.topics) : undefined,
-    key_points: analysis.key_points ? JSON.stringify(analysis.key_points) : undefined,
-    sentiment: undefined,
-    speakers: undefined,
-    word_count: wordCount,
-    transcription_provider: 'gemini',
-    transcription_model: config.transcription.geminiModel,
-    title_suggestion: analysis.title_suggestion,
-    question_suggestions: analysis.question_suggestions ? JSON.stringify(analysis.question_suggestions) : undefined
-  }
-
-  insertTranscript(transcript)
-  // AI-13: Use standard enum value 'complete' (not 'transcribed')
-  updateRecordingTranscriptionStatus(recordingId, 'complete')
-
-  // Auto-update recording title if we have a title suggestion
-  if (analysis.title_suggestion) {
-    updateKnowledgeCaptureTitle(recordingId, analysis.title_suggestion)
-  }
-
-  progressCallback?.('detecting_actionables', 75) // spec-014: progress reporting
-
-  // Detect actionables from transcript
-  try {
-    const knowledgeCapture = queryOne<{ id: string }>(
-      'SELECT id FROM knowledge_captures WHERE source_recording_id = ?',
-      [recordingId]
-    )
-    const sourceKnowledgeId = knowledgeCapture?.id || recordingId
-
-    const detections = await detectActionables(fullText, sourceKnowledgeId, {
-      title: analysis.title_suggestion,
-      questions: analysis.question_suggestions
+    insertTranscript({
+      id: transcriptId,
+      recording_id: recordingId,
+      full_text: fullText,
+      language,
+      word_count: countWords(fullText),
+      speakers: buildSpeakersJson(result.output),
+      transcription_provider: result.provider,
+      transcription_model: result.model
     })
 
-    // Create actionable entries with TEXT IDs
-    const VALID_TEMPLATE_IDS = ['meeting_minutes', 'interview_feedback', 'project_status', 'action_items']
-
-    for (const detection of detections) {
-      const actionableId = `act_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
-      // Sanitize template ID: fall back to 'meeting_minutes' if AI suggests an invalid one
-      const sanitizedTemplate = detection.suggestedTemplate && VALID_TEMPLATE_IDS.includes(detection.suggestedTemplate)
-        ? detection.suggestedTemplate
-        : 'meeting_minutes'
-
-      run(
-        `INSERT INTO actionables (
-          id, source_knowledge_id, type, title, description, status,
-          confidence, suggested_template, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          actionableId,
-          sourceKnowledgeId, // source_knowledge_id references knowledge_captures.id
-          detection.type,
-          detection.suggestedTitle,
-          detection.reason,
-          'pending',
-          detection.confidence,
-          sanitizedTemplate,
-          new Date().toISOString()
-        ]
-      )
+    progressCallback?.('indexing transcript', 92)
+    try {
+      await getVectorStore().indexTranscript(fullText, {
+        meetingId: recording.meeting_id,
+        recordingId,
+        timestamp: recording.date_recorded,
+        subject: meeting?.subject || recording.filename
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`[Transcription] Transcript saved, but local embedding index failed: ${message}`)
     }
 
-    if (detections.length > 0) {
-      console.log(`[Actionable Detection] Created ${detections.length} actionables for ${recordingId}`)
-    }
-  } catch (error) {
-    console.error('[Actionable Detection] Failed to create actionables:', error)
-    // Don't fail the transcription if actionable detection fails
+    updateRecordingTranscriptionStatus(recordingId, 'complete')
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true })
   }
-
-  progressCallback?.('indexing', 85) // spec-014: progress reporting
-
-  // Index transcript into vector store for RAG
-  try {
-    const vectorStore = getVectorStore()
-    // Use the AI-linked meeting ID if available, otherwise fall back to the original
-    const meetingId = analysis.selected_meeting_id || recording.meeting_id
-    let meetingSubject: string | undefined
-
-    if (meetingId) {
-      const meeting = getMeetingById(meetingId)
-      meetingSubject = meeting?.subject
-    }
-
-    const indexedCount = await vectorStore.indexTranscript(fullText, {
-      meetingId: meetingId || undefined,
-      recordingId,
-      timestamp: recording.created_at,
-      subject: meetingSubject
-    })
-
-    console.log(`Indexed ${indexedCount} chunks into vector store`)
-  } catch (e) {
-    console.warn('Failed to index transcript into vector store:', e)
-  }
-
-  progressCallback?.('complete', 100) // spec-014: progress reporting
-  console.log(`Transcription complete: ${recording.filename} (${wordCount} words)`)
 }
 
 export async function transcribeManually(recordingId: string): Promise<void> {
@@ -684,6 +556,7 @@ export async function transcribeManually(recordingId: string): Promise<void> {
     notifyRenderer('transcription:completed', { recordingId })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    updateRecordingTranscriptionStatus(recordingId, 'error')
     notifyRenderer('transcription:failed', { recordingId, error: errorMessage })
     throw error
   }

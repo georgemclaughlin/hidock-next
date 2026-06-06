@@ -1,8 +1,6 @@
 import ICAL from 'ical.js'
-import { join } from 'path'
-import { getCachePath } from './file-storage'
-import { upsertMeetingsBatch, Meeting } from './database'
-import { getConfig, updateConfig } from './config'
+import { Meeting } from './database'
+import { getConfig } from './config'
 
 /**
  * Windows timezone names to UTC offset in seconds.
@@ -174,84 +172,6 @@ export function categorizeCalendarError(error: unknown): { message: string; cate
   return { message, category: 'unknown' }
 }
 
-/**
- * Validate an ICS URL to prevent SSRF attacks.
- * Only allows HTTPS URLs (or HTTP for localhost in development).
- * Blocks private IP ranges, localhost (except in dev), and non-HTTP protocols.
- */
-function validateCalendarUrl(url: string): { valid: boolean; error?: string } {
-  try {
-    const parsed = new URL(url)
-
-    // Only allow HTTP(S) protocols
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-      return { valid: false, error: 'Only HTTP/HTTPS URLs are allowed for calendar sync' }
-    }
-
-    // Get hostname for further validation
-    const hostname = parsed.hostname.toLowerCase()
-
-    // Block localhost and loopback addresses (except in development)
-    const isLocalhost = hostname === 'localhost' ||
-                        hostname === '127.0.0.1' ||
-                        hostname === '::1' ||
-                        hostname === '[::1]' ||
-                        hostname.endsWith('.local')
-
-    if (isLocalhost) {
-      // Allow localhost only if explicitly running in dev mode
-      const isDev = process.env.NODE_ENV === 'development'
-      if (!isDev) {
-        return { valid: false, error: 'Localhost URLs are not allowed for calendar sync in production' }
-      }
-    }
-
-    // Block private IP ranges
-    const privateIPPatterns = [
-      /^10\./,                    // 10.0.0.0/8
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // 172.16.0.0/12
-      /^192\.168\./,              // 192.168.0.0/16
-      /^169\.254\./,              // Link-local 169.254.0.0/16
-      /^0\./,                     // 0.0.0.0/8
-      /^100\.(6[4-9]|[7-9][0-9]|1[0-2][0-9])\./,  // CGNAT 100.64.0.0/10
-    ]
-
-    for (const pattern of privateIPPatterns) {
-      if (pattern.test(hostname)) {
-        return { valid: false, error: 'Private IP addresses are not allowed for calendar sync' }
-      }
-    }
-
-    // Block metadata endpoints (cloud provider SSRF targets)
-    const blockedHostnames = [
-      '169.254.169.254',          // AWS/GCP metadata
-      'metadata.google.internal',
-      'metadata.gcp.internal',
-    ]
-
-    if (blockedHostnames.includes(hostname)) {
-      return { valid: false, error: 'This URL is blocked for security reasons' }
-    }
-
-    // Require HTTPS for non-localhost URLs in production
-    if (parsed.protocol === 'http:' && !isLocalhost) {
-      // Allow HTTP only for well-known calendar providers (some still use HTTP for ICS)
-      const allowedHttpHosts = [
-        'calendar.google.com',
-        'outlook.office365.com',
-        'outlook.live.com',
-      ]
-      if (!allowedHttpHosts.some(h => hostname === h || hostname.endsWith('.' + h))) {
-        return { valid: false, error: 'HTTPS is required for calendar URLs (HTTP is only allowed for major calendar providers)' }
-      }
-    }
-
-    return { valid: true }
-  } catch (e) {
-    return { valid: false, error: 'Invalid URL format' }
-  }
-}
-
 // Helper to yield to event loop and prevent UI blocking
 // Uses setTimeout(0) which gives renderer process priority over setImmediate
 function yieldToEventLoop(): Promise<void> {
@@ -418,82 +338,12 @@ function safeToJSDate(icalTime: ICAL.Time | null | undefined, tzidHint?: string)
 }
 
 export async function syncCalendar(icsUrl: string): Promise<CalendarSyncResult> {
-  console.log('Starting calendar sync...')
-  const { emitActivityLog } = await import('./activity-log')
-  emitActivityLog('info', 'Syncing calendar...', 'Fetching calendar events')
-
-  try {
-    // Validate URL to prevent SSRF attacks
-    const validation = validateCalendarUrl(icsUrl)
-    if (!validation.valid) {
-      emitActivityLog('error', 'Calendar sync failed', validation.error ?? 'Invalid URL')
-      return {
-        success: false,
-        meetingsCount: 0,
-        error: validation.error,
-        errorCategory: 'validation'
-      }
-    }
-
-    // Fetch ICS file
-    const response = await fetch(icsUrl)
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch calendar: ${response.status} ${response.statusText}`)
-    }
-
-    const icsData = await response.text()
-
-    // CS-009: Use async writeFile to avoid blocking the event loop
-    const cachePath = join(getCachePath(), 'calendar.ics')
-    const { writeFile } = await import('fs/promises')
-    await writeFile(cachePath, icsData, 'utf-8')
-
-    // Yield before heavy parsing
-    await yieldToEventLoop()
-
-    // Parse ICS (yields internally for large calendars)
-    const meetings = await parseICSAsync(icsData)
-
-    // Yield before heavy database work
-    await yieldToEventLoop()
-
-    // Upsert all meetings atomically in a single transaction
-    // This ensures all-or-nothing behavior - if any meeting fails, all are rolled back
-    try {
-      upsertMeetingsBatch(meetings)
-    } catch (dbError) {
-      console.error('Failed to save meetings to database:', dbError)
-      throw new Error(`Database error: ${dbError instanceof Error ? dbError.message : 'Unknown database error'}`)
-    }
-
-    // Update last sync time in config and persist it
-    const now = new Date().toISOString()
-    try {
-      await updateConfig('calendar', { lastSyncAt: now })
-    } catch (configError) {
-      console.error('Failed to persist sync timestamp:', configError)
-      // Meetings already saved - timestamp will catch up on next sync
-    }
-
-    console.log(`Calendar sync complete: ${meetings.length} meetings`)
-    emitActivityLog('success', 'Calendar sync complete', `Loaded ${meetings.length} meetings`)
-
-    return {
-      success: true,
-      meetingsCount: meetings.length,
-      lastSync: now
-    }
-  } catch (error) {
-    console.error('Calendar sync failed:', error)
-    const categorized = categorizeCalendarError(error)
-    emitActivityLog('error', 'Calendar sync failed', categorized.message)
-    return {
-      success: false,
-      meetingsCount: 0,
-      error: categorized.message,
-      errorCategory: categorized.category
-    }
+  void icsUrl
+  return {
+    success: false,
+    meetingsCount: 0,
+    error: 'External calendar sync has been removed from this local-only fork.',
+    errorCategory: 'validation'
   }
 }
 

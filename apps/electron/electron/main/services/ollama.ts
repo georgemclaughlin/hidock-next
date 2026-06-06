@@ -4,6 +4,7 @@
  */
 
 import { getConfig } from './config'
+import { canUseOllamaUrl } from './privacy'
 
 // AI-07 FIX: These are now fallback defaults only - actual values come from config
 const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
@@ -197,9 +198,14 @@ export function getOllamaService(): OllamaService {
       const config = getConfig()
 
       // Read from correct config paths (embeddings.ollamaBaseUrl, embeddings.ollamaModel, chat.ollamaModel)
-      const baseUrl = config.embeddings?.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL
+      const configuredBaseUrl = config.embeddings?.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL
+      const baseUrl = canUseOllamaUrl(configuredBaseUrl, config) ? configuredBaseUrl : DEFAULT_OLLAMA_BASE_URL
       const embeddingModel = config.embeddings?.ollamaModel || DEFAULT_EMBEDDING_MODEL
       const chatModel = config.chat?.ollamaModel || DEFAULT_CHAT_MODEL
+
+      if (baseUrl !== configuredBaseUrl) {
+        console.warn('[Ollama] Remote Ollama URL blocked by local-only mode; using localhost')
+      }
 
       console.log(`[Ollama] Initializing with config: baseUrl=${baseUrl}, embeddingModel=${embeddingModel}, chatModel=${chatModel}`)
 

@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { getConfig, saveConfig, updateConfig, AppConfig } from '../services/config'
+import { getConfig, getConfigValue, saveConfig, updateConfig, AppConfig } from '../services/config'
 import { success, error as errorResult } from '../types/api'
 import { emitActivityLog } from '../services/activity-log'
 
@@ -56,10 +56,9 @@ export function registerConfigHandlers(): void {
   )
 
   // Get specific value
-  ipcMain.handle('config:get-value', async <K extends keyof AppConfig>(_, key: K) => {
+  ipcMain.handle('config:get-value', async (_, key: string) => {
     try {
-      const config = getConfig()
-      return success(config[key])
+      return success(getConfigValue(key))
     } catch (err) {
       console.error(`[config:get-value] Error getting ${String(key)}:`, err)
       return errorResult(

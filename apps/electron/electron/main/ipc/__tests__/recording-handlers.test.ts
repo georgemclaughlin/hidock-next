@@ -144,11 +144,14 @@ vi.mock('../../services/transcription', () => ({
 vi.mock('../../services/config', () => ({
   getConfig: vi.fn(() => ({
     transcription: {
-      provider: 'gemini',
-      geminiApiKey: 'test-api-key',
-      geminiModel: 'gemini-3-pro-preview',
+      provider: 'local',
+      localEngine: 'parakeet',
+      localCommand: 'whisper',
+      localModel: 'base',
+      parakeetPythonCommand: 'python',
+      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
       autoTranscribe: true,
-      language: 'es'
+      language: 'auto'
     }
   })),
   setConfig: vi.fn()
@@ -816,7 +819,7 @@ describe('Recording IPC Handlers', () => {
       const result = await handlers['recordings:addToQueue'](null, 'rec-1')
 
       expect(addToQueue).toHaveBeenCalledWith('rec-1')
-      expect(updateRecordingTranscriptionStatus).toHaveBeenCalledWith('rec-1', 'queued')
+      expect(updateRecordingTranscriptionStatus).toHaveBeenCalledWith('rec-1', 'pending')
       expect(result).toBe('queue-item-id')
     })
 
@@ -829,26 +832,6 @@ describe('Recording IPC Handlers', () => {
       const result = await handlers['recordings:addToQueue'](null, 'rec-1')
 
       expect(result).toBe(false)
-    })
-
-    it('should reject when API key is not configured', async () => {
-      const { getConfig } = await import('../../services/config')
-      vi.mocked(getConfig).mockReturnValue({
-        transcription: {
-          provider: 'gemini',
-          geminiApiKey: '', // Empty API key
-          geminiModel: 'gemini-3-pro-preview',
-          autoTranscribe: true,
-          language: 'es'
-        }
-      } as any)
-
-      const result = await handlers['recordings:addToQueue'](null, 'rec-1')
-
-      expect(result).toEqual({
-        success: false,
-        error: 'Transcription API key not configured. Please add your API key in Settings.'
-      })
     })
   })
 

@@ -55,20 +55,33 @@ vi.mock('electron', () => ({
 vi.mock('../config', () => ({
   getConfig: vi.fn(() => ({
     transcription: {
-      geminiApiKey: 'test-api-key',
-      geminiModel: 'gemini-2.0-flash'
+      provider: 'local',
+      localEngine: 'parakeet',
+      localCommand: 'whisper',
+      localModel: 'base',
+      parakeetPythonCommand: 'python',
+      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+      language: 'auto'
     }
   }))
 }))
 
-// Mock google generative AI - make it fail
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn(() => ({
-    getGenerativeModel: vi.fn(() => ({
-      generateContent: vi.fn().mockRejectedValue(new Error('API rate limit exceeded'))
-    }))
-  }))
-}))
+// Mock local transcription command - make it fail
+vi.mock('child_process', async () => {
+  const { EventEmitter } = await import('events')
+  return {
+    spawn: vi.fn(() => {
+      const child = new EventEmitter() as any
+      child.stdout = new EventEmitter()
+      child.stderr = new EventEmitter()
+      setImmediate(() => {
+        child.stderr.emit('data', Buffer.from('local transcription failed'))
+        child.emit('close', 1)
+      })
+      return child
+    })
+  }
+})
 
 // Mock fs - simple approach that works in jsdom environment
 vi.mock('fs', async (importOriginal) => {
@@ -76,15 +89,16 @@ vi.mock('fs', async (importOriginal) => {
   return {
     ...actual,
     existsSync: vi.fn(() => true),
-    readFile: vi.fn((_path: string, cb: (err: null, data: Buffer) => void) => {
-      cb(null, Buffer.from('fake audio data'))
-    })
+    mkdtempSync: vi.fn(() => '/tmp/hidock-transcription-test'),
+    rmSync: vi.fn()
   }
 })
 
 // Mock vector store
 vi.mock('../vector-store', () => ({
-  getVectorStore: vi.fn(() => null)
+  getVectorStore: vi.fn(() => ({
+    indexTranscript: vi.fn()
+  }))
 }))
 
 describe('Transcription Service', () => {

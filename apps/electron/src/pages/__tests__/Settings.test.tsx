@@ -1,6 +1,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { Settings } from '../Settings'
 
 const mockLoadConfig = vi.fn()
@@ -25,14 +25,23 @@ vi.mock('@/store/domain/useConfigStore', () => ({
     const state = {
       config: {
         calendar: {
-          icsUrl: 'https://example.com/cal.ics',
-          syncEnabled: true,
+          icsUrl: '',
+          syncEnabled: false,
           syncIntervalMinutes: 15,
-          lastSyncAt: '2026-03-01T10:00:00Z'
+          lastSyncAt: null
         },
-        transcription: { geminiApiKey: 'AIzaTestKey12345', geminiModel: 'gemini-3-pro-preview' },
-        chat: { provider: 'gemini' as const },
-        embeddings: { ollamaBaseUrl: 'http://localhost:11434' }
+        transcription: {
+          provider: 'local' as const,
+          localEngine: 'parakeet' as const,
+          localCommand: 'whisper',
+          localModel: 'base',
+          parakeetPythonCommand: 'python',
+          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+          autoTranscribe: false,
+          language: 'auto'
+        },
+        chat: { provider: 'ollama' as const, ollamaModel: 'llama3.2', maxContextChunks: 10 },
+        embeddings: { provider: 'ollama' as const, ollamaBaseUrl: 'http://localhost:11434' }
       },
       loadConfig: mockLoadConfig,
       updateConfig: mockUpdateConfig,
@@ -54,10 +63,19 @@ global.window.electronAPI = {
     get: vi.fn().mockResolvedValue({
       success: true,
       data: {
-        calendar: { icsUrl: '', syncEnabled: true, syncIntervalMinutes: 15 },
-        transcription: { geminiApiKey: '', geminiModel: 'gemini-3-pro-preview' },
-        chat: { provider: 'gemini' },
-        embeddings: { ollamaBaseUrl: 'http://localhost:11434' }
+        calendar: { icsUrl: '', syncEnabled: false, syncIntervalMinutes: 15 },
+        transcription: {
+          provider: 'local',
+          localEngine: 'parakeet',
+          localCommand: 'whisper',
+          localModel: 'base',
+          parakeetPythonCommand: 'python',
+          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+          autoTranscribe: false,
+          language: 'auto'
+        },
+        chat: { provider: 'ollama', ollamaModel: 'llama3.2', maxContextChunks: 10 },
+        embeddings: { provider: 'ollama', ollamaBaseUrl: 'http://localhost:11434' }
       }
     }),
     updateSection: vi.fn().mockResolvedValue({ success: true })
@@ -87,39 +105,31 @@ describe('Settings Page', () => {
   it('should render settings sections', async () => {
     render(<Settings />)
 
-    expect(screen.getByText('Calendar')).toBeInTheDocument()
-    expect(screen.getByText('Transcription')).toBeInTheDocument()
-    expect(screen.getByText('Chat / RAG')).toBeInTheDocument()
+    expect(screen.getByText('Local Transcription')).toBeInTheDocument()
+    expect(screen.getByText('Local Assistant')).toBeInTheDocument()
     expect(screen.getByText('Storage')).toBeInTheDocument()
-  })
-
-  it('should render calendar settings form', async () => {
-    render(<Settings />)
-
-    expect(screen.getByLabelText('ICS Calendar URL')).toBeInTheDocument()
-    expect(screen.getByLabelText('Enable auto-sync')).toBeInTheDocument()
-    expect(screen.getByLabelText('Sync interval in minutes')).toBeInTheDocument()
   })
 
   it('should render transcription settings form', async () => {
     render(<Settings />)
 
-    expect(screen.getByLabelText('Gemini API Key')).toBeInTheDocument()
-    expect(screen.getByLabelText('Transcription Model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Local transcription engine')).toBeInTheDocument()
+    expect(screen.getByLabelText('Parakeet Python command')).toBeInTheDocument()
+    expect(screen.getByLabelText('Parakeet model')).toBeInTheDocument()
   })
 
-  it('should render chat provider toggle buttons', async () => {
+  it('should render local assistant settings form', async () => {
     render(<Settings />)
 
-    expect(screen.getByLabelText('Use Gemini chat provider')).toBeInTheDocument()
-    expect(screen.getByLabelText('Use Ollama local chat provider')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ollama base URL')).toBeInTheDocument()
+    expect(screen.getByLabelText('RAG context window size')).toBeInTheDocument()
   })
 
   it('should render save buttons for each section', async () => {
     render(<Settings />)
 
     const saveButtons = screen.getAllByLabelText(/Save.*settings/)
-    expect(saveButtons.length).toBe(3) // Calendar, Transcription, Chat
+    expect(saveButtons.length).toBe(2) // Transcription and Chat
   })
 
   it('should render storage section', async () => {
@@ -133,69 +143,5 @@ describe('Settings Page', () => {
     render(<Settings />)
 
     expect(screen.getByTestId('health-check')).toBeInTheDocument()
-  })
-
-  // C-006: API key visibility toggle
-  it('should toggle API key visibility', async () => {
-    render(<Settings />)
-
-    const apiKeyInput = screen.getByLabelText('Gemini API Key') as HTMLInputElement
-
-    // Default: password type
-    expect(apiKeyInput.type).toBe('password')
-
-    // Click show API key button
-    const toggleButton = screen.getByLabelText('Show API key')
-    fireEvent.click(toggleButton)
-
-    // Should now be visible
-    expect(apiKeyInput.type).toBe('text')
-
-    // Click hide API key button
-    const hideButton = screen.getByLabelText('Hide API key')
-    fireEvent.click(hideButton)
-
-    // Should be hidden again
-    expect(apiKeyInput.type).toBe('password')
-  })
-
-  // C-006: Sync interval clamping - HTML attributes enforce valid range
-  it('should render sync interval input with min/max attributes', async () => {
-    render(<Settings />)
-
-    const intervalInput = screen.getByLabelText('Sync interval in minutes') as HTMLInputElement
-
-    // Should initialize with the config value
-    expect(intervalInput.value).toBe('15')
-
-    // Verify the input has proper min/max attributes for HTML validation
-    expect(intervalInput.min).toBe('5')
-    expect(intervalInput.max).toBe('120')
-
-    // Verify input type is number
-    expect(intervalInput.type).toBe('number')
-  })
-
-  // C-006: Checkbox has no redundant onKeyDown (verified by inspection; test native behavior)
-  it('should render sync checkbox with onChange handler', async () => {
-    render(<Settings />)
-
-    const checkbox = screen.getByLabelText('Enable auto-sync') as HTMLInputElement
-
-    // Default from mock config
-    expect(checkbox.checked).toBe(true)
-
-    // The checkbox should be a controlled component with only onChange,
-    // not a redundant onKeyDown handler
-    expect(checkbox).toBeInTheDocument()
-    expect(checkbox.type).toBe('checkbox')
-  })
-
-  // C-006: Last sync time display
-  it('should display last sync time when available', async () => {
-    render(<Settings />)
-
-    // The mock config has lastSyncAt set to '2026-03-01T10:00:00Z'
-    expect(screen.getByText(/Last synced:/)).toBeInTheDocument()
   })
 })

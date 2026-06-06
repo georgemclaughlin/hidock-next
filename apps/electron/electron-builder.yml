@@ -46,6 +46,3 @@ linux:
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
-publish:
-  provider: generic
-  url: https://example.com/auto-updates

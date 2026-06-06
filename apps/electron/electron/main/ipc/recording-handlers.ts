@@ -10,6 +10,10 @@ import {
   getCandidatesForRecordingWithDetails,
   getMeetingsNearDate,
   insertRecording,
+  addToQueue,
+  getQueueItems,
+  updateQueueItem,
+  removeFromQueueByRecordingId,
   type Recording,
   type Transcript
 } from '../services/database'
@@ -31,8 +35,6 @@ import {
   cancelAllTranscriptions,
   processQueueManually
 } from '../services/transcription'
-import { getQueueItems, addToQueue, updateQueueItem } from '../services/database'
-import { getConfig } from '../services/config'
 import {
   GetRecordingByIdSchema,
   DeleteRecordingSchema,
@@ -537,19 +539,11 @@ export function registerRecordingHandlers(): void {
   // Add a recording to the transcription queue
   ipcMain.handle('recordings:addToQueue', async (_, recordingId: string) => {
     try {
-      // Validate API key is configured before queueing
-      const config = getConfig()
-      if (!config.transcription.geminiApiKey) {
-        return {
-          success: false,
-          error: 'Transcription API key not configured. Please add your API key in Settings.'
-        }
-      }
-
       const queueItemId = addToQueue(recordingId)
-      updateRecordingTranscriptionStatus(recordingId, 'queued')
-      // spec-005: Trigger immediate queue processing after adding
-      processQueueManually()
+      updateRecordingTranscriptionStatus(recordingId, 'pending')
+      processQueueManually().catch((error) => {
+        console.error('Failed to process transcription queue:', error)
+      })
       return queueItemId
     } catch (error) {
       console.error('recordings:addToQueue error:', error)
@@ -577,9 +571,12 @@ export function registerRecordingHandlers(): void {
         return { success: false, error: result.error.issues[0]?.message || 'Invalid request' }
       }
 
+      removeFromQueueByRecordingId(result.data.recordingId)
       const queueItemId = addToQueue(result.data.recordingId)
       updateRecordingTranscriptionStatus(result.data.recordingId, 'pending')
-      processQueueManually()
+      processQueueManually().catch((error) => {
+        console.error('Failed to process transcription retry:', error)
+      })
       return { success: true, queueItemId }
     } catch (error) {
       console.error('transcription:retry error:', error)

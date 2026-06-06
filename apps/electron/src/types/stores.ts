@@ -296,6 +296,10 @@ export interface AppConfig {
     dataPath: string
     maxRecordingsGB: number
   }
+  privacy: {
+    localOnly: boolean
+    allowRemoteOllama: boolean
+  }
   calendar: {
     icsUrl: string
     syncEnabled: boolean
@@ -303,11 +307,14 @@ export interface AppConfig {
     lastSyncAt: string | null
   }
   transcription: {
-    provider: 'gemini'
-    geminiApiKey: string
-    geminiModel: string
+    provider: 'local'
+    localEngine: 'parakeet' | 'whisper'
     autoTranscribe: boolean
     language: string
+    localCommand: string
+    localModel: string
+    parakeetPythonCommand: string
+    parakeetModel: string
   }
   embeddings: {
     provider: 'ollama'
@@ -317,8 +324,7 @@ export interface AppConfig {
     chunkOverlap: number
   }
   chat: {
-    provider: 'gemini' | 'ollama'
-    geminiModel: string
+    provider: 'ollama'
     ollamaModel: string
     maxContextChunks: number
   }

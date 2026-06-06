@@ -169,12 +169,12 @@ describe('useTranscriptionStore', () => {
 
       addToQueue('q-1', 'rec-1', 'meeting.wav')
       updateProgress('q-1', 50)
-      markCompleted('q-1', 'gemini')
+      markCompleted('q-1', 'local-whisper')
 
       const item = useTranscriptionStore.getState().queue.get('q-1')
       expect(item!.status).toBe('completed')
       expect(item!.progress).toBe(100)
-      expect(item!.provider).toBe('gemini')
+      expect(item!.provider).toBe('local-whisper')
       expect(item!.completedAt).toBeInstanceOf(Date)
     })
 
@@ -185,14 +185,14 @@ describe('useTranscriptionStore', () => {
       updateProgress('q-1', 50)
       expect(useTranscriptionStore.getState().processing.has('rec-1')).toBe(true)
 
-      markCompleted('q-1', 'gemini')
+      markCompleted('q-1', 'local-whisper')
       expect(useTranscriptionStore.getState().processing.has('rec-1')).toBe(false)
     })
 
     it('does nothing for non-existent item', () => {
       const { markCompleted } = useTranscriptionStore.getState()
 
-      markCompleted('non-existent', 'gemini')
+      markCompleted('non-existent', 'local-whisper')
 
       expect(useTranscriptionStore.getState().queue.size).toBe(0)
     })
@@ -430,7 +430,7 @@ describe('useTranscriptionStore', () => {
         const { addToQueue, markCompleted } = useTranscriptionStore.getState()
 
         addToQueue('q-1', 'rec-1', 'meeting.wav')
-        markCompleted('q-1', 'gemini')
+        markCompleted('q-1', 'local-whisper')
 
         expect(useTranscriptionStore.getState().getStatus('rec-1')).toBe('completed')
       })
@@ -471,7 +471,7 @@ describe('useTranscriptionStore', () => {
         const { addToQueue, markCompleted } = useTranscriptionStore.getState()
 
         addToQueue('q-1', 'rec-1', 'meeting.wav')
-        markCompleted('q-1', 'gemini')
+        markCompleted('q-1', 'local-whisper')
 
         expect(useTranscriptionStore.getState().getProgress('rec-1')).toBe(100)
       })
@@ -508,7 +508,7 @@ describe('useTranscriptionStore', () => {
         store.addToQueue('q-5', 'rec-5', 'pending2.wav')
 
         store.updateProgress('q-2', 50)
-        store.markCompleted('q-3', 'gemini')
+        store.markCompleted('q-3', 'local-whisper')
         store.markFailed('q-4', 'Error')
 
         const { result } = renderHook(() => useTranscriptionStats())
@@ -653,7 +653,7 @@ describe('useTranscriptionStore', () => {
       store.updateProgress('q-1', 50)
       expect(useTranscriptionStore.getState().queue).toBeInstanceOf(Map)
 
-      store.markCompleted('q-1', 'gemini')
+      store.markCompleted('q-1', 'local-whisper')
       expect(useTranscriptionStore.getState().queue).toBeInstanceOf(Map)
 
       store.remove('q-1')
@@ -669,7 +669,7 @@ describe('useTranscriptionStore', () => {
       store.updateProgress('q-1', 50)
       expect(useTranscriptionStore.getState().processing).toBeInstanceOf(Set)
 
-      store.markCompleted('q-1', 'gemini')
+      store.markCompleted('q-1', 'local-whisper')
       expect(useTranscriptionStore.getState().processing).toBeInstanceOf(Set)
     })
 
@@ -709,7 +709,7 @@ describe('useTranscriptionStore', () => {
       expect(useTranscriptionStore.getState().getProgress('rec-1')).toBe(90)
 
       // Step 4: Complete
-      store.markCompleted('q-1', 'gemini')
+      store.markCompleted('q-1', 'local-whisper')
       expect(useTranscriptionStore.getState().getStatus('rec-1')).toBe('completed')
       expect(useTranscriptionStore.getState().getProgress('rec-1')).toBe(100)
       expect(useTranscriptionStore.getState().isProcessing('rec-1')).toBe(false)
@@ -735,7 +735,7 @@ describe('useTranscriptionStore', () => {
 
       // Re-process and complete
       useTranscriptionStore.getState().updateProgress('q-1', 50)
-      useTranscriptionStore.getState().markCompleted('q-1', 'gemini')
+      useTranscriptionStore.getState().markCompleted('q-1', 'local-whisper')
 
       const item = useTranscriptionStore.getState().queue.get('q-1')
       expect(item!.status).toBe('completed')

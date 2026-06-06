@@ -27,17 +27,17 @@ import {
   stopRecordingWatcher,
   setMainWindow as setWatcherMainWindow
 } from './services/recording-watcher'
-import {
-  startTranscriptionProcessor,
-  stopTranscriptionProcessor,
-  setMainWindowForTranscription
-} from './services/transcription'
 import { getVectorStore } from './services/vector-store'
 import { getRAGService } from './services/rag'
 import { setMainWindowForEventBus } from './services/event-bus'
 import { getStoragePolicyService } from './services/storage-policy'
 import { setMainWindowForMigration } from './ipc/migration-handlers'
 import { getIntegrityService } from './services/integrity-service'
+import {
+  setMainWindowForTranscription,
+  startTranscriptionProcessor,
+  stopTranscriptionProcessor
+} from './services/transcription'
 
 let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null

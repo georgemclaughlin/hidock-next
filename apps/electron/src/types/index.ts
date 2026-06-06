@@ -23,6 +23,8 @@
  * "explicitly empty" (null) values, improving type safety.
  */
 
+import type { Actionable } from './knowledge'
+
 // =============================================================================
 // Re-export store types
 // =============================================================================
@@ -158,13 +160,20 @@ export interface AppConfig {
     dataPath: string
     maxRecordingsGB: number
   }
+  privacy: {
+    localOnly: boolean
+    allowRemoteOllama: boolean
+  }
   calendar: CalendarSettings
   transcription: {
-    provider: 'gemini'
-    geminiApiKey: string
-    geminiModel: string
+    provider: 'local'
+    localEngine: 'parakeet' | 'whisper'
     autoTranscribe: boolean
     language: string
+    localCommand: string
+    localModel: string
+    parakeetPythonCommand: string
+    parakeetModel: string
   }
   embeddings: {
     provider: 'ollama'
@@ -174,8 +183,7 @@ export interface AppConfig {
     chunkOverlap: number
   }
   chat: {
-    provider: 'gemini' | 'ollama'
-    geminiModel: string
+    provider: 'ollama'
     ollamaModel: string
     maxContextChunks: number
   }

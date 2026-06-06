@@ -68,7 +68,7 @@ export function useTranscriptionSync() {
           window.electronAPI.onTranscriptionCompleted((data) => {
             const store = useTranscriptionStore.getState()
             if (data.queueItemId) {
-              store.markCompleted(data.queueItemId, 'gemini')
+              store.markCompleted(data.queueItemId, 'local')
             }
           })
         )
@@ -128,7 +128,7 @@ export function useTranscriptionSync() {
 
               if (item.status === 'completed') {
                 if (store.queue.has(item.id)) {
-                  store.markCompleted(item.id, item.provider || 'gemini')
+                  store.markCompleted(item.id, item.provider || 'local')
                 }
               } else if (item.status === 'failed') {
                 if (store.queue.has(item.id)) {

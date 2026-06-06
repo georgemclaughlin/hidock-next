@@ -305,8 +305,8 @@ describe('Database Service', () => {
         sentiment: 'positive',
         speakers: '["Alice", "Bob"]',
         word_count: 4,
-        transcription_provider: 'gemini',
-        transcription_model: 'gemini-2.0-flash',
+        transcription_provider: 'local-whisper',
+        transcription_model: 'base',
         title_suggestion: 'Greeting Session',
         question_suggestions: '["How are you?"]'
       }

@@ -1,9 +1,15 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Save, FolderOpen, RefreshCw, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Save, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { useAppStore, useCalendarSyncing } from '@/store/useAppStore'
 import { useConfigStore } from '@/store/domain/useConfigStore'
 import { formatBytes } from '@/lib/utils'
 import { HealthCheck } from '@/components/HealthCheck'
@@ -17,10 +23,10 @@ const RAG_DEFAULTS = {
   MAX_CONTEXT_CHUNKS_LIMIT: 20
 } as const
 
+type LocalTranscriptionEngine = AppConfig['transcription']['localEngine']
+
 export function Settings() {
   // SM-09 fix: Use granular selectors
-  const syncCalendar = useAppStore((s) => s.syncCalendar)
-  const calendarSyncing = useCalendarSyncing()
   const { config, loadConfig, updateConfig, configLoading } = useConfigStore()
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null)
   const [storageError, setStorageError] = useState<string | null>(null) // B-SET-002: Storage error state
@@ -28,72 +34,43 @@ export function Settings() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // Local form state
-  const [icsUrl, setIcsUrl] = useState('')
-  const [syncEnabled, setSyncEnabled] = useState(true)
-  const [syncInterval, setSyncInterval] = useState(15)
-  const [geminiApiKey, setGeminiApiKey] = useState('')
-  const [geminiModel, setGeminiModel] = useState('gemini-3-pro-preview')
-  const [chatProvider, setChatProvider] = useState<'gemini' | 'ollama'>('gemini')
+  const chatProvider = 'ollama' as const
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
-  const [showApiKey, setShowApiKey] = useState(false)
+  const [transcriptionEngine, setTranscriptionEngine] = useState<LocalTranscriptionEngine>('parakeet')
+  const [transcriptionCommand, setTranscriptionCommand] = useState('whisper')
+  const [transcriptionModel, setTranscriptionModel] = useState('base')
+  const [parakeetPythonCommand, setParakeetPythonCommand] = useState('python')
+  const [parakeetModel, setParakeetModel] = useState('nvidia/parakeet-tdt-0.6b-v2')
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
   const [storageLoading, setStorageLoading] = useState(false)
   // C-CHAT: RAG context window — default matches config.ts (10)
-  const [ragContextSize, setRagContextSize] = useState(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
-
-  // Available Gemini models for transcription (audio-capable)
-  // From: https://ai.google.dev/gemini-api/docs/models
-  const GEMINI_MODELS = [
-    // Gemini 3 Series
-    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview (Best quality)' },
-    { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview' },
-    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview (Fast)' },
-    // Gemini 2.5 Pro Series
-    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Stable)' },
-    { value: 'gemini-2.5-pro-preview-tts', label: 'Gemini 2.5 Pro TTS Preview' },
-    // Gemini 2.5 Flash Series
-    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Stable)' },
-    { value: 'gemini-2.5-flash-preview-09-2025', label: 'Gemini 2.5 Flash Preview' },
-    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image' },
-    { value: 'gemini-2.5-flash-native-audio-preview-12-2025', label: 'Gemini 2.5 Flash Native Audio (Dec 2025)' },
-    { value: 'gemini-2.5-flash-native-audio-preview-09-2025', label: 'Gemini 2.5 Flash Native Audio (Sep 2025)' },
-    { value: 'gemini-2.5-flash-preview-tts', label: 'Gemini 2.5 Flash TTS Preview' },
-    // Gemini 2.5 Flash-Lite Series
-    { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (Stable)' },
-    { value: 'gemini-2.5-flash-lite-preview-09-2025', label: 'Gemini 2.5 Flash Lite Preview' },
-  ]
+  const [ragContextSize, setRagContextSize] = useState<number>(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
 
   // Validation function for config values
   const validateConfig = useCallback((updates: Partial<AppConfig>): string | null => {
-    // Transcription settings validation
-    if (updates.transcription) {
-      if (updates.transcription.geminiApiKey !== undefined) {
-        const apiKey = updates.transcription.geminiApiKey.trim()
-        if (apiKey && apiKey.length < 10) {
-          return 'API key must be at least 10 characters'
-        }
-        if (apiKey && !apiKey.startsWith('AIza')) {
-          return 'Gemini API keys should start with "AIza". Please verify your key.'
-        }
-      }
-    }
-
-    // Calendar settings validation
-    if (updates.calendar) {
-      if (updates.calendar.icsUrl !== undefined) {
-        const url = updates.calendar.icsUrl.trim()
-        if (url && !url.startsWith('http')) {
-          return 'Calendar URL must start with http:// or https://'
-        }
-      }
-      if (updates.calendar.syncIntervalMinutes !== undefined) {
-        const interval = updates.calendar.syncIntervalMinutes
-        if (interval < 5 || interval > 120) {
-          return 'Sync interval must be between 5 and 120 minutes'
-        }
-      }
-    }
-
     // Embeddings settings validation
+    if (updates.transcription) {
+      if (updates.transcription.localEngine === 'whisper') {
+        if (updates.transcription.localCommand !== undefined && !updates.transcription.localCommand.trim()) {
+          return 'Whisper command is required'
+        }
+        if (updates.transcription.localModel !== undefined && !updates.transcription.localModel.trim()) {
+          return 'Whisper model is required'
+        }
+        if (updates.transcription.language !== undefined && !updates.transcription.language.trim()) {
+          return 'Transcription language is required'
+        }
+      }
+      if (updates.transcription.localEngine === 'parakeet') {
+        if (updates.transcription.parakeetPythonCommand !== undefined && !updates.transcription.parakeetPythonCommand.trim()) {
+          return 'Parakeet Python command is required'
+        }
+        if (updates.transcription.parakeetModel !== undefined && !updates.transcription.parakeetModel.trim()) {
+          return 'Parakeet model is required'
+        }
+      }
+    }
+
     if (updates.embeddings) {
       if (updates.embeddings.ollamaBaseUrl !== undefined) {
         const url = updates.embeddings.ollamaBaseUrl.trim()
@@ -106,32 +83,33 @@ export function Settings() {
     return null // Valid
   }, [])
 
-  // C-SET: Track form dirty state per section
-  const isCalendarDirty = useMemo(() => {
+  const isChatDirty = useMemo(() => {
     if (!config) return false
     return (
-      icsUrl !== config.calendar.icsUrl ||
-      syncEnabled !== config.calendar.syncEnabled ||
-      syncInterval !== config.calendar.syncIntervalMinutes
+      ollamaUrl !== config.embeddings.ollamaBaseUrl ||
+      ragContextSize !== config.chat.maxContextChunks
     )
-  }, [config, icsUrl, syncEnabled, syncInterval])
+  }, [config, ollamaUrl, ragContextSize])
 
   const isTranscriptionDirty = useMemo(() => {
     if (!config) return false
     return (
-      geminiApiKey !== config.transcription.geminiApiKey ||
-      geminiModel !== (config.transcription.geminiModel || 'gemini-3-pro-preview')
+      transcriptionEngine !== config.transcription.localEngine ||
+      transcriptionCommand !== config.transcription.localCommand ||
+      transcriptionModel !== config.transcription.localModel ||
+      parakeetPythonCommand !== config.transcription.parakeetPythonCommand ||
+      parakeetModel !== config.transcription.parakeetModel ||
+      transcriptionLanguage !== config.transcription.language
     )
-  }, [config, geminiApiKey, geminiModel])
-
-  const isChatDirty = useMemo(() => {
-    if (!config) return false
-    return (
-      chatProvider !== config.chat.provider ||
-      ollamaUrl !== config.embeddings.ollamaBaseUrl ||
-      ragContextSize !== config.chat.maxContextChunks
-    )
-  }, [config, chatProvider, ollamaUrl, ragContextSize])
+  }, [
+    config,
+    transcriptionEngine,
+    transcriptionCommand,
+    transcriptionModel,
+    parakeetPythonCommand,
+    parakeetModel,
+    transcriptionLanguage
+  ])
 
   // Stable loadConfig with useCallback for dependency array
   const loadConfigStable = useCallback(async () => {
@@ -152,13 +130,13 @@ export function Settings() {
 
   useEffect(() => {
     if (config) {
-      setIcsUrl(config.calendar.icsUrl)
-      setSyncEnabled(config.calendar.syncEnabled)
-      setSyncInterval(config.calendar.syncIntervalMinutes)
-      setGeminiApiKey(config.transcription.geminiApiKey)
-      setGeminiModel(config.transcription.geminiModel || 'gemini-3-pro-preview')
-      setChatProvider(config.chat.provider)
       setOllamaUrl(config.embeddings.ollamaBaseUrl)
+      setTranscriptionEngine(config.transcription.localEngine)
+      setTranscriptionCommand(config.transcription.localCommand)
+      setTranscriptionModel(config.transcription.localModel)
+      setParakeetPythonCommand(config.transcription.parakeetPythonCommand)
+      setParakeetModel(config.transcription.parakeetModel)
+      setTranscriptionLanguage(config.transcription.language)
       // C-CHAT: Load RAG context window size
       setRagContextSize(config.chat.maxContextChunks)
     }
@@ -187,89 +165,6 @@ export function Settings() {
     }
   }
 
-  const handleSaveCalendar = async () => {
-    if (saving) {
-      toast.warning('Please wait', 'Previous save in progress')
-      return
-    }
-
-    // Store previous values for rollback
-    const previousIcsUrl = config?.calendar.icsUrl || ''
-    const previousSyncEnabled = config?.calendar.syncEnabled ?? true
-    const previousSyncInterval = config?.calendar.syncIntervalMinutes || 15
-
-    const updates = {
-      icsUrl,
-      syncEnabled,
-      syncIntervalMinutes: syncInterval
-    }
-
-    // Validate before save - validateConfig accepts any shape
-    const validationError = validateConfig({ calendar: updates } as Partial<AppConfig>)
-    if (validationError) {
-      toast.error('Validation Error', validationError)
-      return
-    }
-
-    setSaving(true)
-    try {
-      await updateConfig('calendar', updates)
-
-      toast.success('Settings Saved', 'Calendar settings have been updated')
-    } catch (error) {
-      // Rollback on error
-      setIcsUrl(previousIcsUrl)
-      setSyncEnabled(previousSyncEnabled)
-      setSyncInterval(previousSyncInterval)
-
-      const message = error instanceof Error ? error.message : 'Failed to save calendar settings'
-      toast.error('Save Failed', message)
-      console.error('Failed to save calendar settings:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSaveTranscription = async () => {
-    if (saving) {
-      toast.warning('Please wait', 'Previous save in progress')
-      return
-    }
-
-    // Store previous values for rollback
-    const previousApiKey = config?.transcription.geminiApiKey || ''
-    const previousModel = config?.transcription.geminiModel || 'gemini-3-pro-preview'
-
-    const updates = {
-      geminiApiKey,
-      geminiModel
-    }
-
-    // Validate before save
-    const validationError = validateConfig({ transcription: updates } as Partial<AppConfig>)
-    if (validationError) {
-      toast.error('Validation Error', validationError)
-      return
-    }
-
-    setSaving(true)
-    try {
-      await updateConfig('transcription', updates)
-
-      toast.success('Settings Saved', `Transcription provider set to ${geminiModel}`)
-    } catch (error) {
-      // Rollback on error
-      setGeminiApiKey(previousApiKey)
-      setGeminiModel(previousModel)
-
-      const message = error instanceof Error ? error.message : 'Failed to save transcription settings'
-      toast.error('Save Failed', message)
-      console.error('Failed to save transcription settings:', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleSaveChat = async () => {
     if (saving) {
       toast.warning('Please wait', 'Previous save in progress')
@@ -277,7 +172,6 @@ export function Settings() {
     }
 
     // Store previous values for rollback
-    const previousChatProvider = config?.chat.provider || 'gemini'
     const previousOllamaUrl = config?.embeddings.ollamaBaseUrl || 'http://localhost:11434'
     const previousContextSize = config?.chat.maxContextChunks || RAG_DEFAULTS.MAX_CONTEXT_CHUNKS
 
@@ -308,10 +202,9 @@ export function Settings() {
         updateConfig('embeddings', embeddingsUpdates)
       ])
 
-      toast.success('Settings Saved', `Chat provider set to ${chatProvider}`)
+      toast.success('Settings Saved', 'Local assistant settings updated')
     } catch (error) {
       // Rollback on error - both sections revert
-      setChatProvider(previousChatProvider)
       setOllamaUrl(previousOllamaUrl)
       setRagContextSize(previousContextSize)
       // Reload config from backend to ensure consistency after partial failure
@@ -320,6 +213,58 @@ export function Settings() {
       const message = error instanceof Error ? error.message : 'Failed to save chat settings'
       toast.error('Save Failed', message)
       console.error('Failed to save chat settings:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveTranscription = async () => {
+    if (saving) {
+      toast.warning('Please wait', 'Previous save in progress')
+      return
+    }
+
+    const previousCommand = config?.transcription.localCommand || 'whisper'
+    const previousModel = config?.transcription.localModel || 'base'
+    const previousEngine = config?.transcription.localEngine || 'parakeet'
+    const previousParakeetPythonCommand = config?.transcription.parakeetPythonCommand || 'python'
+    const previousParakeetModel = config?.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v2'
+    const previousLanguage = config?.transcription.language || 'auto'
+
+    const transcriptionUpdates = {
+      provider: 'local' as const,
+      localEngine: transcriptionEngine,
+      localCommand: transcriptionCommand.trim(),
+      localModel: transcriptionModel.trim(),
+      parakeetPythonCommand: parakeetPythonCommand.trim(),
+      parakeetModel: parakeetModel.trim(),
+      language: transcriptionLanguage.trim() || 'auto'
+    }
+
+    const validationError = validateConfig({
+      transcription: transcriptionUpdates
+    } as Partial<AppConfig>)
+    if (validationError) {
+      toast.error('Validation Error', validationError)
+      return
+    }
+
+    setSaving(true)
+    try {
+      await updateConfig('transcription', transcriptionUpdates)
+      toast.success('Settings Saved', 'Local transcription settings updated')
+    } catch (error) {
+      setTranscriptionEngine(previousEngine)
+      setTranscriptionCommand(previousCommand)
+      setTranscriptionModel(previousModel)
+      setParakeetPythonCommand(previousParakeetPythonCommand)
+      setParakeetModel(previousParakeetModel)
+      setTranscriptionLanguage(previousLanguage)
+      try { await loadConfig() } catch { /* best effort reload */ }
+
+      const message = error instanceof Error ? error.message : 'Failed to save transcription settings'
+      toast.error('Save Failed', message)
+      console.error('Failed to save transcription settings:', error)
     } finally {
       setSaving(false)
     }
@@ -362,167 +307,103 @@ export function Settings() {
 
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-2xl mx-auto space-y-6">
-          {/* Calendar Settings */}
+          {/* Local Transcription Settings */}
           <Card>
             <CardHeader>
-              <CardTitle>Calendar</CardTitle>
-              <CardDescription>Configure calendar sync from Outlook</CardDescription>
+              <CardTitle>Local Transcription</CardTitle>
+              <CardDescription>Configure local speech-to-text for recordings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label htmlFor="icsUrl" className="text-sm font-medium">ICS Calendar URL</label>
-                <Input
-                  id="icsUrl"
-                  type="url"
-                  placeholder="https://outlook.office365.com/owa/calendar/.../calendar.ics"
-                  value={icsUrl}
-                  onChange={(e) => setIcsUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveCalendar()}
+                <label htmlFor="transcriptionEngine" className="text-sm font-medium">Engine</label>
+                <Select
+                  value={transcriptionEngine}
+                  onValueChange={(value) => setTranscriptionEngine(value as LocalTranscriptionEngine)}
                   disabled={saving}
-                  aria-label="ICS Calendar URL"
-                  aria-describedby="icsUrl-description"
-                  className="mt-1"
-                />
-                <p id="icsUrl-description" className="text-xs text-muted-foreground mt-1">
-                  Publish your Outlook calendar and paste the ICS link here
-                </p>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="syncEnabled"
-                    checked={syncEnabled}
-                    onChange={(e) => setSyncEnabled(e.target.checked)}
-                    disabled={saving}
-                    aria-label="Enable auto-sync"
-                    className="rounded"
-                  />
-                  <label htmlFor="syncEnabled" className="text-sm">
-                    Auto-sync enabled
-                  </label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <label htmlFor="syncInterval" className="text-sm">Every</label>
-                  <Input
-                    id="syncInterval"
-                    type="number"
-                    min={5}
-                    max={120}
-                    value={syncInterval}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      if (isNaN(val)) return
-                      // Clamp to valid range
-                      setSyncInterval(Math.min(120, Math.max(5, val)))
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveCalendar()}
-                    disabled={saving}
-                    aria-label="Sync interval in minutes"
-                    className="w-20"
-                  />
-                  <span className="text-sm">minutes</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleSaveCalendar}
-                  disabled={saving || !isCalendarDirty}
-                  aria-label="Save calendar settings"
                 >
-                  <Save className="h-4 w-4 mr-2" aria-hidden="true" />
-                  {isCalendarDirty ? 'Save' : 'Saved'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => syncCalendar()}
-                  disabled={calendarSyncing || saving}
-                  aria-label="Sync calendar now"
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${calendarSyncing ? 'animate-spin' : ''}`} aria-hidden="true" />
-                  Sync Now
-                </Button>
-                {config?.calendar.lastSyncAt && (
-                  <span className="text-xs text-muted-foreground ml-2">
-                    Last synced: {new Date(config.calendar.lastSyncAt).toLocaleString()}
-                  </span>
-                )}
+                  <SelectTrigger id="transcriptionEngine" aria-label="Local transcription engine" className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="parakeet">Parakeet</SelectItem>
+                    <SelectItem value="whisper">Whisper</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Transcription Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Transcription</CardTitle>
-              <CardDescription>Configure Gemini API for transcription</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label htmlFor="geminiApiKey" className="text-sm font-medium">Gemini API Key</label>
-                <div className="relative mt-1">
-                  <Input
-                    id="geminiApiKey"
-                    type={showApiKey ? 'text' : 'password'}
-                    placeholder="Enter your Gemini API key"
-                    value={geminiApiKey}
-                    onChange={(e) => setGeminiApiKey(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                    disabled={saving}
-                    aria-label="Gemini API Key"
-                    aria-describedby="geminiApiKey-description"
-                    className="pr-10"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                    tabIndex={-1}
-                  >
-                    {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+              {transcriptionEngine === 'parakeet' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="parakeetPythonCommand" className="text-sm font-medium">Python Command</label>
+                    <Input
+                      id="parakeetPythonCommand"
+                      value={parakeetPythonCommand}
+                      onChange={(e) => setParakeetPythonCommand(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                      disabled={saving}
+                      aria-label="Parakeet Python command"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="parakeetModel" className="text-sm font-medium">Model</label>
+                    <Input
+                      id="parakeetModel"
+                      value={parakeetModel}
+                      onChange={(e) => setParakeetModel(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                      disabled={saving}
+                      aria-label="Parakeet model"
+                      className="mt-1"
+                    />
+                  </div>
                 </div>
-                <p id="geminiApiKey-description" className="text-xs text-muted-foreground mt-1">
-                  Get your API key from{' '}
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    Google AI Studio
-                  </a>
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="geminiModel" className="text-sm font-medium">Transcription Model</label>
-                <select
-                  id="geminiModel"
-                  value={geminiModel}
-                  onChange={(e) => setGeminiModel(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                  disabled={saving}
-                  aria-label="Transcription Model"
-                  aria-describedby="geminiModel-description"
-                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                >
-                  {GEMINI_MODELS.map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
-                <p id="geminiModel-description" className="text-xs text-muted-foreground mt-1">
-                  Gemini 3 Pro provides the best transcription accuracy
-                </p>
-              </div>
+              ) : (
+                <>
+                  <div>
+                    <label htmlFor="transcriptionCommand" className="text-sm font-medium">Command</label>
+                    <Input
+                      id="transcriptionCommand"
+                      value={transcriptionCommand}
+                      onChange={(e) => setTranscriptionCommand(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                      disabled={saving}
+                      aria-label="Whisper command"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="transcriptionModel" className="text-sm font-medium">Model</label>
+                      <Input
+                        id="transcriptionModel"
+                        value={transcriptionModel}
+                        onChange={(e) => setTranscriptionModel(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                        disabled={saving}
+                        aria-label="Whisper model"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="transcriptionLanguage" className="text-sm font-medium">Language</label>
+                      <Input
+                        id="transcriptionLanguage"
+                        value={transcriptionLanguage}
+                        onChange={(e) => setTranscriptionLanguage(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                        disabled={saving}
+                        aria-label="Transcription language"
+                        aria-describedby="transcriptionLanguage-description"
+                        className="mt-1"
+                      />
+                      <p id="transcriptionLanguage-description" className="text-xs text-muted-foreground mt-1">
+                        Use auto or a Whisper language name/code
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <Button
                 onClick={handleSaveTranscription}
@@ -538,56 +419,28 @@ export function Settings() {
           {/* Chat Settings */}
           <Card>
             <CardHeader>
-              <CardTitle>Chat / RAG</CardTitle>
-              <CardDescription>Configure chat provider for querying meetings</CardDescription>
+              <CardTitle>Local Assistant</CardTitle>
+              <CardDescription>Configure local Ollama for querying local transcripts</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label id="chatProvider-label" className="text-sm font-medium">Chat Provider</label>
-                <div className="flex gap-2 mt-2" role="group" aria-labelledby="chatProvider-label">
-                  <Button
-                    variant={chatProvider === 'gemini' ? 'default' : 'outline'}
-                    onClick={() => setChatProvider('gemini')}
-                    onKeyDown={(e) => e.key === 'Enter' && setChatProvider('gemini')}
-                    disabled={saving}
-                    aria-label="Use Gemini chat provider"
-                    aria-pressed={chatProvider === 'gemini'}
-                  >
-                    Gemini
-                  </Button>
-                  <Button
-                    variant={chatProvider === 'ollama' ? 'default' : 'outline'}
-                    onClick={() => setChatProvider('ollama')}
-                    onKeyDown={(e) => e.key === 'Enter' && setChatProvider('ollama')}
-                    disabled={saving}
-                    aria-label="Use Ollama local chat provider"
-                    aria-pressed={chatProvider === 'ollama'}
-                  >
-                    Ollama (Local)
-                  </Button>
-                </div>
+                <label htmlFor="ollamaUrl" className="text-sm font-medium">Ollama URL</label>
+                <Input
+                  id="ollamaUrl"
+                  type="url"
+                  placeholder="http://localhost:11434"
+                  value={ollamaUrl}
+                  onChange={(e) => setOllamaUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveChat()}
+                  disabled={saving}
+                  aria-label="Ollama base URL"
+                  aria-describedby="ollamaUrl-description"
+                  className="mt-1"
+                />
+                <p id="ollamaUrl-description" className="text-xs text-muted-foreground mt-1">
+                  URL of your local Ollama server
+                </p>
               </div>
-
-              {chatProvider === 'ollama' && (
-                <div>
-                  <label htmlFor="ollamaUrl" className="text-sm font-medium">Ollama URL</label>
-                  <Input
-                    id="ollamaUrl"
-                    type="url"
-                    placeholder="http://localhost:11434"
-                    value={ollamaUrl}
-                    onChange={(e) => setOllamaUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveChat()}
-                    disabled={saving}
-                    aria-label="Ollama base URL"
-                    aria-describedby="ollamaUrl-description"
-                    className="mt-1"
-                  />
-                  <p id="ollamaUrl-description" className="text-xs text-muted-foreground mt-1">
-                    URL of your local Ollama server
-                  </p>
-                </div>
-              )}
 
               {/* C-CHAT: RAG Context Window Size */}
               <div>

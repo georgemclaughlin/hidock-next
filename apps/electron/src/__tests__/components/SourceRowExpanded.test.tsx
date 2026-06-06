@@ -75,7 +75,7 @@ describe('SourceRowExpanded', () => {
       sentiment: null,
       speakers: null,
       word_count: 100,
-      transcription_provider: 'openai',
+      transcription_provider: 'local-whisper',
       transcription_model: 'whisper-1',
       title_suggestion: null,
       question_suggestions: null,

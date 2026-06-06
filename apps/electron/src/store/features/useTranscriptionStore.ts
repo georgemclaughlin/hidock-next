@@ -2,7 +2,7 @@
  * Transcription Store (Feature)
  *
  * Manages transcription queue for recordings.
- * Tracks processing status, handles retries, and manages AI transcription workflow.
+ * Tracks processing status, handles retries, and manages local transcription workflow.
  * Uses subscribeWithSelector middleware for fine-grained subscriptions.
  */
 
@@ -23,7 +23,7 @@ export interface TranscriptionItem {
   attempts: number
   startedAt?: Date
   completedAt?: Date
-  provider?: string // 'gemini', etc.
+  provider?: string // 'local-parakeet', 'local-whisper', etc.
 }
 
 export interface TranscriptionQueueStore {

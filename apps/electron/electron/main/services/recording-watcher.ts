@@ -3,17 +3,18 @@ import { join, extname, basename } from 'path'
 import { randomUUID } from 'crypto'
 import { getRecordingsPath } from './file-storage'
 import {
-  getRecordingById,
   getRecordingByFilename,
   insertRecording,
   getMeetings,
   linkRecordingToMeeting,
-  addToQueue,
   updateRecordingLifecycle,
+  addToQueue,
+  updateRecordingTranscriptionStatus,
   Recording
 } from './database'
 import { BrowserWindow } from 'electron'
 import { getConfig } from './config'
+import { processQueueManually } from './transcription'
 
 const AUDIO_EXTENSIONS = ['.wav', '.mp3', '.m4a', '.ogg', '.webm', '.hda']
 
@@ -207,10 +208,10 @@ async function processNewRecording(filePath: string): Promise<void> {
     const config = getConfig()
     if (config.transcription.autoTranscribe) {
       addToQueue(recordingId)
-      import('./transcription').then(({ processQueueManually }) => {
-        processQueueManually()
-      }).catch(err => {
-        console.error('[RecordingWatcher] Failed to import transcription service:', err)
+      updateRecordingTranscriptionStatus(recordingId, 'pending')
+      recording.transcription_status = 'pending'
+      processQueueManually().catch((error) => {
+        console.error('Failed to process local transcription queue:', error)
       })
     }
 

@@ -11,12 +11,15 @@ import {
 } from '../services/file-storage'
 import {
   insertRecording,
-  addToQueue,
   getMeetings,
   linkRecordingToMeeting,
   addSyncedFile,
+  addToQueue,
+  updateRecordingTranscriptionStatus,
   type Recording
 } from '../services/database'
+import { getConfig } from '../services/config'
+import { processQueueManually } from '../services/transcription'
 import {
   OpenFolderSchema,
   ReadRecordingFileSchema,
@@ -243,7 +246,7 @@ export function registerStorageHandlers(): void {
         location: 'both',
         on_device: 1,
         on_local: 1,
-        transcription_status: 'pending',
+        transcription_status: 'none',
         source: 'hidock',
         is_imported: 0
       }
@@ -266,13 +269,19 @@ export function registerStorageHandlers(): void {
         }
       }
 
-      // Add to transcription queue
-      addToQueue(recordingId)
-
       // Track this file as synced so we don't re-download it
       addSyncedFile(result.data.filename, result.data.filename, filePath, buffer.length)
 
-      console.log(`Recording saved and queued for transcription: ${result.data.filename}`)
+      const config = getConfig()
+      if (config.transcription.autoTranscribe) {
+        addToQueue(recordingId)
+        updateRecordingTranscriptionStatus(recordingId, 'pending')
+        processQueueManually().catch((error) => {
+          console.error('Failed to process local transcription queue:', error)
+        })
+      }
+
+      console.log(`Recording saved locally: ${result.data.filename}`)
       return { success: true, data: filePath }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
