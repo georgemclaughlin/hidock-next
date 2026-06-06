@@ -90,7 +90,7 @@ export const SourceRow = memo(function SourceRow({
   return (
     <div
       className={[
-        '@container flex items-center justify-between py-2 px-3 hover:bg-muted/50 cursor-pointer transition-colors',
+        '@container py-2 px-3 hover:bg-muted/50 cursor-pointer transition-colors',
         isSelected ? 'bg-primary/10 border-l-2 border-l-primary/50' : 'border-l-2 border-l-transparent',
         isActiveSource ? 'bg-primary/15 border-l-primary' : ''
       ].filter(Boolean).join(' ')}
@@ -99,151 +99,151 @@ export const SourceRow = memo(function SourceRow({
       aria-selected={isPlaying || isSelected}
       tabIndex={0}
     >
-      <div className="flex items-center gap-2 min-w-0 flex-1">
+      <div className="flex items-start gap-2 min-w-0">
         {onSelectionChange && (
           <Checkbox
             checked={isSelected}
             onClick={handleCheckboxClick}
             aria-label={`Select ${recording.filename}`}
-            className="shrink-0"
+            className="shrink-0 mt-1"
           />
         )}
-        <StatusIcon recording={recording} />
-        <TranscriptionStatusBadge status={recording.transcriptionStatus} compact />
+        <div className="mt-1 shrink-0">
+          <StatusIcon recording={recording} />
+        </div>
+        <TranscriptionStatusBadge status={recording.transcriptionStatus} compact className="mt-2" />
 
-        {/* Content area — flex-1 to fill remaining space */}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm truncate text-foreground leading-tight">
+        <div className="min-w-0 flex-1">
+          <p
+            className="font-medium text-sm text-foreground leading-snug line-clamp-2 [overflow-wrap:anywhere]"
+            title={primaryText}
+          >
             {searchQuery ? highlightText(primaryText, searchQuery) : primaryText}
           </p>
-          <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-            {searchQuery ? highlightText(secondaryText, searchQuery) : secondaryText}
-          </p>
-        </div>
-      </div>
 
-      {/* Action area — action buttons, play button, and error indicator */}
-      <div className="flex items-center gap-1 shrink-0 ml-2">
-        {/* Error indicator */}
-        {error && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{error.message}</p>
-                {error.details && <p className="text-xs text-muted-foreground mt-1">{error.details}</p>}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <p className="min-w-0 flex-1 text-xs text-muted-foreground truncate leading-tight" title={secondaryText}>
+              {searchQuery ? highlightText(secondaryText, searchQuery) : secondaryText}
+            </p>
 
-        {/* Generate Output button */}
-        {onGenerateOutput && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => { e.stopPropagation(); onGenerateOutput(); }}
-            title="Generate artifact from this capture"
-          >
-            <FileText className="h-3.5 w-3.5" />
-          </Button>
-        )}
+            <div className="flex items-center gap-1 shrink-0">
+              {error && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{error.message}</p>
+                      {error.details && <p className="text-xs text-muted-foreground mt-1">{error.details}</p>}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
 
-        {/* Transcribe button - only for local recordings without complete transcript */}
-        {hasLocalPath(recording) && recording.transcriptionStatus !== 'complete' && onTranscribe && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => { e.stopPropagation(); onTranscribe(); }}
-            disabled={recording.transcriptionStatus === 'pending' || recording.transcriptionStatus === 'processing'}
-            title={
-              recording.transcriptionStatus === 'pending' ? 'Transcription queued' :
-              recording.transcriptionStatus === 'processing' ? 'Transcription in progress' :
-              'Transcribe this capture'
-            }
-          >
-            {recording.transcriptionStatus === 'processing' ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Wand2 className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        )}
+              {onGenerateOutput && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => { e.stopPropagation(); onGenerateOutput(); }}
+                  title="Generate artifact from this capture"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                </Button>
+              )}
 
-        {/* Download button - only for device-only recordings */}
-        {recording.location === 'device-only' && onDownload && (
-          isDownloading ? (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground px-2">
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              <span>{downloadProgress ?? 0}%</span>
+              {hasLocalPath(recording) && recording.transcriptionStatus !== 'complete' && onTranscribe && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => { e.stopPropagation(); onTranscribe(); }}
+                  disabled={recording.transcriptionStatus === 'pending' || recording.transcriptionStatus === 'processing'}
+                  title={
+                    recording.transcriptionStatus === 'pending' ? 'Transcription queued' :
+                    recording.transcriptionStatus === 'processing' ? 'Transcription in progress' :
+                    'Transcribe this capture'
+                  }
+                >
+                  {recording.transcriptionStatus === 'processing' ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              )}
+
+              {recording.location === 'device-only' && onDownload && (
+                isDownloading ? (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground px-2">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>{downloadProgress ?? 0}%</span>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                    disabled={!deviceConnected}
+                    title={deviceConnected ? 'Download to computer' : 'Device not connected'}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                )
+              )}
+
+              {isPlaying ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => { e.stopPropagation(); onStop(); }}
+                  title="Stop playback"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => { e.stopPropagation(); onPlay(); }}
+                  disabled={!canPlay || error?.type === 'audio_not_found'}
+                  title={
+                    error?.type === 'audio_not_found'
+                      ? 'File missing'
+                      : canPlay
+                        ? 'Play capture'
+                        : 'Download to play'
+                  }
+                >
+                  <Play className="h-3.5 w-3.5" />
+                </Button>
+              )}
+
+              {onDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  className={
+                    recording.location === 'device-only'
+                      ? 'text-destructive hover:text-destructive'
+                      : recording.location === 'local-only'
+                        ? 'text-orange-500 hover:text-orange-600'
+                        : 'text-muted-foreground hover:text-orange-500'
+                  }
+                  title={
+                    recording.location === 'device-only'
+                      ? 'Delete from device (permanent)'
+                      : recording.location === 'local-only'
+                        ? 'Delete from computer (permanent)'
+                        : 'Delete from device and computer'
+                  }
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
-          ) : (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={(e) => { e.stopPropagation(); onDownload(); }}
-              disabled={!deviceConnected}
-              title={deviceConnected ? 'Download to computer' : 'Device not connected'}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          )
-        )}
-
-        {/* Play/Stop button */}
-        {isPlaying ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => { e.stopPropagation(); onStop(); }}
-            title="Stop playback"
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => { e.stopPropagation(); onPlay(); }}
-            disabled={!canPlay || error?.type === 'audio_not_found'}
-            title={
-              error?.type === 'audio_not_found'
-                ? 'File missing'
-                : canPlay
-                  ? 'Play capture'
-                  : 'Download to play'
-            }
-          >
-            <Play className="h-3.5 w-3.5" />
-          </Button>
-        )}
-
-        {/* Delete button */}
-        {onDelete && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className={
-              recording.location === 'device-only'
-                ? 'text-destructive hover:text-destructive'
-                : recording.location === 'local-only'
-                  ? 'text-orange-500 hover:text-orange-600'
-                  : 'text-muted-foreground hover:text-orange-500'
-            }
-            title={
-              recording.location === 'device-only'
-                ? 'Delete from device (permanent)'
-                : recording.location === 'local-only'
-                  ? 'Delete from computer (permanent)'
-                  : 'Delete from device and computer'
-            }
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   )

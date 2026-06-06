@@ -748,7 +748,7 @@ export function Library() {
   // B-LIB-008: Simplified estimateSize — complex calculations caused unnecessary
   // virtualizer re-measurements. The virtualizer uses measureElement for actual sizing.
   const estimateSize = useCallback(
-    () => compactView ? 48 : 200,
+    () => compactView ? 72 : 200,
     [compactView]
   )
 
