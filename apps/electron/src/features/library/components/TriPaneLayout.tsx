@@ -1,15 +1,15 @@
 /**
  * TriPaneLayout Component
  *
- * Responsive three-column layout for the Library page:
- * - Desktop (≥1024px): Three-column resizable layout
- * - Tablet (480px-1023px): Two-column resizable layout + toggleable third panel
+ * Responsive two/three-column layout for the Library page:
+ * - Desktop (≥1024px): Two or three-column resizable layout
+ * - Tablet (480px-1023px): Two-column resizable layout + optional toggleable third panel
  * - Mobile (<480px): Single-column with tab navigation
  *
  * Panels:
  * - Left Panel: Recording list with filters
  * - Center Panel: Source content viewer
- * - Right Panel: AI Assistant
+ * - Right Panel: Optional contextual side panel
  *
  * Panel sizes are persisted across navigation via useLibraryStore.
  */
@@ -22,12 +22,13 @@ import { useIsMobile, useIsTablet } from '@/hooks/useMediaQuery'
 interface TriPaneLayoutProps {
   leftPanel: React.ReactNode
   centerPanel: React.ReactNode
-  rightPanel: React.ReactNode
+  rightPanel?: React.ReactNode
 }
 
 export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLayoutProps) {
   const panelSizes = useLibraryStore((state) => state.panelSizes)
   const setPanelSizes = useLibraryStore((state) => state.setPanelSizes)
+  const hasRightPanel = Boolean(rightPanel)
 
   // Normalize panel sizes to ensure they total 100% and respect constraints
   const normalizeDesktopPanelSizes = (sizes: number[]): [number, number, number] => {
@@ -59,6 +60,18 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
 
   const desktopPanelSizes = normalizeDesktopPanelSizes(panelSizes)
 
+  const normalizeTwoPanelSizes = (sizes: number[]): [number, number] => {
+    const [left = 35, center = 65] = sizes
+    const total = left + center
+    if (total <= 0) return [35, 65]
+
+    const scale = 100 / total
+    const normalizedLeft = Math.max(25, Math.min(45, left * scale))
+    return [normalizedLeft, 100 - normalizedLeft]
+  }
+
+  const twoPanelSizes = normalizeTwoPanelSizes(panelSizes)
+
   // Responsive breakpoint detection
   const isMobile = useIsMobile()
   const isTablet = useIsTablet()
@@ -74,9 +87,19 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
   useEffect(() => {
     const saved = localStorage.getItem('mobile-active-pane')
     if (saved && isMobile) {
-      setActiveMobilePane(saved as 'left' | 'center' | 'right')
+      if (saved === 'left' || saved === 'center' || (saved === 'right' && hasRightPanel)) {
+        setActiveMobilePane(saved as 'left' | 'center' | 'right')
+      } else {
+        setActiveMobilePane('center')
+      }
     }
-  }, [isMobile])
+  }, [hasRightPanel, isMobile])
+
+  useEffect(() => {
+    if (!hasRightPanel && activeMobilePane === 'right') {
+      setActiveMobilePane('center')
+    }
+  }, [activeMobilePane, hasRightPanel])
 
   useEffect(() => {
     if (isMobile) {
@@ -114,18 +137,20 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
           >
             Content
           </button>
-          <button
-            onClick={() => setActiveMobilePane('right')}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              activeMobilePane === 'right'
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-            aria-label="Show AI assistant"
-            aria-pressed={activeMobilePane === 'right'}
-          >
-            Assistant
-          </button>
+          {hasRightPanel && (
+            <button
+              onClick={() => setActiveMobilePane('right')}
+              className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+                activeMobilePane === 'right'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              aria-label="Show side panel"
+              aria-pressed={activeMobilePane === 'right'}
+            >
+              Side Panel
+            </button>
+          )}
         </div>
 
         {/* Active Pane Content */}
@@ -148,10 +173,10 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
               {centerPanel}
             </div>
           )}
-          {activeMobilePane === 'right' && (
+          {hasRightPanel && activeMobilePane === 'right' && (
             <div
               role="region"
-              aria-label="AI Assistant"
+              aria-label="Side panel"
               className="h-full overflow-hidden"
             >
               {rightPanel}
@@ -209,19 +234,19 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
           </ResizablePanel>
         </ResizablePanelGroup>
 
-        {/* Right Panel: AI Assistant - Toggleable overlay */}
-        {showRightPanelTablet && (
+        {/* Optional right panel - toggleable overlay */}
+        {hasRightPanel && showRightPanelTablet && (
           <div
             role="region"
-            aria-label="AI Assistant"
+            aria-label="Side panel"
             className="w-80 border-l border-gray-200 overflow-y-auto shadow-lg bg-white flex-shrink-0 z-10"
           >
             <div className="flex justify-between items-center p-3 border-b border-gray-200 bg-gray-50">
-              <h3 className="font-semibold text-gray-900">AI Assistant</h3>
+              <h3 className="font-semibold text-gray-900">Side Panel</h3>
               <button
                 onClick={() => setShowRightPanelTablet(false)}
                 className="p-1.5 hover:bg-gray-200 rounded-md transition-colors"
-                aria-label="Close AI assistant panel"
+                aria-label="Close side panel"
               >
                 <svg
                   className="w-4 h-4 text-gray-600"
@@ -243,11 +268,11 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
         )}
 
         {/* Floating button to open right panel */}
-        {!showRightPanelTablet && (
+        {hasRightPanel && !showRightPanelTablet && (
           <button
             onClick={() => setShowRightPanelTablet(true)}
             className="fixed bottom-6 right-6 bg-blue-500 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors flex items-center gap-2 z-10"
-            aria-label="Open AI assistant panel"
+            aria-label="Open side panel"
           >
             <svg
               className="w-5 h-5"
@@ -262,10 +287,53 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
                 d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span className="text-sm font-medium">Assistant</span>
+            <span className="text-sm font-medium">Side Panel</span>
           </button>
         )}
       </div>
+    )
+  }
+
+  if (!hasRightPanel) {
+    return (
+      <ResizablePanelGroup
+        direction="horizontal"
+        onLayout={(sizes) => setPanelSizes([sizes[0] ?? twoPanelSizes[0], sizes[1] ?? twoPanelSizes[1], panelSizes[2] ?? 30])}
+        className="h-full"
+      >
+        {/* Left Panel: Recording List */}
+        <ResizablePanel
+          defaultSize={twoPanelSizes[0]}
+          minSize={25}
+          maxSize={45}
+          id="left-panel"
+        >
+          <div
+            role="region"
+            aria-label="Recording list"
+            className="h-full overflow-auto"
+          >
+            {leftPanel}
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
+
+        {/* Center Panel: Source Reader */}
+        <ResizablePanel
+          defaultSize={twoPanelSizes[1]}
+          minSize={40}
+          id="center-panel"
+        >
+          <div
+            role="region"
+            aria-label="Recording content viewer"
+            className="h-full overflow-hidden"
+          >
+            {centerPanel}
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     )
   }
 
@@ -311,7 +379,7 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
 
       <ResizableHandle withHandle />
 
-      {/* Right Panel: AI Assistant */}
+      {/* Optional right panel */}
       <ResizablePanel
         defaultSize={desktopPanelSizes[2]}
         minSize={20}
@@ -320,7 +388,7 @@ export function TriPaneLayout({ leftPanel, centerPanel, rightPanel }: TriPaneLay
       >
         <div
           role="region"
-          aria-label="AI Assistant"
+          aria-label="Side panel"
           className="h-full overflow-hidden"
         >
           {rightPanel}

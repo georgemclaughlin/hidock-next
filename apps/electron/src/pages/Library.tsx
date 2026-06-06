@@ -26,8 +26,7 @@ import {
   LiveRegion,
   useAnnouncement,
   TriPaneLayout,
-  SourceReader,
-  AssistantPanel
+  SourceReader
 } from '@/features/library/components'
 import { useSourceSelection, useKeyboardNavigation, useTransitionFilters } from '@/features/library/hooks'
 import { buildSearchCorpus } from '@/features/library/utils/buildSearchCorpus'
@@ -897,7 +896,7 @@ export function Library() {
       {/* Accessibility: Live Region for announcements */}
       <LiveRegion message={announcement} />
 
-      {/* Tri-Pane Layout */}
+      {/* Library Layout */}
       <div className="flex-1 overflow-hidden">
         <TriPaneLayout
           leftPanel={
@@ -1104,15 +1103,6 @@ export function Library() {
               onNavigateToMeeting={handleNavigateToMeeting}
               // Metadata editing
               onMetadataEdited={() => refresh(false)}
-            />
-          }
-          rightPanel={
-            /* Right Panel: AI Assistant */
-            <AssistantPanel
-              recording={selectedRecording ?? null}
-              transcript={selectedTranscript}
-              onAskAssistant={handleAskAssistantCallback}
-              onGenerateOutput={handleGenerateOutputCallback}
             />
           }
         />
