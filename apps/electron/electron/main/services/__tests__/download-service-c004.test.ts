@@ -20,17 +20,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock electron modules BEFORE importing the service
-vi.mock('electron', () => ({
-  BrowserWindow: {
-    getAllWindows: vi.fn(() => [])
-  },
-  ipcMain: {
-    handle: vi.fn()
-  },
-  Notification: {
-    isSupported: vi.fn(() => false)
+vi.mock('electron', () => {
+  const electronMock = {
+    app: {
+      getPath: vi.fn(() => '/tmp')
+    },
+    safeStorage: {
+      isEncryptionAvailable: vi.fn(() => false),
+      encryptString: vi.fn((value: string) => Buffer.from(value)),
+      decryptString: vi.fn((value: Buffer) => value.toString())
+    },
+    BrowserWindow: {
+      getAllWindows: vi.fn(() => [])
+    },
+    ipcMain: {
+      handle: vi.fn()
+    },
+    Notification: {
+      isSupported: vi.fn(() => false)
+    }
   }
-}))
+  return {
+    ...electronMock,
+    default: electronMock
+  }
+})
 
 // Mock database functions
 const mockIsFileSynced = vi.fn(() => false)

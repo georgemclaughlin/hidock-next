@@ -57,8 +57,10 @@ vi.mock('sql.js', () => ({
 // Alias for test code that references MockSQLDatabase
 const MockSQLDatabase = RealMockSQLDatabase
 
-vi.mock('fs', () => {
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs')
   const fsMock = {
+    ...actual,
     existsSync: vi.fn(() => false),
     readFileSync: vi.fn(() => Buffer.from('fake')),
     writeFileSync: vi.fn()
@@ -252,11 +254,17 @@ describe('Database Service', () => {
           Database: MockSQLDatabase
         }))
       }))
-      vi.doMock('fs', () => ({
-        existsSync: vi.fn(() => false),
-        readFileSync: vi.fn(() => Buffer.from('fake')),
-        writeFileSync: vi.fn()
-      }))
+      vi.doMock('fs', () => {
+        const fsMock = {
+          existsSync: vi.fn(() => false),
+          readFileSync: vi.fn(() => Buffer.from('fake')),
+          writeFileSync: vi.fn()
+        }
+        return {
+          ...fsMock,
+          default: fsMock
+        }
+      })
       vi.doMock('../file-storage', () => ({
         getDatabasePath: vi.fn(() => '/tmp/test-hidock.db')
       }))
