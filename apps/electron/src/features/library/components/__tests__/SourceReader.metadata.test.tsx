@@ -12,13 +12,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { SourceReader } from '../SourceReader'
 import type { UnifiedRecording } from '@/types/unified-recording'
-import type { Meeting } from '@/types'
+import type { Meeting, Transcript } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Mock electronAPI
 // ---------------------------------------------------------------------------
 const mockKnowledgeUpdate = vi.fn().mockResolvedValue({ success: true })
 const mockSelectMeeting = vi.fn().mockResolvedValue({ success: true })
+const mockCopyToClipboard = vi.fn().mockResolvedValue({ success: true })
 
 // Silence @radix-ui portal issues in jsdom
 vi.mock('@radix-ui/react-portal', () => ({
@@ -131,6 +132,28 @@ function makeMeeting(): Meeting {
   } as Meeting
 }
 
+function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
+  return {
+    id: 'transcript-1',
+    recording_id: 'rec-1',
+    full_text: 'This is the transcript text.',
+    language: 'en',
+    summary: null,
+    action_items: null,
+    topics: null,
+    key_points: null,
+    sentiment: null,
+    speakers: null,
+    word_count: 5,
+    transcription_provider: 'local-parakeet',
+    transcription_model: 'parakeet-v3',
+    title_suggestion: null,
+    question_suggestions: null,
+    created_at: '2024-01-15T10:00:00Z',
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 
@@ -144,6 +167,9 @@ beforeEach(() => {
         selectMeeting: mockSelectMeeting,
         getCandidates: vi.fn().mockResolvedValue({ success: true, data: [] }),
         getMeetingsNearDate: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      },
+      outputs: {
+        copyToClipboard: mockCopyToClipboard,
       },
     },
     writable: true,
@@ -163,6 +189,18 @@ describe('SourceReader — metadata editing', () => {
 
     expect(screen.getByText('My Recording Title')).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /recording title/i })).not.toBeInTheDocument()
+  })
+
+  it('copies transcript text to clipboard', async () => {
+    const rec = makeRecording({ transcriptionStatus: 'complete' })
+    const transcript = makeTranscript({ full_text: 'Copy this exact transcript.' })
+    render(<SourceReader recording={rec} transcript={transcript} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /copy transcript/i }))
+
+    await waitFor(() => {
+      expect(mockCopyToClipboard).toHaveBeenCalledWith('Copy this exact transcript.')
+    })
   })
 
   // 2. Pencil icon visible on hover when knowledgeCaptureId present

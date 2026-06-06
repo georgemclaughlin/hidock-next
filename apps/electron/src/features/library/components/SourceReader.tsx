@@ -14,7 +14,7 @@ import { TranscriptViewer } from './TranscriptViewer'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { UnifiedRecording, hasLocalPath, isDeviceOnly } from '@/types/unified-recording'
 import { Transcript, Meeting, parseJsonArray } from '@/types'
-import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Square, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen } from 'lucide-react'
+import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Square, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -92,6 +92,8 @@ export function SourceReader({
   // Transcription warning state
   const [metadataEdited, setMetadataEdited] = useState(false)
   const [showTranscribeWarning, setShowTranscribeWarning] = useState(false)
+  const [isCopyingTranscript, setIsCopyingTranscript] = useState(false)
+  const [transcriptCopied, setTranscriptCopied] = useState(false)
 
   // Reset all state when recording changes
   useEffect(() => {
@@ -100,6 +102,8 @@ export function SourceReader({
     setLinkDialogOpen(false)
     setMetadataEdited(false)
     setShowTranscribeWarning(false)
+    setIsCopyingTranscript(false)
+    setTranscriptCopied(false)
   }, [recording?.id])
 
   const handleSaveTitle = useCallback(async () => {
@@ -184,6 +188,31 @@ export function SourceReader({
       onTranscribe?.()
     }
   }, [metadataEdited, onTranscribe])
+
+  const handleCopyTranscript = useCallback(async () => {
+    const text = transcript?.full_text?.trim()
+    if (!text) {
+      toast.error('Copy failed', 'Transcript is empty')
+      return
+    }
+
+    setIsCopyingTranscript(true)
+    try {
+      const result = await window.electronAPI.outputs.copyToClipboard(text)
+      if (result.success) {
+        setTranscriptCopied(true)
+        toast.success('Copied', 'Transcript copied to clipboard')
+        window.setTimeout(() => setTranscriptCopied(false), 2000)
+      } else {
+        toast.error('Copy failed', result.error.message || 'Failed to copy transcript')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to copy transcript'
+      toast.error('Copy failed', message)
+    } finally {
+      setIsCopyingTranscript(false)
+    }
+  }, [transcript?.full_text])
 
   if (!recording) {
     return (
@@ -518,15 +547,36 @@ export function SourceReader({
       {/* Transcript Content */}
       <div className="flex-1 overflow-auto p-4">
         {transcript ? (
-          <TranscriptViewer
-            transcript={transcript.full_text}
-            currentTimeMs={currentTimeMs}
-            onSeek={onSeek || (() => {})}
-            showSummary={true}
-            showActionItems={true}
-            summary={transcript.summary ?? undefined}
-            actionItems={parseJsonArray<string>(transcript.action_items)}
-          />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">Transcript</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyTranscript}
+                disabled={isCopyingTranscript}
+                className="gap-2 shrink-0"
+                aria-label="Copy transcript"
+                title="Copy transcript"
+              >
+                {transcriptCopied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+                {transcriptCopied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+            <TranscriptViewer
+              transcript={transcript.full_text}
+              currentTimeMs={currentTimeMs}
+              onSeek={onSeek || (() => {})}
+              showSummary={true}
+              showActionItems={true}
+              summary={transcript.summary ?? undefined}
+              actionItems={parseJsonArray<string>(transcript.action_items)}
+            />
+          </div>
         ) : recording.transcriptionStatus === 'complete' ? (
           <div className="text-center text-muted-foreground py-8">
             <p>Transcript not available</p>
