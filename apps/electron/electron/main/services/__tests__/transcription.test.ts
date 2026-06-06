@@ -18,6 +18,7 @@ const mockUpdateRecordingStatus = vi.fn()
 const mockUpdateQueueItem = vi.fn()
 const mockGetQueueItems = vi.fn()
 const mockGetRecordingById = vi.fn()
+let mockSpawnStderr = 'local transcription failed'
 
 // Mock database
 vi.mock('../database', () => ({
@@ -60,7 +61,7 @@ vi.mock('../config', () => ({
       localCommand: 'whisper',
       localModel: 'base',
       parakeetPythonCommand: 'python',
-      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
       language: 'auto'
     }
   }))
@@ -75,7 +76,7 @@ vi.mock('child_process', async () => {
       child.stdout = new EventEmitter()
       child.stderr = new EventEmitter()
       setImmediate(() => {
-        child.stderr.emit('data', Buffer.from('local transcription failed'))
+        child.stderr.emit('data', Buffer.from(mockSpawnStderr))
         child.emit('close', 1)
       })
       return child
@@ -104,6 +105,7 @@ vi.mock('../vector-store', () => ({
 describe('Transcription Service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSpawnStderr = 'local transcription failed'
   })
 
   describe('BUG-TX-001: recordings.status stuck at transcribing after failure', () => {
@@ -149,6 +151,41 @@ describe('Transcription Service', () => {
 
       expect(hasQueueFailure).toBe(true)
       expect(hasFailureCall).toBe(true)
+    })
+
+    it('should explain missing NeMo dependency for Parakeet', async () => {
+      mockSpawnStderr = [
+        'Traceback (most recent call last):',
+        '  File "<string>", line 12, in <module>',
+        "ImportError: No module named 'nemo'"
+      ].join('\n')
+
+      const mockQueueItem = {
+        id: 'queue-1',
+        recording_id: 'rec-123',
+        filename: 'test.wav',
+        status: 'pending',
+        attempts: 0
+      }
+      mockGetQueueItems.mockReturnValue([mockQueueItem])
+      mockGetRecordingById.mockReturnValue({
+        id: 'rec-123',
+        filename: 'test.wav',
+        file_path: '/recordings/test.wav',
+        status: 'complete'
+      })
+
+      const { processQueueManually } = await import('../transcription')
+
+      await processQueueManually()
+
+      const failureCall = mockUpdateQueueItem.mock.calls.find(
+        (call: any[]) => call[0] === 'queue-1' && call[1] === 'failed'
+      )
+
+      expect(failureCall?.[2]).toContain('NVIDIA NeMo is not installed')
+      expect(failureCall?.[2]).toContain('nemo_toolkit[asr]')
+      expect(failureCall?.[2]).toContain('nvidia/parakeet-tdt-0.6b-v3')
     })
   })
 })

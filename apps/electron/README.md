@@ -90,18 +90,18 @@ The app supports two local engines.
 Default engine:
 
 ```text
-nvidia/parakeet-tdt-0.6b-v2
+nvidia/parakeet-tdt-0.6b-v3
 ```
 
-The app runs the configured Python command with a small embedded NeMo runner. It sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`, so the model must already exist in the local Hugging Face cache or be referenced by a local `.nemo` path.
+The app runs the configured Python command with a small embedded NeMo runner. Transcription sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`, so the model must already exist in the local Hugging Face cache or be referenced by a local `.nemo` path.
 
 Example model pre-cache command:
 
 ```bash
-python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v2')"
+python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v3')"
 ```
 
-Set `Settings -> Speech to Text -> Python Command` to the Python executable that has NeMo installed.
+Set `Settings -> Local Transcription -> Python Command` to the Python executable that has NeMo installed. Use `Settings -> Local Transcription -> Download Model` to cache the configured model from the app.
 
 ### Whisper
 

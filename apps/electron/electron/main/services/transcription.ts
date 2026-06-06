@@ -264,6 +264,48 @@ interface LocalTranscriptionResult {
 
 interface RunCommandOptions {
   env?: NodeJS.ProcessEnv
+  failureFormatter?: (detail: string, command: string) => string
+}
+
+function quoteCommandForDisplay(command: string): string {
+  if (/^["'].*["']$/.test(command)) return command
+  return /\s/.test(command) ? `"${command}"` : command
+}
+
+function isMissingNemoError(detail: string): boolean {
+  return /(?:ImportError|ModuleNotFoundError):\s+No module named ['"]nemo['"]/.test(detail)
+}
+
+function isMissingOfflineModelError(detail: string): boolean {
+  const lower = detail.toLowerCase()
+  return lower.includes('localentrynotfounderror') ||
+    lower.includes('offline mode') ||
+    lower.includes('hf_hub_offline') ||
+    lower.includes('transformers_offline')
+}
+
+function formatParakeetFailure(detail: string, command: string, model: string): string {
+  const pythonCommand = quoteCommandForDisplay(command)
+
+  if (isMissingNemoError(detail)) {
+    return [
+      'Parakeet setup incomplete: NVIDIA NeMo is not installed in the Python environment configured for Parakeet.',
+      `Python command: ${pythonCommand}.`,
+      `Install it in that same environment: ${pythonCommand} -m pip install torch torchaudio "nemo_toolkit[asr]".`,
+      `Then pre-cache the model during setup: ${pythonCommand} -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='${model}')".`,
+      'You can also set the Parakeet model field to a local .nemo file path.'
+    ].join(' ')
+  }
+
+  if (isMissingOfflineModelError(detail)) {
+    return [
+      `Parakeet model "${model}" is not available locally.`,
+      'The app runs Parakeet with offline model loading, so pre-cache the model in the configured Python environment or set the Parakeet model field to a local .nemo file path.',
+      `Original error: ${detail}`
+    ].join(' ')
+  }
+
+  return `Local transcription command failed: ${detail}`
 }
 
 const PARAKEET_RUNNER_SCRIPT = `
@@ -311,9 +353,30 @@ try:
                     "text": segment.get("segment") or segment.get("text") or ""
                 })
 
-    language = "en" if "parakeet-tdt-0.6b-v2" in model_name else ""
+    language = "auto" if "parakeet-tdt-0.6b-v3" in model_name else ("en" if "parakeet-tdt-0.6b-v2" in model_name else "")
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump({"text": text, "language": language, "segments": segments}, handle, ensure_ascii=False)
+except Exception:
+    traceback.print_exc()
+    sys.exit(1)
+`
+
+const PARAKEET_MODEL_DOWNLOAD_SCRIPT = `
+import json
+import os
+import sys
+import traceback
+
+model_name = sys.argv[1]
+
+try:
+    import nemo.collections.asr as nemo_asr
+
+    if os.path.isfile(model_name) and model_name.endswith(".nemo"):
+        print(json.dumps({"status": "local-file", "model": model_name}))
+    else:
+        nemo_asr.models.ASRModel.from_pretrained(model_name=model_name)
+        print(json.dumps({"status": "cached", "model": model_name}))
 except Exception:
     traceback.print_exc()
     sys.exit(1)
@@ -359,7 +422,7 @@ function runLocalTranscriptionCommand(
       const stderr = Buffer.concat(stderrChunks).toString('utf8').trim()
       const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim()
       const detail = stderr || stdout || `process exited with code ${code}`
-      reject(new Error(`Local transcription command failed: ${detail}`))
+      reject(new Error(options.failureFormatter?.(detail, command) ?? `Local transcription command failed: ${detail}`))
     })
   })
 }
@@ -428,7 +491,7 @@ async function transcribeWithParakeet(
     throw new Error('Parakeet Python command is not configured.')
   }
 
-  const model = config.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v2'
+  const model = config.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v3'
   const outputPath = join(outputDir, 'parakeet.json')
 
   await runLocalTranscriptionCommand(
@@ -439,7 +502,8 @@ async function transcribeWithParakeet(
       env: {
         HF_HUB_OFFLINE: '1',
         TRANSFORMERS_OFFLINE: '1'
-      }
+      },
+      failureFormatter: (detail, failedCommand) => formatParakeetFailure(detail, failedCommand, model)
     }
   )
 
@@ -451,6 +515,52 @@ async function transcribeWithParakeet(
     output: JSON.parse(readFileSync(outputPath, 'utf8')) as WhisperJsonOutput,
     provider: 'local-parakeet',
     model
+  }
+}
+
+export interface ParakeetModelDownloadResult {
+  success: boolean
+  model: string
+  message?: string
+  error?: string
+}
+
+export async function downloadParakeetModel(
+  pythonCommandOverride?: string,
+  modelOverride?: string
+): Promise<ParakeetModelDownloadResult> {
+  const config = getConfig()
+  const command = pythonCommandOverride?.trim() || config.transcription.parakeetPythonCommand?.trim()
+  if (!command) {
+    throw new Error('Parakeet Python command is not configured.')
+  }
+
+  const model = modelOverride?.trim() || config.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v3'
+  if (!model) {
+    throw new Error('Parakeet model is not configured.')
+  }
+
+  if (model.endsWith('.nemo') && existsSync(model)) {
+    return {
+      success: true,
+      model,
+      message: `Parakeet model is already configured as a local file: ${model}`
+    }
+  }
+
+  await runLocalTranscriptionCommand(
+    command,
+    ['-c', PARAKEET_MODEL_DOWNLOAD_SCRIPT, model],
+    undefined,
+    {
+      failureFormatter: (detail, failedCommand) => formatParakeetFailure(detail, failedCommand, model)
+    }
+  )
+
+  return {
+    success: true,
+    model,
+    message: `Parakeet model "${model}" is cached locally.`
   }
 }
 

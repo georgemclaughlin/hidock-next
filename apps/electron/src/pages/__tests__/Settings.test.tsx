@@ -1,11 +1,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Settings } from '../Settings'
 
 const mockLoadConfig = vi.fn()
 const mockUpdateConfig = vi.fn()
 const mockSyncCalendar = vi.fn()
+const mockDownloadParakeetModel = vi.fn()
 
 // Mock the stores
 vi.mock('@/store/useAppStore', () => ({
@@ -36,7 +37,7 @@ vi.mock('@/store/domain/useConfigStore', () => ({
           localCommand: 'whisper',
           localModel: 'base',
           parakeetPythonCommand: 'python',
-          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
           autoTranscribe: false,
           language: 'auto'
         },
@@ -70,7 +71,7 @@ global.window.electronAPI = {
           localCommand: 'whisper',
           localModel: 'base',
           parakeetPythonCommand: 'python',
-          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+          parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
           autoTranscribe: false,
           language: 'auto'
         },
@@ -94,11 +95,19 @@ global.window.electronAPI = {
       }
     }),
     openFolder: vi.fn()
+  },
+  recordings: {
+    downloadParakeetModel: mockDownloadParakeetModel
   }
 } as any
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockDownloadParakeetModel.mockResolvedValue({
+    success: true,
+    model: 'nvidia/parakeet-tdt-0.6b-v3',
+    message: 'Parakeet model is cached locally.'
+  })
 })
 
 describe('Settings Page', () => {
@@ -116,6 +125,20 @@ describe('Settings Page', () => {
     expect(screen.getByLabelText('Local transcription engine')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet Python command')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Download Parakeet model')).toBeInTheDocument()
+  })
+
+  it('should download the configured Parakeet model', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByLabelText('Download Parakeet model'))
+
+    await waitFor(() => {
+      expect(mockDownloadParakeetModel).toHaveBeenCalledWith(
+        'python',
+        'nvidia/parakeet-tdt-0.6b-v3'
+      )
+    })
   })
 
   it('should render local assistant settings form', async () => {

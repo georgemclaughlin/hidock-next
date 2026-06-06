@@ -73,10 +73,10 @@ npm run dev
 Parakeet is the default engine. The app launches a configured Python command and expects the model to already be available locally. The default model is:
 
 ```text
-nvidia/parakeet-tdt-0.6b-v2
+nvidia/parakeet-tdt-0.6b-v3
 ```
 
-Because the app forces offline model loading for Parakeet, pre-cache the model before relying on it offline. On Windows, use a Windows Python environment if you run the Electron app from Windows.
+Because the app forces offline model loading for Parakeet transcription, pre-cache the model before relying on it offline. On Windows, use a Windows Python environment if you run the Electron app from Windows.
 
 Example Parakeet setup:
 
@@ -84,7 +84,7 @@ Example Parakeet setup:
 python -m venv .venv-parakeet
 .\.venv-parakeet\Scripts\Activate.ps1
 pip install torch torchaudio "nemo_toolkit[asr]"
-python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v2')"
+python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained(model_name='nvidia/parakeet-tdt-0.6b-v3')"
 ```
 
 Then set the app's Parakeet Python command to the venv Python path, for example:
@@ -92,6 +92,8 @@ Then set the app's Parakeet Python command to the venv Python path, for example:
 ```text
 C:\path\to\.venv-parakeet\Scripts\python.exe
 ```
+
+You can also use `Settings -> Local Transcription -> Download Model` to cache the configured Parakeet model after the Python environment has NeMo installed.
 
 Whisper fallback uses a local `whisper` command:
 

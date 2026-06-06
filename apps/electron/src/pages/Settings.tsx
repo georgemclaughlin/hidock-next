@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Save, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react'
+import { Save, FolderOpen, RefreshCw, AlertCircle, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -40,8 +40,9 @@ export function Settings() {
   const [transcriptionCommand, setTranscriptionCommand] = useState('whisper')
   const [transcriptionModel, setTranscriptionModel] = useState('base')
   const [parakeetPythonCommand, setParakeetPythonCommand] = useState('python')
-  const [parakeetModel, setParakeetModel] = useState('nvidia/parakeet-tdt-0.6b-v2')
+  const [parakeetModel, setParakeetModel] = useState('nvidia/parakeet-tdt-0.6b-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
+  const [parakeetDownloading, setParakeetDownloading] = useState(false)
   const [storageLoading, setStorageLoading] = useState(false)
   // C-CHAT: RAG context window — default matches config.ts (10)
   const [ragContextSize, setRagContextSize] = useState<number>(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
@@ -228,7 +229,7 @@ export function Settings() {
     const previousModel = config?.transcription.localModel || 'base'
     const previousEngine = config?.transcription.localEngine || 'parakeet'
     const previousParakeetPythonCommand = config?.transcription.parakeetPythonCommand || 'python'
-    const previousParakeetModel = config?.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v2'
+    const previousParakeetModel = config?.transcription.parakeetModel || 'nvidia/parakeet-tdt-0.6b-v3'
     const previousLanguage = config?.transcription.language || 'auto'
 
     const transcriptionUpdates = {
@@ -272,6 +273,37 @@ export function Settings() {
 
   const handleOpenFolder = async (folder: 'recordings' | 'transcripts' | 'data') => {
     await window.electronAPI.storage.openFolder(folder)
+  }
+
+  const handleDownloadParakeetModel = async () => {
+    if (parakeetDownloading) return
+
+    const pythonCommand = parakeetPythonCommand.trim()
+    const model = parakeetModel.trim()
+    if (!pythonCommand) {
+      toast.error('Validation Error', 'Parakeet Python command is required')
+      return
+    }
+    if (!model) {
+      toast.error('Validation Error', 'Parakeet model is required')
+      return
+    }
+
+    setParakeetDownloading(true)
+    try {
+      const result = await window.electronAPI.recordings.downloadParakeetModel(pythonCommand, model)
+      if (result.success) {
+        toast.success('Parakeet Model Ready', result.message || `Model "${model}" is cached locally`)
+      } else {
+        toast.error('Parakeet Download Failed', result.error || 'Failed to download Parakeet model')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to download Parakeet model'
+      toast.error('Parakeet Download Failed', message)
+      console.error('Failed to download Parakeet model:', error)
+    } finally {
+      setParakeetDownloading(false)
+    }
   }
 
   // Loading state
@@ -332,32 +364,47 @@ export function Settings() {
               </div>
 
               {transcriptionEngine === 'parakeet' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="parakeetPythonCommand" className="text-sm font-medium">Python Command</label>
-                    <Input
-                      id="parakeetPythonCommand"
-                      value={parakeetPythonCommand}
-                      onChange={(e) => setParakeetPythonCommand(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                      disabled={saving}
-                      aria-label="Parakeet Python command"
-                      className="mt-1"
-                    />
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="parakeetPythonCommand" className="text-sm font-medium">Python Command</label>
+                      <Input
+                        id="parakeetPythonCommand"
+                        value={parakeetPythonCommand}
+                        onChange={(e) => setParakeetPythonCommand(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                        disabled={saving || parakeetDownloading}
+                        aria-label="Parakeet Python command"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="parakeetModel" className="text-sm font-medium">Model</label>
+                      <Input
+                        id="parakeetModel"
+                        value={parakeetModel}
+                        onChange={(e) => setParakeetModel(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
+                        disabled={saving || parakeetDownloading}
+                        aria-label="Parakeet model"
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label htmlFor="parakeetModel" className="text-sm font-medium">Model</label>
-                    <Input
-                      id="parakeetModel"
-                      value={parakeetModel}
-                      onChange={(e) => setParakeetModel(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTranscription()}
-                      disabled={saving}
-                      aria-label="Parakeet model"
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadParakeetModel}
+                    disabled={saving || parakeetDownloading}
+                    aria-label="Download Parakeet model"
+                  >
+                    {parakeetDownloading ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+                    )}
+                    {parakeetDownloading ? 'Downloading Model' : 'Download Model'}
+                  </Button>
+                </>
               ) : (
                 <>
                   <div>

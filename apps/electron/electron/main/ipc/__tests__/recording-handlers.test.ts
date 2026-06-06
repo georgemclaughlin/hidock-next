@@ -137,7 +137,12 @@ vi.mock('../../services/transcription', () => ({
   stopTranscriptionProcessor: vi.fn(),
   cancelTranscription: vi.fn(),
   cancelAllTranscriptions: vi.fn(),
-  processQueueManually: vi.fn().mockResolvedValue(undefined)
+  processQueueManually: vi.fn().mockResolvedValue(undefined),
+  downloadParakeetModel: vi.fn().mockResolvedValue({
+    success: true,
+    model: 'nvidia/parakeet-tdt-0.6b-v3',
+    message: 'Parakeet model is cached locally.'
+  })
 }))
 
 // Mock config service
@@ -149,7 +154,7 @@ vi.mock('../../services/config', () => ({
       localCommand: 'whisper',
       localModel: 'base',
       parakeetPythonCommand: 'python',
-      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2',
+      parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3',
       autoTranscribe: true,
       language: 'auto'
     }
@@ -192,6 +197,7 @@ describe('Recording IPC Handlers', () => {
       'transcription:cancelAll',
       'transcription:getQueue',
       'transcription:updateQueueItem',
+      'transcription:downloadParakeetModel',
       'recordings:scanFolder',
       'recordings:getCandidates',
       'recordings:getMeetingsNearDate',
@@ -854,6 +860,38 @@ describe('Recording IPC Handlers', () => {
       const result = await handlers['recordings:processQueue'](null)
 
       expect(result).toBe(false)
+    })
+  })
+
+  describe('transcription:downloadParakeetModel', () => {
+    it('should download the configured Parakeet model', async () => {
+      const { downloadParakeetModel } = await import('../../services/transcription')
+
+      const result = await handlers['transcription:downloadParakeetModel'](
+        null,
+        'python',
+        'nvidia/parakeet-tdt-0.6b-v3'
+      )
+
+      expect(downloadParakeetModel).toHaveBeenCalledWith('python', 'nvidia/parakeet-tdt-0.6b-v3')
+      expect(result).toEqual({
+        success: true,
+        model: 'nvidia/parakeet-tdt-0.6b-v3',
+        message: 'Parakeet model is cached locally.'
+      })
+    })
+
+    it('should return an error when the Parakeet download fails', async () => {
+      const { downloadParakeetModel } = await import('../../services/transcription')
+      vi.mocked(downloadParakeetModel).mockRejectedValueOnce(new Error('No module named nemo'))
+
+      const result = await handlers['transcription:downloadParakeetModel'](
+        null,
+        'python',
+        'nvidia/parakeet-tdt-0.6b-v3'
+      )
+
+      expect(result).toEqual({ success: false, error: 'No module named nemo' })
     })
   })
 })

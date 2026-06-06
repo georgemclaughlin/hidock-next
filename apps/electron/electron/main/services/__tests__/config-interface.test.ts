@@ -52,4 +52,21 @@ describe('FIX-014: Config interface completeness', () => {
     expect(config.ui.hideEmptyMeetings).toBe(true)
     expect(config.ui.showListView).toBe(false)
   })
+
+  it('Parakeet should default to v3', async () => {
+    vi.doMock('electron', () => ({
+      app: {
+        getPath: vi.fn((name: string) => {
+          if (name === 'home') return '/tmp/test-home'
+          if (name === 'userData') return '/tmp/test-userdata'
+          return '/tmp'
+        })
+      }
+    }))
+
+    const configModule = await import('../config')
+    const config = configModule.getConfig()
+
+    expect(config.transcription.parakeetModel).toBe('nvidia/parakeet-tdt-0.6b-v3')
+  })
 })

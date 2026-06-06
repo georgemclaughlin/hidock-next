@@ -33,7 +33,8 @@ import {
   stopTranscriptionProcessor,
   cancelTranscription,
   cancelAllTranscriptions,
-  processQueueManually
+  processQueueManually,
+  downloadParakeetModel
 } from '../services/transcription'
 import {
   GetRecordingByIdSchema,
@@ -331,6 +332,19 @@ export function registerRecordingHandlers(): void {
       return false
     }
   })
+
+  ipcMain.handle(
+    'transcription:downloadParakeetModel',
+    async (_, pythonCommand?: string, model?: string): Promise<{ success: boolean; model?: string; message?: string; error?: string }> => {
+      try {
+        return await downloadParakeetModel(pythonCommand, model)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to download Parakeet model'
+        console.error('transcription:downloadParakeetModel error:', error)
+        return { success: false, error: message }
+      }
+    }
+  )
 
   // Scan recordings folder
   ipcMain.handle('recordings:scanFolder', async (): Promise<string[]> => {

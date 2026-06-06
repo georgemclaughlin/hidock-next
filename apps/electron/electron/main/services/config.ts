@@ -97,7 +97,7 @@ const DEFAULT_CONFIG: AppConfig = {
     localCommand: 'whisper',
     localModel: 'base',
     parakeetPythonCommand: 'python',
-    parakeetModel: 'nvidia/parakeet-tdt-0.6b-v2'
+    parakeetModel: 'nvidia/parakeet-tdt-0.6b-v3'
   },
   embeddings: {
     provider: 'ollama',
@@ -127,6 +127,8 @@ const DEFAULT_CONFIG: AppConfig = {
 
 let config: AppConfig = { ...DEFAULT_CONFIG }
 
+const LEGACY_DEFAULT_PARAKEET_MODEL = 'nvidia/parakeet-tdt-0.6b-v2'
+
 function isLoopbackHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
@@ -145,6 +147,7 @@ function isLoopbackHttpUrl(value: string): boolean {
 function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
   const allowRemoteOllama = value.privacy?.allowRemoteOllama === true
   const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl || DEFAULT_CONFIG.embeddings.ollamaBaseUrl
+  const parakeetModel = value.transcription?.parakeetModel?.trim()
 
   return {
     ...value,
@@ -165,7 +168,9 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
       localCommand: value.transcription?.localCommand || DEFAULT_CONFIG.transcription.localCommand,
       localModel: value.transcription?.localModel || DEFAULT_CONFIG.transcription.localModel,
       parakeetPythonCommand: value.transcription?.parakeetPythonCommand || DEFAULT_CONFIG.transcription.parakeetPythonCommand,
-      parakeetModel: value.transcription?.parakeetModel || DEFAULT_CONFIG.transcription.parakeetModel
+      parakeetModel: !parakeetModel || parakeetModel === LEGACY_DEFAULT_PARAKEET_MODEL
+        ? DEFAULT_CONFIG.transcription.parakeetModel
+        : parakeetModel
     },
     embeddings: {
       ...value.embeddings,

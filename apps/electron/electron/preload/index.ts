@@ -159,6 +159,7 @@ export interface ElectronAPI {
     cancelTranscription: (recordingId: string) => Promise<{ success: boolean }>
     cancelAllTranscriptions: () => Promise<{ success: boolean; count: number }>
     updateQueueItem: (id: string, status: string, errorMessage?: string) => Promise<boolean>
+    downloadParakeetModel: (pythonCommand: string, model: string) => Promise<{ success: boolean; model?: string; message?: string; error?: string }>
   }
 
   // Database - Transcripts
@@ -576,6 +577,7 @@ const electronAPI: ElectronAPI = {
     cancelTranscription: (recordingId: string) => callIPC('transcription:cancel', recordingId),
     cancelAllTranscriptions: () => callIPC('transcription:cancelAll'),
     updateQueueItem: (id: string, status: string, errorMessage?: string) => callIPC('transcription:updateQueueItem', id, status, errorMessage),
+    downloadParakeetModel: (pythonCommand: string, model: string) => callIPC('transcription:downloadParakeetModel', pythonCommand, model),
   },
 
   transcripts: {
