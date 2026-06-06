@@ -139,6 +139,8 @@ async function processQueue(): Promise<void> {
       'Local transcription provider is disabled',
       'Local transcription command is not configured',
       'Native transcription sidecar is required',
+      'No speech detected',
+      'Audio file did not contain decodable samples',
       'no local file'
     ]
     const failedItems = getQueueItems('failed')
@@ -373,7 +375,7 @@ function normalizeTranscriptText(output: NativeTranscriptOutput): string {
   }
   if (text) return text
   if (segmentText) return segmentText
-  throw new Error('Local transcription output did not contain transcript text')
+  throw new Error('No speech detected in local transcription output')
 }
 
 function countWords(text: string): number {

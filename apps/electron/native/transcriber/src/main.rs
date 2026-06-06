@@ -43,9 +43,13 @@ const TRANSCRIPTION_TAIL_CONTEXT_SECS: f32 = 2.0;
 const TRANSCRIPTION_TAIL_WORD_GRACE_SECS: f32 = 0.15;
 const MIN_TAIL_RETRY_SECS: f32 = 1.0;
 const MIN_TAIL_RETRY_RMS: f32 = 0.0015;
-const PARAKEET_CHUNKING_THRESHOLD_SECS: f32 = 10.0 * 60.0;
-const PARAKEET_CHUNK_SECS: f32 = 5.0 * 60.0;
+const PARAKEET_MAX_INFERENCE_SECS: f32 = 128.0;
+const PARAKEET_LEADING_SILENCE_SECS: f32 = 0.25;
+const PARAKEET_CHUNK_SECS: f32 = 2.0 * 60.0;
+const PARAKEET_CHUNKING_THRESHOLD_SECS: f32 = PARAKEET_CHUNK_SECS;
 const PARAKEET_CHUNK_OVERLAP_SECS: f32 = 2.0;
+const PARAKEET_MAX_CHUNK_INFERENCE_SECS: f32 =
+    PARAKEET_CHUNK_SECS + (PARAKEET_CHUNK_OVERLAP_SECS * 2.0) + PARAKEET_LEADING_SILENCE_SECS;
 const DIARIZATION_MAX_FULL_AUDIO_SECS: f32 = 60.0 * 60.0;
 const TRANSCRIPT_SEGMENT_MERGE_GAP_SECS: f64 = 0.8;
 const TRANSCRIPT_SEGMENT_MAX_SECS: f64 = 18.0;
@@ -1014,6 +1018,8 @@ fn transcribe_parakeet(
     models_dir: &Path,
     model_id: &str,
 ) -> Result<ParakeetRunOutput> {
+    ensure_parakeet_chunk_window_within_limit()?;
+
     let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
     if audio_duration_secs <= PARAKEET_CHUNKING_THRESHOLD_SECS {
         return Ok(ParakeetRunOutput {
@@ -1178,6 +1184,7 @@ fn transcribe_parakeet_streaming(
             input.display()
         ));
     }
+    ensure_parakeet_chunk_window_within_limit()?;
 
     let primary_chunk_samples = seconds_to_samples(PARAKEET_CHUNK_SECS).max(1);
     let overlap_samples = seconds_to_samples(PARAKEET_CHUNK_OVERLAP_SECS);
@@ -1393,6 +1400,18 @@ fn parakeet_chunk_progress(completed_chunks: usize, total_chunks: usize) -> u8 {
     20 + ((completed_chunks as f32 / total_chunks.max(1) as f32) * 50.0)
         .round()
         .clamp(0.0, 50.0) as u8
+}
+
+fn ensure_parakeet_chunk_window_within_limit() -> Result<()> {
+    if PARAKEET_MAX_CHUNK_INFERENCE_SECS >= PARAKEET_MAX_INFERENCE_SECS {
+        return Err(anyhow!(
+            "Parakeet chunk window is {:.1}s, which exceeds the {:.1}s model limit",
+            PARAKEET_MAX_CHUNK_INFERENCE_SECS,
+            PARAKEET_MAX_INFERENCE_SECS
+        ));
+    }
+
+    Ok(())
 }
 
 impl ParakeetCheckpoint {
@@ -2449,6 +2468,11 @@ mod tests {
         assert_eq!(result.segments.expect("segments").len(), 1);
 
         fs::remove_dir_all(&root).expect("remove test root");
+    }
+
+    #[test]
+    fn parakeet_chunk_window_stays_under_model_limit() {
+        assert!(PARAKEET_MAX_CHUNK_INFERENCE_SECS < PARAKEET_MAX_INFERENCE_SECS);
     }
 
     #[test]
