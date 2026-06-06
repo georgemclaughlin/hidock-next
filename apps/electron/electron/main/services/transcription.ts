@@ -267,7 +267,8 @@ async function transcribeWithWhisper(
     inputPath,
     join(outputDir, 'native-whisper.json'),
     config.transcription.language || 'auto',
-    progressCallback
+    progressCallback,
+    config.transcription.diarizationEnabled !== false
   )
 }
 
@@ -284,7 +285,8 @@ async function transcribeWithParakeet(
     inputPath,
     join(outputDir, 'native-parakeet.json'),
     config.transcription.language || 'auto',
-    progressCallback
+    progressCallback,
+    config.transcription.diarizationEnabled !== false
   )
 }
 

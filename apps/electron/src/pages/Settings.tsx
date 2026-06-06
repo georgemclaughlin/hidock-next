@@ -109,7 +109,7 @@ function PipelineSettingStageCard({
   stage: PipelineSettingStage
   onSelect: (sectionId: string) => void
 }) {
-  const isReady = ['Ready', 'Configured', 'Bundled'].includes(stage.status)
+  const isReady = ['Ready', 'Configured', 'Bundled', 'Enabled'].includes(stage.status)
 
   return (
     <button
@@ -146,6 +146,7 @@ export function Settings() {
   const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
   const [autoTranscribe, setAutoTranscribe] = useState(false)
+  const [diarizationEnabled, setDiarizationEnabled] = useState(true)
   const [modelDownloading, setModelDownloading] = useState(false)
   const [modelDownloadProgress, setModelDownloadProgress] = useState<ModelDownloadProgress | null>(null)
   const [transcriptionModels, setTranscriptionModels] = useState<TranscriptionModelOption[]>([])
@@ -225,11 +226,13 @@ export function Settings() {
       transcriptionModel !== config.transcription.localModel ||
       parakeetModel !== config.transcription.parakeetModel ||
       transcriptionLanguage !== config.transcription.language ||
-      autoTranscribe !== config.transcription.autoTranscribe
+      autoTranscribe !== config.transcription.autoTranscribe ||
+      diarizationEnabled !== (config.transcription.diarizationEnabled !== false)
     )
   }, [
     autoTranscribe,
     config,
+    diarizationEnabled,
     transcriptionEngine,
     transcriptionModel,
     parakeetModel,
@@ -331,8 +334,10 @@ export function Settings() {
     },
     {
       label: 'Diarize',
-      status: selectedModelDownloaded ? 'Bundled' : 'After transcribe',
-      description: 'Speaker labels run with the selected local transcription model when segments are returned.',
+      status: diarizationEnabled ? 'Enabled' : 'Disabled',
+      description: diarizationEnabled
+        ? 'Speaker labels run after transcription when the model returns segments.'
+        : 'Speaker labeling is disabled; recordings will keep raw transcripts only.',
       sectionId: 'settings-stage-transcribe'
     },
     {
@@ -355,6 +360,7 @@ export function Settings() {
     }
   ], [
     autoTranscribe,
+    diarizationEnabled,
     embeddingIndexStats?.currentModelDocumentCount,
     embeddingProvider,
     ollamaUrl,
@@ -400,6 +406,7 @@ export function Settings() {
       setParakeetModel(config.transcription.parakeetModel)
       setTranscriptionLanguage(config.transcription.language)
       setAutoTranscribe(config.transcription.autoTranscribe)
+      setDiarizationEnabled(config.transcription.diarizationEnabled !== false)
       setEmbeddingProvider(config.embeddings.provider)
       setNativeEmbeddingModel(config.embeddings.nativeModel)
       setOllamaEmbeddingModel(config.embeddings.ollamaModel)
@@ -609,6 +616,7 @@ export function Settings() {
     const previousParakeetModel = config?.transcription.parakeetModel || 'parakeet-v3'
     const previousLanguage = config?.transcription.language || 'auto'
     const previousAutoTranscribe = config?.transcription.autoTranscribe ?? false
+    const previousDiarizationEnabled = config?.transcription.diarizationEnabled !== false
 
     const transcriptionUpdates: Partial<AppConfig['transcription']> = {
       provider: 'local' as const,
@@ -616,7 +624,8 @@ export function Settings() {
       localModel: transcriptionModel.trim(),
       parakeetModel: parakeetModel.trim(),
       language: transcriptionLanguage.trim() || 'auto',
-      autoTranscribe
+      autoTranscribe,
+      diarizationEnabled
     }
 
     const validationError = validateConfig({
@@ -637,6 +646,7 @@ export function Settings() {
       setParakeetModel(previousParakeetModel)
       setTranscriptionLanguage(previousLanguage)
       setAutoTranscribe(previousAutoTranscribe)
+      setDiarizationEnabled(previousDiarizationEnabled)
       try { await loadConfig() } catch { /* best effort reload */ }
 
       const message = error instanceof Error ? error.message : 'Failed to save transcription settings'
@@ -841,6 +851,20 @@ export function Settings() {
                   onCheckedChange={setAutoTranscribe}
                   disabled={saving || modelDownloading}
                   aria-label="Auto-transcribe recordings"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-2">
+                <div className="min-w-0">
+                  <label htmlFor="diarizationEnabled" className="text-sm font-medium">Speaker diarization</label>
+                  <p className="text-xs text-muted-foreground">Generate speaker labels when supported by the local model.</p>
+                </div>
+                <Switch
+                  id="diarizationEnabled"
+                  checked={diarizationEnabled}
+                  onCheckedChange={setDiarizationEnabled}
+                  disabled={saving || modelDownloading}
+                  aria-label="Enable speaker diarization"
                 />
               </div>
 

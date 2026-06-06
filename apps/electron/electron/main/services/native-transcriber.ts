@@ -271,7 +271,8 @@ export async function transcribeWithNativeModel(
   inputPath: string,
   outputPath: string,
   language: string,
-  progressCallback?: (stage: string, progress: number) => void
+  progressCallback?: (stage: string, progress: number) => void,
+  diarizationEnabled: boolean = true
 ): Promise<NativeTranscriptionResult> {
   const model = await getNativeTranscriptionModel(modelId)
   if (!model) {
@@ -293,7 +294,8 @@ export async function transcribeWithNativeModel(
       '--output',
       outputPath,
       '--language',
-      language || 'auto'
+      language || 'auto',
+      ...(diarizationEnabled ? [] : ['--disable-diarization'])
     ],
     {
       onTranscriptionProgress: (progress) => {

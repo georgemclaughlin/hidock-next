@@ -66,6 +66,7 @@ function makeMockConfig(ollamaBaseUrl = '') {
       localModel: 'whisper-small',
       parakeetPythonCommand: '',
       parakeetModel: 'parakeet-v3',
+      diarizationEnabled: true,
       autoTranscribe: false,
       language: 'auto'
     },
@@ -218,9 +219,23 @@ describe('Settings Page', () => {
     render(<Settings />)
 
     expect(screen.getByLabelText('Auto-transcribe recordings')).toBeInTheDocument()
+    expect(screen.getByLabelText('Enable speaker diarization')).toBeInTheDocument()
     expect(screen.getByLabelText('Local transcription engine')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet model')).toBeInTheDocument()
     expect(screen.getByLabelText('Download parakeet model')).toBeInTheDocument()
+  })
+
+  it('should save disabled speaker diarization', async () => {
+    render(<Settings />)
+
+    fireEvent.click(screen.getByLabelText('Enable speaker diarization'))
+    fireEvent.click(screen.getByLabelText('Save transcription settings'))
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledWith('transcription', expect.objectContaining({
+        diarizationEnabled: false
+      }))
+    })
   })
 
   it('should download the configured Parakeet model', async () => {

@@ -24,7 +24,8 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       localCommand: '',
       localModel: 'whisper-small',
       parakeetPythonCommand: '',
-      parakeetModel: 'parakeet-v3'
+      parakeetModel: 'parakeet-v3',
+      diarizationEnabled: true
     },
     embeddings: {
       provider: 'native',
@@ -150,5 +151,24 @@ describe('ProcessingPipelineTracker', () => {
     const summaryStage = screen.getByText('Summarize').closest('.group')
     expect(summaryStage).not.toBeNull()
     expect(within(summaryStage as HTMLElement).getByText('Configure')).toBeInTheDocument()
+  })
+
+  it('shows diarization as skipped when disabled', () => {
+    const config = makeConfig()
+    useConfigStore.setState({
+      config: {
+        ...config,
+        transcription: {
+          ...config.transcription,
+          diarizationEnabled: false
+        }
+      }
+    })
+
+    render(<ProcessingPipelineTracker recording={makeRecording()} transcript={makeTranscript()} />)
+
+    const diarizeStage = screen.getByText('Diarize').closest('.group')
+    expect(diarizeStage).not.toBeNull()
+    expect(within(diarizeStage as HTMLElement).getByText('Skipped')).toBeInTheDocument()
   })
 })

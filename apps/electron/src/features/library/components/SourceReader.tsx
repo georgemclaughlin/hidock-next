@@ -725,21 +725,44 @@ export function SourceReader({
                 {transcriptCopied ? 'Copied' : 'Copy'}
               </Button>
             </div>
-            <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
-              <TabsList className="w-full">
-                <TabsTrigger value="raw" className="flex-1">
-                  Raw
-                </TabsTrigger>
-                <TabsTrigger
-                  value="diarized"
-                  className="flex-1"
-                  disabled={!hasDiarizedTranscript}
-                  title={hasDiarizedTranscript ? 'Show diarized transcript' : 'Diarized transcript not available'}
-                >
-                  Diarized
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="raw" className="mt-3">
+            {hasDiarizedTranscript ? (
+              <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
+                <TabsList className="w-full">
+                  <TabsTrigger value="raw" className="flex-1">
+                    Raw
+                  </TabsTrigger>
+                  <TabsTrigger value="diarized" className="flex-1" title="Show diarized transcript">
+                    Diarized
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="raw" className="mt-3">
+                  <TranscriptViewer
+                    transcript={transcript.full_text}
+                    currentTimeMs={currentTimeMs}
+                    onSeek={onSeek || (() => {})}
+                    showSummary={true}
+                    showActionItems={true}
+                    summary={transcript.summary ?? undefined}
+                    actionItems={parseJsonArray<string>(transcript.action_items)}
+                    transcriptLabel="Raw Transcript"
+                    showTranscriptHeader={false}
+                  />
+                </TabsContent>
+                <TabsContent value="diarized" className="mt-3">
+                  <TranscriptViewer
+                    transcript={transcript.full_text}
+                    segments={transcriptSegments}
+                    currentTimeMs={currentTimeMs}
+                    onSeek={onSeek || (() => {})}
+                    showSummary={false}
+                    showActionItems={false}
+                    transcriptLabel="Diarized Transcript"
+                    showTranscriptHeader={false}
+                  />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <div className="mt-3">
                 <TranscriptViewer
                   transcript={transcript.full_text}
                   currentTimeMs={currentTimeMs}
@@ -751,21 +774,8 @@ export function SourceReader({
                   transcriptLabel="Raw Transcript"
                   showTranscriptHeader={false}
                 />
-              </TabsContent>
-              <TabsContent value="diarized" className="mt-3">
-                <TranscriptViewer
-                  transcript={hasDiarizedTranscript ? transcript.full_text : ''}
-                  segments={hasDiarizedTranscript ? transcriptSegments : []}
-                  currentTimeMs={currentTimeMs}
-                  onSeek={onSeek || (() => {})}
-                  showSummary={false}
-                  showActionItems={false}
-                  transcriptLabel="Diarized Transcript"
-                  showTranscriptHeader={false}
-                  emptyMessage="Diarized transcript not available for this recording."
-                />
-              </TabsContent>
-            </Tabs>
+              </div>
+            )}
           </div>
         ) : recording.transcriptionStatus === 'complete' ? (
           <div className="text-center text-muted-foreground py-8">

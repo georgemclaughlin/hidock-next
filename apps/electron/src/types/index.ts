@@ -170,6 +170,7 @@ export interface AppConfig {
     localModel: string
     parakeetPythonCommand: string
     parakeetModel: string
+    diarizationEnabled: boolean
   }
   embeddings: {
     provider: 'native' | 'ollama'

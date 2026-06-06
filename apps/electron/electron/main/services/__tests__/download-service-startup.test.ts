@@ -53,7 +53,8 @@ vi.mock('../activity-log', () => ({
 vi.mock('../config', () => ({
   getConfig: vi.fn(() => ({
     transcription: {
-      autoTranscribe: false
+      autoTranscribe: false,
+      diarizationEnabled: true
     }
   }))
 }))

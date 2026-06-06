@@ -135,6 +135,7 @@ function buildStages(
   item: TranscriptionItem | null,
   indexStats: RecordingEmbeddingIndexStats | null,
   isSummaryConfigured: boolean,
+  diarizationEnabled: boolean,
   onTranscribe?: () => void,
   onOpenSettings?: () => void
 ): PipelineStage[] {
@@ -209,12 +210,12 @@ function buildStages(
   })()
 
   const diarize: PipelineStage = (() => {
-    if (hasDiarization || isAfterDiarization) {
+    if (hasDiarization) {
       return {
         id: 'diarize',
         label: 'Diarize',
         status: 'complete',
-        detail: hasDiarization ? 'Speaker segments are available.' : 'Diarization completed during transcription.'
+        detail: 'Speaker segments are available.'
       }
     }
 
@@ -224,6 +225,25 @@ function buildStages(
         label: 'Diarize',
         status: 'running',
         detail: `${item?.stage || 'Separating speakers'}${item?.progress != null ? ` (${Math.round(item.progress)}%)` : ''}.`
+      }
+    }
+
+    if (!diarizationEnabled) {
+      return {
+        id: 'diarize',
+        label: 'Diarize',
+        status: 'skipped',
+        detail: 'Speaker diarization is disabled in Settings.',
+        action: onOpenSettings ? { label: 'Open transcription settings', onSelect: onOpenSettings } : undefined
+      }
+    }
+
+    if (isAfterDiarization) {
+      return {
+        id: 'diarize',
+        label: 'Diarize',
+        status: 'complete',
+        detail: 'Diarization completed during transcription.'
       }
     }
 
@@ -475,6 +495,7 @@ export function ProcessingPipelineTracker({
   })
   const [indexStats, setIndexStats] = useState<RecordingEmbeddingIndexStats | null>(null)
   const isSummaryConfigured = useConfigStore((state) => Boolean(state.config?.embeddings.ollamaBaseUrl?.trim()))
+  const diarizationEnabled = useConfigStore((state) => state.config?.transcription?.diarizationEnabled !== false)
 
   useEffect(() => {
     let cancelled = false
@@ -499,8 +520,8 @@ export function ProcessingPipelineTracker({
   }, [recording.id, recording.transcriptionStatus, transcript?.id])
 
   const stages = useMemo(
-    () => buildStages(recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, onTranscribe, onOpenSettings),
-    [recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, onTranscribe, onOpenSettings]
+    () => buildStages(recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings),
+    [recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings]
   )
   const completedStageCount = stages.filter((stage) => stage.status === 'complete').length
 

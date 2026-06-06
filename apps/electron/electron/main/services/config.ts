@@ -46,6 +46,7 @@ export interface AppConfig {
     localModel: string
     parakeetPythonCommand: string
     parakeetModel: string
+    diarizationEnabled: boolean
   }
   embeddings: {
     provider: 'native' | 'ollama'
@@ -98,7 +99,8 @@ const DEFAULT_CONFIG: AppConfig = {
     localCommand: '',
     localModel: 'whisper-small',
     parakeetPythonCommand: '',
-    parakeetModel: 'parakeet-v3'
+    parakeetModel: 'parakeet-v3',
+    diarizationEnabled: true
   },
   embeddings: {
     provider: 'native',
@@ -209,7 +211,8 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
       localCommand: DEFAULT_CONFIG.transcription.localCommand,
       localModel: normalizeNativeWhisperModel(value.transcription?.localModel),
       parakeetPythonCommand: DEFAULT_CONFIG.transcription.parakeetPythonCommand,
-      parakeetModel
+      parakeetModel,
+      diarizationEnabled: value.transcription?.diarizationEnabled !== false
     },
     embeddings: {
       ...value.embeddings,

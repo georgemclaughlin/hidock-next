@@ -63,6 +63,7 @@ vi.mock('../config', () => ({
       localModel: 'whisper-small',
       parakeetPythonCommand: '',
       parakeetModel: 'parakeet-v3',
+      diarizationEnabled: true,
       language: 'auto'
     }
   }))
@@ -78,8 +79,9 @@ vi.mock('../native-transcriber', () => ({
     inputPath: string,
     outputPath: string,
     language: string,
-    progressCallback?: (stage: string, progress: number) => void
-  ) => mockTranscribeWithNativeModel(engine, modelId, inputPath, outputPath, language, progressCallback)
+    progressCallback?: (stage: string, progress: number) => void,
+    diarizationEnabled?: boolean
+  ) => mockTranscribeWithNativeModel(engine, modelId, inputPath, outputPath, language, progressCallback, diarizationEnabled)
 }))
 
 // Mock fs - simple approach that works in jsdom environment
@@ -181,7 +183,8 @@ describe('Transcription Service', () => {
         '/recordings/test.wav',
         '/tmp/recorder-transcription-test/native-parakeet.json',
         'auto',
-        expect.any(Function)
+        expect.any(Function),
+        true
       )
       expect(failureCall?.[2]).toContain('Native transcription sidecar is required')
     })

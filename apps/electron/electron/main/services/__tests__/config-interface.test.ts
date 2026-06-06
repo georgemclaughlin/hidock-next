@@ -68,6 +68,7 @@ describe('FIX-014: Config interface completeness', () => {
     const config = configModule.getConfig()
 
     expect(config.transcription.parakeetModel).toBe('parakeet-v3')
+    expect(config.transcription.diarizationEnabled).toBe(true)
   })
 
   it('local assistant URL should default to blank', async () => {

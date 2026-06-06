@@ -91,6 +91,8 @@ enum Command {
         output: PathBuf,
         #[arg(long, default_value = "auto")]
         language: String,
+        #[arg(long)]
+        disable_diarization: bool,
     },
 }
 
@@ -327,13 +329,14 @@ fn run_cli() -> Result<()> {
             input,
             output,
             language,
+            disable_diarization,
         } => {
             let model = get_model(&model_id)?;
             if !is_model_downloaded(&models_dir, &model) {
                 return Err(anyhow!("Model is not downloaded: {}", model_id));
             }
 
-            let result = transcribe(&models_dir, &model, &input, &language)?;
+            let result = transcribe(&models_dir, &model, &input, &language, !disable_diarization)?;
             let json = serde_json::to_vec_pretty(&result)?;
             fs::write(&output, json).with_context(|| {
                 format!("Failed to write transcript output {}", output.display())
@@ -753,6 +756,7 @@ fn transcribe(
     model: &ModelInfo,
     input: &Path,
     language: &str,
+    diarization_enabled: bool,
 ) -> Result<TranscriptOutput> {
     emit_transcription_progress("loading audio", 10);
     let audio = read_audio_as_f32(input)?;
@@ -796,16 +800,20 @@ fn transcribe(
 
     let mut segments = transcript_segments(result.segments);
     let text = transcript_text_from_segments(&segments).unwrap_or(result.text);
-    emit_transcription_progress("diarizing speakers", 72);
-    let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
-    if audio_duration_secs <= DIARIZATION_MAX_FULL_AUDIO_SECS {
-        if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
-            eprintln!("Speaker diarization skipped: {error:#}");
+    if diarization_enabled {
+        emit_transcription_progress("diarizing speakers", 72);
+        let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
+        if audio_duration_secs <= DIARIZATION_MAX_FULL_AUDIO_SECS {
+            if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
+                eprintln!("Speaker diarization skipped: {error:#}");
+            }
+        } else {
+            eprintln!(
+                "Speaker diarization skipped: audio duration {audio_duration_secs:.1}s exceeds {DIARIZATION_MAX_FULL_AUDIO_SECS:.1}s full-audio limit"
+            );
         }
     } else {
-        eprintln!(
-            "Speaker diarization skipped: audio duration {audio_duration_secs:.1}s exceeds {DIARIZATION_MAX_FULL_AUDIO_SECS:.1}s full-audio limit"
-        );
+        eprintln!("Speaker diarization skipped: disabled by configuration");
     }
     emit_transcription_progress("finalizing transcript", 84);
     smooth_short_speaker_runs(&mut segments);

@@ -173,6 +173,7 @@ vi.mock('../../services/config', () => ({
       localModel: 'whisper-small',
       parakeetPythonCommand: '',
       parakeetModel: 'parakeet-v3',
+      diarizationEnabled: true,
       autoTranscribe: true,
       language: 'auto'
     }
