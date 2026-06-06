@@ -26,6 +26,7 @@ use transcribe_rs::{
 use transcribe_rs::whisper_cpp::{WhisperEngine, WhisperInferenceParams};
 
 const TARGET_SAMPLE_RATE: u32 = 16_000;
+const CLI_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 #[derive(Parser)]
 #[command(name = "recorder-transcriber")]
@@ -92,6 +93,28 @@ struct TranscriptSegment {
 }
 
 fn main() -> Result<()> {
+    let worker = std::thread::Builder::new()
+        .name("recorder-transcriber-cli".to_string())
+        .stack_size(CLI_THREAD_STACK_SIZE)
+        .spawn(run_cli)
+        .context("Failed to start recorder transcriber CLI thread")?;
+
+    match worker.join() {
+        Ok(result) => result,
+        Err(panic) => {
+            let message = if let Some(message) = panic.downcast_ref::<&str>() {
+                (*message).to_string()
+            } else if let Some(message) = panic.downcast_ref::<String>() {
+                message.clone()
+            } else {
+                "unknown panic payload".to_string()
+            };
+            Err(anyhow!("Recorder transcriber CLI thread panicked: {message}"))
+        }
+    }
+}
+
+fn run_cli() -> Result<()> {
     let cli = Cli::parse();
     let models_dir = models_dir(cli.data_dir.as_deref())?;
     fs::create_dir_all(&models_dir)
