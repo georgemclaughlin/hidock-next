@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { parseJsonArray, type Transcript } from '@/types'
 import { type UnifiedRecording, hasLocalPath } from '@/types/unified-recording'
@@ -69,36 +70,36 @@ function getStatusLabel(status: StageStatus): string {
 function getStatusIcon(status: StageStatus) {
   switch (status) {
     case 'complete':
-      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+      return <CheckCircle2 className="h-4 w-4" />
     case 'running':
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+      return <Loader2 className="h-4 w-4 animate-spin" />
     case 'queued':
-      return <Clock className="h-3.5 w-3.5 text-amber-600" />
+      return <Clock className="h-4 w-4" />
     case 'blocked':
-      return <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+      return <AlertCircle className="h-4 w-4" />
     case 'failed':
-      return <AlertCircle className="h-3.5 w-3.5 text-red-600" />
+      return <AlertCircle className="h-4 w-4" />
     case 'skipped':
-      return <CircleDashed className="h-3.5 w-3.5 text-muted-foreground" />
+      return <CircleDashed className="h-4 w-4" />
     default:
-      return <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+      return <Circle className="h-4 w-4" />
   }
 }
 
 function getStatusClassName(status: StageStatus): string {
   switch (status) {
     case 'complete':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100'
+      return 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
     case 'running':
-      return 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-100'
+      return 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
     case 'queued':
-      return 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100'
+      return 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
     case 'blocked':
-      return 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100'
+      return 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300'
     case 'failed':
-      return 'border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100'
+      return 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300'
     case 'skipped':
-      return 'border-muted bg-muted/50 text-muted-foreground'
+      return 'border-muted bg-muted text-muted-foreground'
     default:
       return 'border-border bg-background text-muted-foreground'
   }
@@ -322,31 +323,43 @@ function StageButton({ stage }: { stage: PipelineStage }) {
   const content = (
     <div
       className={cn(
-        'flex h-full min-h-[58px] w-full items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors',
-        stage.action ? 'hover:bg-accent hover:text-accent-foreground cursor-pointer' : '',
-        getStatusClassName(stage.status)
+        'group flex min-w-0 flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition-colors',
+        stage.action ? 'cursor-pointer hover:bg-accent hover:text-accent-foreground' : ''
       )}
       title={stage.detail}
     >
-      <div className="mt-0.5 shrink-0">{getStatusIcon(stage.status)}</div>
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-xs font-semibold">{stage.label}</span>
-          <span className="shrink-0 rounded-sm bg-background/70 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-normal">
-            {getStatusLabel(stage.status)}
-          </span>
+      <div
+        className={cn(
+          'flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-sm',
+          getStatusClassName(stage.status)
+        )}
+      >
+        {getStatusIcon(stage.status)}
+      </div>
+      <div className="max-w-full">
+        <div className="truncate text-xs font-semibold text-foreground">{stage.label}</div>
+        <div className="truncate text-[10px] font-medium uppercase tracking-normal text-muted-foreground">
+          {getStatusLabel(stage.status)}
         </div>
-        <p className="mt-1 line-clamp-2 text-xs opacity-80">{stage.detail}</p>
       </div>
     </div>
   )
 
-  if (!stage.action) return content
+  if (!stage.action) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-72">
+          <p>{stage.detail}</p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="w-full text-left">
+        <button type="button" className="w-full min-w-0 text-left">
           {content}
         </button>
       </DropdownMenuTrigger>
@@ -409,18 +422,27 @@ export function ProcessingPipelineTracker({
   )
 
   return (
-    <section className="rounded-md border bg-background p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <section className="rounded-md border bg-background px-3 py-2">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Processing</h3>
         <span className="text-xs text-muted-foreground">
           {stages.filter((stage) => stage.status === 'complete').length}/{stages.length} complete
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {stages.map((stage) => (
-          <StageButton key={stage.id} stage={stage} />
-        ))}
-      </div>
+      <TooltipProvider>
+        <div className="grid grid-cols-4 items-start gap-1">
+          {stages.map((stage, index) => (
+            <div key={stage.id} className="relative min-w-0">
+              {index < stages.length - 1 && (
+                <div className="absolute left-1/2 right-[-50%] top-5 h-px bg-border" />
+              )}
+              <div className="relative z-10">
+                <StageButton stage={stage} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </TooltipProvider>
     </section>
   )
 }

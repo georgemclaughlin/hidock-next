@@ -3,6 +3,7 @@ import { Save, FolderOpen, RefreshCw, AlertCircle, Download, CheckCircle2 } from
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -71,6 +72,13 @@ type ModelDownloadProgress = {
   totalBytes?: number
 }
 
+type PipelineSettingStage = {
+  label: string
+  status: string
+  description: string
+  sectionId: string
+}
+
 const MODEL_DOWNLOAD_STAGE_LABELS: Record<string, string> = {
   starting: 'Preparing download',
   downloading: 'Downloading model',
@@ -94,6 +102,34 @@ function formatModelDownloadStatus(progress: ModelDownloadProgress | null): stri
   return label
 }
 
+function PipelineSettingStageCard({
+  stage,
+  onSelect
+}: {
+  stage: PipelineSettingStage
+  onSelect: (sectionId: string) => void
+}) {
+  const isReady = ['Ready', 'Configured', 'Bundled'].includes(stage.status)
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(stage.sectionId)}
+      className="min-w-0 rounded-md border bg-background px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-semibold">{stage.label}</span>
+        <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-normal ${
+          isReady ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+        }`}>
+          {stage.status}
+        </span>
+      </div>
+      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{stage.description}</p>
+    </button>
+  )
+}
+
 export function Settings() {
   // SM-09 fix: Use granular selectors
   const { config, loadConfig, updateConfig, configLoading } = useConfigStore()
@@ -109,6 +145,7 @@ export function Settings() {
   const [transcriptionModel, setTranscriptionModel] = useState('whisper-small')
   const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
   const [transcriptionLanguage, setTranscriptionLanguage] = useState('auto')
+  const [autoTranscribe, setAutoTranscribe] = useState(false)
   const [modelDownloading, setModelDownloading] = useState(false)
   const [modelDownloadProgress, setModelDownloadProgress] = useState<ModelDownloadProgress | null>(null)
   const [transcriptionModels, setTranscriptionModels] = useState<TranscriptionModelOption[]>([])
@@ -187,9 +224,11 @@ export function Settings() {
       transcriptionEngine !== config.transcription.localEngine ||
       transcriptionModel !== config.transcription.localModel ||
       parakeetModel !== config.transcription.parakeetModel ||
-      transcriptionLanguage !== config.transcription.language
+      transcriptionLanguage !== config.transcription.language ||
+      autoTranscribe !== config.transcription.autoTranscribe
     )
   }, [
+    autoTranscribe,
     config,
     transcriptionEngine,
     transcriptionModel,
@@ -283,6 +322,43 @@ export function Settings() {
     : selectedEmbeddingModelDownloaded
       ? 'Model Downloaded'
       : 'Download Model'
+  const pipelineSettingStages = useMemo<PipelineSettingStage[]>(() => [
+    {
+      label: 'Transcribe',
+      status: selectedModelDownloaded ? 'Ready' : 'Model required',
+      description: autoTranscribe ? 'Auto-transcribe is enabled for new local recordings.' : 'Manual transcription is available after the model is downloaded.',
+      sectionId: 'settings-stage-transcribe'
+    },
+    {
+      label: 'Diarize',
+      status: selectedModelDownloaded ? 'Bundled' : 'After transcribe',
+      description: 'Speaker labels run with the selected local transcription model when segments are returned.',
+      sectionId: 'settings-stage-transcribe'
+    },
+    {
+      label: 'Index',
+      status: embeddingProvider === 'native'
+        ? selectedEmbeddingModelDownloaded
+          ? 'Ready'
+          : 'Model required'
+        : 'Configured',
+      description: `${embeddingIndexStats?.currentModelDocumentCount ?? 0} current chunks indexed for Explore search.`,
+      sectionId: 'settings-stage-index'
+    },
+    {
+      label: 'Summarize',
+      status: ollamaUrl.trim() ? 'Configured' : 'URL required',
+      description: 'Local assistant settings will power generated summaries when that stage is enabled.',
+      sectionId: 'settings-stage-summary'
+    }
+  ], [
+    autoTranscribe,
+    embeddingIndexStats?.currentModelDocumentCount,
+    embeddingProvider,
+    ollamaUrl,
+    selectedEmbeddingModelDownloaded,
+    selectedModelDownloaded
+  ])
 
   // Stable loadConfig with useCallback for dependency array
   const loadConfigStable = useCallback(async () => {
@@ -321,6 +397,7 @@ export function Settings() {
       setTranscriptionModel(config.transcription.localModel)
       setParakeetModel(config.transcription.parakeetModel)
       setTranscriptionLanguage(config.transcription.language)
+      setAutoTranscribe(config.transcription.autoTranscribe)
       setEmbeddingProvider(config.embeddings.provider)
       setNativeEmbeddingModel(config.embeddings.nativeModel)
       setOllamaEmbeddingModel(config.embeddings.ollamaModel)
@@ -529,13 +606,15 @@ export function Settings() {
     const previousEngine = config?.transcription.localEngine || 'parakeet'
     const previousParakeetModel = config?.transcription.parakeetModel || 'parakeet-v3'
     const previousLanguage = config?.transcription.language || 'auto'
+    const previousAutoTranscribe = config?.transcription.autoTranscribe ?? false
 
     const transcriptionUpdates: Partial<AppConfig['transcription']> = {
       provider: 'local' as const,
       localEngine: transcriptionEngine,
       localModel: transcriptionModel.trim(),
       parakeetModel: parakeetModel.trim(),
-      language: transcriptionLanguage.trim() || 'auto'
+      language: transcriptionLanguage.trim() || 'auto',
+      autoTranscribe
     }
 
     const validationError = validateConfig({
@@ -555,6 +634,7 @@ export function Settings() {
       setTranscriptionModel(previousModel)
       setParakeetModel(previousParakeetModel)
       setTranscriptionLanguage(previousLanguage)
+      setAutoTranscribe(previousAutoTranscribe)
       try { await loadConfig() } catch { /* best effort reload */ }
 
       const message = error instanceof Error ? error.message : 'Failed to save transcription settings'
@@ -683,6 +763,13 @@ export function Settings() {
     }
   }
 
+  const handleSelectPipelineStage = useCallback((sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  }, [])
+
   // Loading state
   if (configLoading) {
     return (
@@ -716,13 +803,45 @@ export function Settings() {
 
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-2xl mx-auto space-y-6">
-          {/* Local Transcription Settings */}
           <Card>
+            <CardHeader>
+              <CardTitle>Processing Pipeline</CardTitle>
+              <CardDescription>Configure the stages shown on each recording.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {pipelineSettingStages.map((stage) => (
+                  <PipelineSettingStageCard
+                    key={stage.label}
+                    stage={stage}
+                    onSelect={handleSelectPipelineStage}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Local Transcription Settings */}
+          <Card id="settings-stage-transcribe">
             <CardHeader>
               <CardTitle>Local Transcription</CardTitle>
               <CardDescription>Configure local speech-to-text for recordings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-3 py-2">
+                <div className="min-w-0">
+                  <label htmlFor="autoTranscribe" className="text-sm font-medium">Auto-transcribe</label>
+                  <p className="text-xs text-muted-foreground">Queue new local recordings for transcription automatically.</p>
+                </div>
+                <Switch
+                  id="autoTranscribe"
+                  checked={autoTranscribe}
+                  onCheckedChange={setAutoTranscribe}
+                  disabled={saving || modelDownloading}
+                  aria-label="Auto-transcribe recordings"
+                />
+              </div>
+
               <div>
                 <label htmlFor="transcriptionEngine" className="text-sm font-medium">Engine</label>
                 <Select
@@ -866,7 +985,7 @@ export function Settings() {
           </Card>
 
           {/* Local Search Embeddings */}
-          <Card>
+          <Card id="settings-stage-index">
             <CardHeader>
               <CardTitle>Local Search Embeddings</CardTitle>
               <CardDescription>Configure embeddings for Explore and transcript search</CardDescription>
@@ -1002,7 +1121,7 @@ export function Settings() {
           </Card>
 
           {/* Chat Settings */}
-          <Card>
+          <Card id="settings-stage-summary">
             <CardHeader>
               <CardTitle>Local Assistant</CardTitle>
               <CardDescription>Configure local Ollama for querying local transcripts</CardDescription>

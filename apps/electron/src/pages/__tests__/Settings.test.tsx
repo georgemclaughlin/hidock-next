@@ -170,6 +170,7 @@ global.window.electronAPI = {
 beforeEach(() => {
   vi.clearAllMocks()
   modelDownloadProgressCallback = null
+  mockUpdateConfig.mockResolvedValue(undefined)
   mockGetTranscriptionModels.mockResolvedValue(defaultTranscriptionModels)
   mockOnTranscriptionModelDownloadProgress.mockImplementation((callback) => {
     modelDownloadProgressCallback = callback
@@ -220,6 +221,7 @@ describe('Settings Page', () => {
   it('should render settings sections', async () => {
     render(<Settings />)
 
+    expect(screen.getByText('Processing Pipeline')).toBeInTheDocument()
     expect(screen.getByText('Local Transcription')).toBeInTheDocument()
     expect(screen.getByText('Local Search Embeddings')).toBeInTheDocument()
     expect(screen.getByText('Local Assistant')).toBeInTheDocument()
@@ -229,6 +231,7 @@ describe('Settings Page', () => {
   it('should render transcription settings form', async () => {
     render(<Settings />)
 
+    expect(screen.getByLabelText('Auto-transcribe recordings')).toBeInTheDocument()
     expect(screen.getByLabelText('Local transcription engine')).toBeInTheDocument()
     expect(screen.getByLabelText('Parakeet model')).toBeInTheDocument()
     expect(screen.getByLabelText('Download parakeet model')).toBeInTheDocument()
