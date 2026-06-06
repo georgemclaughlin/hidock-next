@@ -324,14 +324,16 @@ export async function downloadLocalTranscriptionModel(
 
 function normalizeTranscriptText(output: NativeTranscriptOutput): string {
   const text = output.text?.trim()
-  if (text) return text
-
   const segmentText = output.segments
     ?.map((segment) => segment.text?.trim())
     .filter((value): value is string => Boolean(value))
     .join(' ')
     .trim()
 
+  if (segmentText && (!text || countWords(segmentText) > countWords(text))) {
+    return segmentText
+  }
+  if (text) return text
   if (segmentText) return segmentText
   throw new Error('Local transcription output did not contain transcript text')
 }

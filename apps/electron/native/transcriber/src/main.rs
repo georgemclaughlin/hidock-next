@@ -34,6 +34,11 @@ use transcribe_rs::whisper_cpp::{WhisperEngine, WhisperInferenceParams};
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 const CLI_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
 const DOWNLOAD_PROGRESS_PREFIX: &str = "LR_PROGRESS ";
+const TRANSCRIPTION_TAIL_GAP_SECS: f32 = 1.5;
+const TRANSCRIPTION_TAIL_CONTEXT_SECS: f32 = 2.0;
+const TRANSCRIPTION_TAIL_WORD_GRACE_SECS: f32 = 0.15;
+const MIN_TAIL_RETRY_SECS: f32 = 1.0;
+const MIN_TAIL_RETRY_RMS: f32 = 0.0015;
 
 #[derive(Parser)]
 #[command(name = "recorder-transcriber")]
@@ -464,23 +469,171 @@ fn transcribe(
                 timestamp_granularity: Some(TimestampGranularity::Segment),
                 ..Default::default()
             };
-            let result = engine.transcribe_with(&audio, &params).with_context(|| {
-                format!("Parakeet transcription failed for {}", input.display())
-            })?;
-            result
+            transcribe_parakeet_with_tail_rescue(&mut engine, &audio, &params, input)?
         }
     };
 
     let mut segments = transcript_segments(result.segments);
+    let text = transcript_text_from_segments(&segments).unwrap_or(result.text);
     if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
         eprintln!("Speaker diarization skipped: {error:#}");
     }
 
     Ok(TranscriptOutput {
-        text: result.text,
+        text,
         language: language.to_string(),
         segments,
     })
+}
+
+fn transcribe_parakeet_with_tail_rescue(
+    engine: &mut ParakeetModel,
+    audio: &[f32],
+    params: &ParakeetParams,
+    input: &Path,
+) -> Result<transcribe_rs::TranscriptionResult> {
+    let mut result = engine
+        .transcribe_with(audio, params)
+        .with_context(|| format!("Parakeet transcription failed for {}", input.display()))?;
+
+    rescue_parakeet_tail(engine, audio, params, &mut result, input)?;
+    Ok(result)
+}
+
+fn rescue_parakeet_tail(
+    engine: &mut ParakeetModel,
+    audio: &[f32],
+    params: &ParakeetParams,
+    result: &mut transcribe_rs::TranscriptionResult,
+    input: &Path,
+) -> Result<()> {
+    let Some(last_end) = last_segment_end(result.segments.as_deref()) else {
+        return Ok(());
+    };
+
+    let audio_duration = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
+    if audio_duration - last_end <= TRANSCRIPTION_TAIL_GAP_SECS {
+        return Ok(());
+    }
+
+    let untranscribed_start_sample = ((last_end + TRANSCRIPTION_TAIL_WORD_GRACE_SECS)
+        * TARGET_SAMPLE_RATE as f32)
+        .floor() as usize;
+    let untranscribed_tail = audio.get(untranscribed_start_sample..).unwrap_or_default();
+    if rms(untranscribed_tail) < MIN_TAIL_RETRY_RMS {
+        return Ok(());
+    }
+
+    let tail_start = (last_end - TRANSCRIPTION_TAIL_CONTEXT_SECS).max(0.0);
+    let tail_start_sample = (tail_start * TARGET_SAMPLE_RATE as f32).floor() as usize;
+    let tail_audio = audio.get(tail_start_sample..).unwrap_or_default();
+    if tail_audio.len() as f32 / TARGET_SAMPLE_RATE as f32 <= MIN_TAIL_RETRY_SECS {
+        return Ok(());
+    }
+
+    eprintln!(
+        "Parakeet tail rescue: final segment ended at {last_end:.2}s of {audio_duration:.2}s; retrying from {tail_start:.2}s"
+    );
+
+    let tail_params = ParakeetParams {
+        timestamp_granularity: Some(TimestampGranularity::Word),
+        ..params.clone()
+    };
+    let mut tail_result = engine
+        .transcribe_with(tail_audio, &tail_params)
+        .with_context(|| format!("Parakeet tail transcription failed for {}", input.display()))?;
+    tail_result.offset_timestamps(tail_start);
+
+    let Some(tail_segment) = build_tail_segment_after(
+        tail_result.segments.unwrap_or_default(),
+        last_end - TRANSCRIPTION_TAIL_WORD_GRACE_SECS,
+    ) else {
+        return Ok(());
+    };
+
+    result
+        .segments
+        .get_or_insert_with(Vec::new)
+        .push(tail_segment);
+
+    if let Some(text) = transcription_text_from_segments(result.segments.as_deref()) {
+        result.text = text;
+    }
+
+    Ok(())
+}
+
+fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+
+    let mean_square = samples
+        .iter()
+        .map(|sample| {
+            let sample = *sample as f64;
+            sample * sample
+        })
+        .sum::<f64>()
+        / samples.len() as f64;
+
+    mean_square.sqrt() as f32
+}
+
+fn last_segment_end(segments: Option<&[transcribe_rs::TranscriptionSegment]>) -> Option<f32> {
+    segments?
+        .iter()
+        .filter(|segment| !segment.text.trim().is_empty())
+        .map(|segment| segment.end)
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+fn build_tail_segment_after(
+    segments: Vec<transcribe_rs::TranscriptionSegment>,
+    start_after: f32,
+) -> Option<transcribe_rs::TranscriptionSegment> {
+    let words = segments
+        .into_iter()
+        .filter(|segment| segment.start >= start_after && !segment.text.trim().is_empty())
+        .collect::<Vec<_>>();
+
+    let first = words.first()?;
+    let last = words.last()?;
+    let text = words
+        .iter()
+        .map(|segment| segment.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if text.is_empty() {
+        return None;
+    }
+
+    Some(transcribe_rs::TranscriptionSegment {
+        start: first.start,
+        end: last.end,
+        text,
+    })
+}
+
+fn transcription_text_from_segments(
+    segments: Option<&[transcribe_rs::TranscriptionSegment]>,
+) -> Option<String> {
+    let text = segments?
+        .iter()
+        .map(|segment| segment.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string();
+
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 fn transcript_segments(
@@ -497,6 +650,23 @@ fn transcript_segments(
             speaker: None,
         })
         .collect()
+}
+
+fn transcript_text_from_segments(segments: &[TranscriptSegment]) -> Option<String> {
+    let text = segments
+        .iter()
+        .map(|segment| segment.text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string();
+
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 fn assign_speakers(
