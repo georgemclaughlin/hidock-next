@@ -281,6 +281,8 @@ describe('SourceReader — metadata editing', () => {
     const rec = makeRecording({ knowledgeCaptureId: 'kc-1', category: 'meeting' })
     render(<SourceReader recording={rec} />)
 
+    fireEvent.click(screen.getByRole('button', { name: /details/i }))
+
     // The SelectTrigger button has the current value text
     expect(screen.getByText('Meeting')).toBeInTheDocument()
   })
@@ -290,6 +292,7 @@ describe('SourceReader — metadata editing', () => {
     const rec = makeRecording({ knowledgeCaptureId: 'kc-1', category: 'meeting' })
     render(<SourceReader recording={rec} />)
 
+    fireEvent.click(screen.getByRole('button', { name: /details/i }))
     fireEvent.change(screen.getByTestId('category-select'), { target: { value: 'interview' } })
 
     await waitFor(() => {
@@ -302,6 +305,7 @@ describe('SourceReader — metadata editing', () => {
     const rec = makeRecording({ knowledgeCaptureId: 'kc-1', category: 'meeting' })
     render(<SourceReader recording={rec} />)
 
+    fireEvent.click(screen.getByRole('button', { name: /details/i }))
     fireEvent.change(screen.getByTestId('category-select'), { target: { value: 'meeting' } })
 
     // Allow microtasks to flush
@@ -354,11 +358,15 @@ describe('SourceReader — metadata editing', () => {
   })
 
   // 13. "Link Meeting" button shows when no meeting linked
-  it('shows Link Meeting button when no meeting is linked', () => {
+  it('shows Link Meeting action when no meeting is linked', async () => {
     const rec = makeRecording({ knowledgeCaptureId: 'kc-1' })
     render(<SourceReader recording={rec} />)
 
-    expect(screen.getByRole('button', { name: /link meeting/i })).toBeInTheDocument()
+    fireEvent.pointerDown(screen.getByRole('button', { name: /more/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: /link meeting/i })).toBeInTheDocument()
+    })
   })
 
   // 14. Remove calls selectMeeting(id, null)

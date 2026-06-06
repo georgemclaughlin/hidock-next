@@ -14,10 +14,17 @@ import { TranscriptViewer, type TranscriptViewerSegmentInput } from './Transcrip
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { UnifiedRecording, hasLocalPath, isDeviceOnly } from '@/types/unified-recording'
 import { Transcript, Meeting, parseJsonArray } from '@/types'
-import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Square, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen, Copy, ChevronDown, ChevronRight } from 'lucide-react'
+import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen, Copy, ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
@@ -135,6 +142,7 @@ export function SourceReader({
   const [transcriptCopied, setTranscriptCopied] = useState(false)
   const [transcriptView, setTranscriptView] = useState<TranscriptView>('raw')
   const [audioPlayerExpanded, setAudioPlayerExpanded] = useState(false)
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
 
   const transcriptSegments = useMemo(
     () => parseTranscriptSegments(transcript?.speakers),
@@ -159,6 +167,7 @@ export function SourceReader({
     setTranscriptCopied(false)
     setTranscriptView('raw')
     setAudioPlayerExpanded(false)
+    setDetailsExpanded(false)
   }, [recording?.id])
 
   const handleCloseAudioPlayer = useCallback(() => {
@@ -286,6 +295,18 @@ export function SourceReader({
   }
 
   const canPlay = hasLocalPath(recording)
+  const recordingTitle = recording.title || meeting?.subject || recording.filename
+  const recordedAtText = (() => {
+    const date = new Date(recording.dateRecorded)
+    return !isNaN(date.getTime()) ? formatDateTime(date.toISOString()) : 'Unknown date'
+  })()
+  const compactMetadataParts = [
+    recordedAtText,
+    recording.duration ? formatDuration(recording.duration) : null,
+    recording.size ? formatBytes(recording.size) : null,
+    recording.location.replace('-', ' '),
+    recording.transcriptionStatus
+  ].filter((part): part is string => Boolean(part))
 
   const linkDialogRecording = {
     id: recording.id,
@@ -298,10 +319,11 @@ export function SourceReader({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header with comprehensive metadata */}
-      <div className="p-6 border-b space-y-4">
-        <div>
-          <div className="mb-4">
+      {/* Compact header keeps the transcript/status area high in the reader */}
+      <div className="border-b">
+        <div className="px-6 py-4 space-y-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1 space-y-1">
             {isEditingTitle ? (
               <div className="flex items-center gap-2">
                 <Input
@@ -311,7 +333,7 @@ export function SourceReader({
                     if (e.key === 'Enter') handleSaveTitle()
                     if (e.key === 'Escape') handleCancelTitle()
                   }}
-                  className="text-xl font-semibold h-auto py-1"
+                  className="text-lg font-semibold h-auto py-1"
                   autoFocus
                   disabled={isSavingTitle}
                   aria-label="Recording title"
@@ -325,8 +347,8 @@ export function SourceReader({
               </div>
             ) : (
               <div className="group flex items-center gap-2">
-                <h2 className="text-xl font-semibold truncate" title={recording.title || meeting?.subject || recording.filename}>
-                  {recording.title || meeting?.subject || recording.filename}
+                <h2 className="text-lg font-semibold truncate" title={recordingTitle}>
+                  {recordingTitle}
                 </h2>
                 {recording.knowledgeCaptureId && (
                   <button
@@ -343,72 +365,181 @@ export function SourceReader({
                 )}
               </div>
             )}
-          </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                {compactMetadataParts.map((part, index) => (
+                  <span key={`${part}-${index}`} className={index >= 3 ? 'capitalize' : undefined}>
+                    {index > 0 && <span className="mr-2 text-muted-foreground/60">/</span>}
+                    {part}
+                  </span>
+                ))}
+              </div>
+            </div>
 
-          {/* Comprehensive Metadata Grid - same as SourceRowExpanded */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Date Recorded</p>
-              <p>{(() => {
-                const date = new Date(recording.dateRecorded)
-                return !isNaN(date.getTime()) ? formatDateTime(date.toISOString()) : 'Unknown'
-              })()}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Duration</p>
-              <p>{recording.duration ? formatDuration(recording.duration) : 'Unknown'}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Size</p>
-              <p>{recording.size ? formatBytes(recording.size) : 'Unknown'}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Quality</p>
-              <p className="capitalize">{recording.quality || 'Standard'}</p>
-            </div>
-            {recording.knowledgeCaptureId ? (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Category</p>
-                <Select
-                  value={recording.category || ''}
-                  onValueChange={handleCategoryChange}
-                  disabled={isSavingCategory}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {canPlay && onPlay && (
+                isPlaying ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onStop}
+                    className="gap-2"
+                    title="Stop playback"
+                  >
+                    <X className="h-4 w-4" />
+                    Stop
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onPlay}
+                    className="gap-2"
+                    title="Play recording"
+                  >
+                    <Play className="h-4 w-4" />
+                    Play
+                  </Button>
+                )
+              )}
+
+              {isDeviceOnly(recording) && onDownload && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onDownload}
+                  disabled={!deviceConnected || isDownloading}
+                  className="gap-2"
+                  title={!deviceConnected ? 'Device not connected' : 'Download recording from device'}
                 >
-                  <SelectTrigger className="h-7 text-sm w-[140px]">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORY_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : recording.category ? (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Category</p>
-                <p className="capitalize">{recording.category}</p>
-              </div>
-            ) : null}
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Location</p>
-              <p className="capitalize">{recording.location.replace('-', ' ')}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Transcription</p>
-              <p className="capitalize">{recording.transcriptionStatus}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-1">Filename</p>
-              <p className="truncate" title={recording.filename}>{recording.filename}</p>
+                  {isDownloading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      {downloadProgress !== undefined ? `${downloadProgress}%` : 'Downloading...'}
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      Download
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {hasLocalPath(recording) && recording.transcriptionStatus !== 'complete' && onTranscribe && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTranscribeClick}
+                  disabled={recording.transcriptionStatus === 'pending' || recording.transcriptionStatus === 'processing'}
+                  className="gap-2"
+                  title={
+                    recording.transcriptionStatus === 'pending' ? 'Transcription queued' :
+                    recording.transcriptionStatus === 'processing' ? 'Transcription in progress' :
+                    'Start AI transcription'
+                  }
+                >
+                  {recording.transcriptionStatus === 'processing' ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      In Progress
+                    </>
+                  ) : recording.transcriptionStatus === 'pending' ? (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      Queued
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="h-4 w-4" />
+                      Transcribe
+                    </>
+                  )}
+                </Button>
+              )}
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDetailsExpanded((expanded) => !expanded)}
+                className="gap-2"
+                aria-expanded={detailsExpanded}
+                aria-controls="source-details-panel"
+                title={detailsExpanded ? 'Hide details' : 'Show details'}
+              >
+                {detailsExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                Details
+              </Button>
+
+              {canPlay && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAudioPlayerExpanded((expanded) => !expanded)}
+                  className="gap-2"
+                  aria-expanded={audioPlayerExpanded}
+                  aria-controls="source-audio-player-panel"
+                  title={audioPlayerExpanded ? 'Hide waveform' : 'Show waveform'}
+                >
+                  {audioPlayerExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  Waveform
+                </Button>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-2" title="More actions">
+                    <MoreHorizontal className="h-4 w-4" />
+                    More
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {hasLocalPath(recording) && (
+                    <>
+                      <DropdownMenuItem onSelect={() => { void window.electronAPI?.storage.openFile(recording.localPath) }}>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Open
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => { void window.electronAPI?.storage.revealInFolder(recording.localPath) }}>
+                        <FolderOpen className="mr-2 h-4 w-4" />
+                        Reveal
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {!meeting && !isDeviceOnly(recording) && (
+                    <DropdownMenuItem onSelect={() => setLinkDialogOpen(true)}>
+                      <Link className="mr-2 h-4 w-4" />
+                      Link Meeting
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => onDelete()}
+                        disabled={(isDeviceOnly(recording) && !deviceConnected) || isDeleting}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
           {/* Linked Meeting */}
           {meeting && (
-            <div className="mt-4 flex items-center gap-2 p-3 bg-muted/30 border rounded-lg">
+            <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2">
               <div
                 className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => onNavigateToMeeting?.(meeting.id)}
@@ -442,197 +573,79 @@ export function SourceReader({
 
           {/* Device-only notice */}
           {isDeviceOnly(recording) && (
-            <p className="mt-3 text-xs text-muted-foreground italic">
+            <p className="text-xs text-muted-foreground italic">
               Download this capture to play it and generate a transcript.
             </p>
+          )}
+
+          {detailsExpanded && (
+            <div id="source-details-panel" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 border-t pt-3 text-sm">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Date Recorded</p>
+                <p>{recordedAtText}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Duration</p>
+                <p>{recording.duration ? formatDuration(recording.duration) : 'Unknown'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Size</p>
+                <p>{recording.size ? formatBytes(recording.size) : 'Unknown'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Quality</p>
+                <p className="capitalize">{recording.quality || 'Standard'}</p>
+              </div>
+              {recording.knowledgeCaptureId ? (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Category</p>
+                  <Select
+                    value={recording.category || ''}
+                    onValueChange={handleCategoryChange}
+                    disabled={isSavingCategory}
+                  >
+                    <SelectTrigger className="h-7 text-sm w-[140px]">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : recording.category ? (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Category</p>
+                  <p className="capitalize">{recording.category}</p>
+                </div>
+              ) : null}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Location</p>
+                <p className="capitalize">{recording.location.replace('-', ' ')}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Transcription</p>
+                <p className="capitalize">{recording.transcriptionStatus}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Filename</p>
+                <p className="truncate" title={recording.filename}>{recording.filename}</p>
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Action Buttons Section */}
-      <div className="flex flex-wrap gap-2 px-6 py-3 border-b bg-muted/30">
-        {/* Play/Stop Button - only for local recordings - LB-03 fix: Wire up onPlay callback */}
-        {canPlay && onPlay && (
-          isPlaying ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onStop}
-              className="gap-2"
-              title="Stop playback"
-            >
-              <Square className="h-4 w-4" />
-              Stop
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onPlay}
-              className="gap-2"
-              title="Play recording"
-            >
-              <Play className="h-4 w-4" />
-              Play
-            </Button>
-          )
-        )}
-
-        {hasLocalPath(recording) && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.electronAPI?.storage.openFile(recording.localPath)}
-              className="gap-2"
-              title="Open in default application"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.electronAPI?.storage.revealInFolder(recording.localPath)}
-              className="gap-2"
-              title="Show in file explorer"
-            >
-              <FolderOpen className="h-4 w-4" />
-              Reveal
-            </Button>
-          </>
-        )}
-
-        {!meeting && !isDeviceOnly(recording) && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLinkDialogOpen(true)}
-            className="gap-2"
-            title="Link this recording to a meeting"
-          >
-            <Link className="h-4 w-4" />
-            Link Meeting
-          </Button>
-        )}
-
-        {/* Download Button - only for device-only recordings */}
-        {isDeviceOnly(recording) && onDownload && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onDownload}
-            disabled={!deviceConnected || isDownloading}
-            className="gap-2"
-            title={!deviceConnected ? "Device not connected" : "Download recording from device"}
-          >
-            {isDownloading ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                {downloadProgress !== undefined ? `${downloadProgress}%` : 'Downloading...'}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4" />
-                Download
-              </>
-            )}
-          </Button>
-        )}
-
-        {/* Transcribe Button - only for local recordings without transcript */}
-        {hasLocalPath(recording) && recording.transcriptionStatus !== 'complete' && onTranscribe && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleTranscribeClick}
-            disabled={recording.transcriptionStatus === 'pending' || recording.transcriptionStatus === 'processing'}
-            className="gap-2"
-            title={
-              recording.transcriptionStatus === 'pending' ? "Transcription queued" :
-              recording.transcriptionStatus === 'processing' ? "Transcription in progress" :
-              "Start AI transcription"
-            }
-          >
-            {recording.transcriptionStatus === 'processing' ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                In Progress
-              </>
-            ) : recording.transcriptionStatus === 'pending' ? (
-              <>
-                <RefreshCw className="h-4 w-4" />
-                Queued
-              </>
-            ) : (
-              <>
-                <Wand2 className="h-4 w-4" />
-                Transcribe
-              </>
-            )}
-          </Button>
-        )}
-
-        {/* Delete Button - always available */}
-        {onDelete && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onDelete}
-            disabled={(isDeviceOnly(recording) && !deviceConnected) || isDeleting}
-            className="gap-2 text-destructive hover:text-destructive"
-            title={
-              isDeviceOnly(recording) && !deviceConnected ? "Device not connected" :
-              isDeleting ? "Deleting..." :
-              "Delete recording"
-            }
-          >
-            {isDeleting ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-            Delete
-          </Button>
-        )}
-      </div>
-
-      {/* Audio Player — collapsed by default to keep the reader focused on transcript content */}
-      {canPlay && (
-        <div className="sticky top-0 bg-background z-10 border-b">
-          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-muted/30">
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Audio</p>
-              <p className="text-sm truncate" title={recording.filename}>
-                {recording.filename}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAudioPlayerExpanded((expanded) => !expanded)}
-              className="gap-2 shrink-0"
-              aria-expanded={audioPlayerExpanded}
-              aria-controls="source-audio-player-panel"
-              title={audioPlayerExpanded ? 'Hide waveform' : 'Show waveform'}
-            >
-              {audioPlayerExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              Waveform
-            </Button>
-          </div>
-          {audioPlayerExpanded && (
-            <div id="source-audio-player-panel" className="px-4 pb-4 bg-background">
-              <AudioPlayer
-                key={recording.id}
-                filename={recording.filename}
-                onClose={handleCloseAudioPlayer}
-              />
-            </div>
-          )}
+      {canPlay && audioPlayerExpanded && (
+        <div id="source-audio-player-panel" className="border-b px-6 py-3 bg-background">
+          <AudioPlayer
+            key={recording.id}
+            filename={recording.filename}
+            onClose={handleCloseAudioPlayer}
+          />
         </div>
       )}
 
