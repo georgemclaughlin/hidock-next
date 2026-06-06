@@ -12,12 +12,15 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface TranscriptViewerProps {
   transcript: string
+  segments?: TranscriptViewerSegmentInput[]
   currentTimeMs?: number
   onSeek: (startMs: number, endMs?: number) => void
   showSummary?: boolean
   showActionItems?: boolean
   summary?: string
   actionItems?: string[]
+  transcriptLabel?: string
+  emptyMessage?: string
 }
 
 interface TranscriptSegment {
@@ -25,6 +28,13 @@ interface TranscriptSegment {
   endMs?: number
   text: string
   speaker?: string
+}
+
+export interface TranscriptViewerSegmentInput {
+  start?: number | null
+  end?: number | null
+  text?: string | null
+  speaker?: string | null
 }
 
 /**
@@ -124,14 +134,38 @@ function parseTranscriptSegments(transcript: string): TranscriptSegment[] {
   return segments
 }
 
+function normalizeProvidedSegments(segments: TranscriptViewerSegmentInput[]): TranscriptSegment[] {
+  return segments
+    .map((segment) => {
+      const startSeconds = typeof segment.start === 'number' && Number.isFinite(segment.start)
+        ? Math.max(0, segment.start)
+        : 0
+      const endSeconds = typeof segment.end === 'number' && Number.isFinite(segment.end)
+        ? Math.max(0, segment.end)
+        : undefined
+      const speaker = segment.speaker?.trim() || undefined
+
+      return {
+        startMs: Math.round(startSeconds * 1000),
+        endMs: endSeconds === undefined ? undefined : Math.round(endSeconds * 1000),
+        text: segment.text?.trim() || '',
+        speaker
+      }
+    })
+    .filter((segment) => segment.text)
+}
+
 export function TranscriptViewer({
   transcript,
+  segments: providedSegments,
   currentTimeMs,
   onSeek,
   showSummary = true,
   showActionItems = true,
   summary,
-  actionItems
+  actionItems,
+  transcriptLabel = 'Full Transcript',
+  emptyMessage = 'Transcript not available'
 }: TranscriptViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const activeSegmentRef = useRef<HTMLDivElement>(null)
@@ -141,7 +175,13 @@ export function TranscriptViewer({
   const [transcriptExpanded, setTranscriptExpanded] = useState(true)
 
   // Parse transcript into segments
-  const segments = useMemo(() => parseTranscriptSegments(transcript), [transcript])
+  const segments = useMemo(() => {
+    if (providedSegments?.length) {
+      return normalizeProvidedSegments(providedSegments)
+    }
+
+    return parseTranscriptSegments(transcript)
+  }, [providedSegments, transcript])
 
   // Find current segment index based on currentTimeMs
   const currentSegmentIndex = useMemo(() => {
@@ -165,7 +205,9 @@ export function TranscriptViewer({
   }, [currentSegmentIndex])
 
   // If transcript has no timestamps, render as plain text
-  const hasTimestamps = segments.length > 1 || (segments.length === 1 && segments[0].startMs > 0)
+  const hasProvidedSegments = Boolean(providedSegments?.length)
+  const hasTimestamps = hasProvidedSegments || segments.length > 1 || (segments.length === 1 && segments[0].startMs > 0)
+  const plainTranscript = transcript.trim()
 
   return (
     <div className="space-y-4">
@@ -226,7 +268,7 @@ export function TranscriptViewer({
           className="flex items-center justify-between w-full p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors"
           aria-expanded={transcriptExpanded}
         >
-          <span className="text-sm font-medium">Full Transcript</span>
+          <span className="text-sm font-medium">{transcriptLabel}</span>
           {transcriptExpanded ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
@@ -265,7 +307,7 @@ export function TranscriptViewer({
                 ))}
               </div>
             ) : (
-              <p className="text-sm whitespace-pre-wrap">{transcript}</p>
+              <p className="text-sm whitespace-pre-wrap">{plainTranscript || emptyMessage}</p>
             )}
           </div>
         )}

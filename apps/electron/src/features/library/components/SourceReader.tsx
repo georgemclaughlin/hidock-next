@@ -9,14 +9,15 @@
  * Shows a placeholder message when no recording is selected.
  */
 
-import { useState, useEffect, useCallback } from 'react'
-import { TranscriptViewer } from './TranscriptViewer'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { TranscriptViewer, type TranscriptViewerSegmentInput } from './TranscriptViewer'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { UnifiedRecording, hasLocalPath, isDeviceOnly } from '@/types/unified-recording'
 import { Transcript, Meeting, parseJsonArray } from '@/types'
 import { Calendar, Download, Trash2, Wand2, RefreshCw, Play, Square, Pencil, Check, Edit2, Link, X, ExternalLink, FolderOpen, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem
 } from '@/components/ui/select'
@@ -33,6 +34,44 @@ const CATEGORY_OPTIONS = [
   { value: 'note', label: 'Note' },
   { value: 'other', label: 'Other' },
 ] as const
+
+type TranscriptView = 'raw' | 'diarized'
+
+function parseTranscriptSegments(json?: string | null): TranscriptViewerSegmentInput[] {
+  return parseJsonArray<TranscriptViewerSegmentInput>(json)
+    .filter((segment) => typeof segment.text === 'string' && segment.text.trim().length > 0)
+}
+
+function formatTimestamp(seconds?: number | null): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+    return '00:00'
+  }
+
+  const totalSeconds = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const secs = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+function formatSegmentedTranscript(segments: TranscriptViewerSegmentInput[], fallback: string): string {
+  if (segments.length === 0) {
+    return fallback
+  }
+
+  return segments
+    .map((segment) => {
+      const speaker = segment.speaker?.trim()
+      const prefix = speaker ? `${speaker}: ` : ''
+      return `[${formatTimestamp(segment.start)}] ${prefix}${segment.text?.trim() ?? ''}`.trim()
+    })
+    .join('\n\n')
+}
 
 interface SourceReaderProps {
   recording: UnifiedRecording | null
@@ -94,6 +133,19 @@ export function SourceReader({
   const [showTranscribeWarning, setShowTranscribeWarning] = useState(false)
   const [isCopyingTranscript, setIsCopyingTranscript] = useState(false)
   const [transcriptCopied, setTranscriptCopied] = useState(false)
+  const [transcriptView, setTranscriptView] = useState<TranscriptView>('raw')
+
+  const transcriptSegments = useMemo(
+    () => parseTranscriptSegments(transcript?.speakers),
+    [transcript?.speakers]
+  )
+
+  const copiedTranscriptText = useMemo(() => {
+    if (!transcript) return ''
+    return transcriptView === 'diarized'
+      ? formatSegmentedTranscript(transcriptSegments, transcript.full_text)
+      : transcript.full_text
+  }, [transcript, transcriptSegments, transcriptView])
 
   // Reset all state when recording changes
   useEffect(() => {
@@ -104,6 +156,7 @@ export function SourceReader({
     setShowTranscribeWarning(false)
     setIsCopyingTranscript(false)
     setTranscriptCopied(false)
+    setTranscriptView('raw')
   }, [recording?.id])
 
   const handleSaveTitle = useCallback(async () => {
@@ -190,7 +243,7 @@ export function SourceReader({
   }, [metadataEdited, onTranscribe])
 
   const handleCopyTranscript = useCallback(async () => {
-    const text = transcript?.full_text?.trim()
+    const text = copiedTranscriptText.trim()
     if (!text) {
       toast.error('Copy failed', 'Transcript is empty')
       return
@@ -212,7 +265,7 @@ export function SourceReader({
     } finally {
       setIsCopyingTranscript(false)
     }
-  }, [transcript?.full_text])
+  }, [copiedTranscriptText])
 
   if (!recording) {
     return (
@@ -567,15 +620,40 @@ export function SourceReader({
                 {transcriptCopied ? 'Copied' : 'Copy'}
               </Button>
             </div>
-            <TranscriptViewer
-              transcript={transcript.full_text}
-              currentTimeMs={currentTimeMs}
-              onSeek={onSeek || (() => {})}
-              showSummary={true}
-              showActionItems={true}
-              summary={transcript.summary ?? undefined}
-              actionItems={parseJsonArray<string>(transcript.action_items)}
-            />
+            <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
+              <TabsList className="w-full">
+                <TabsTrigger value="raw" className="flex-1">
+                  Raw
+                </TabsTrigger>
+                <TabsTrigger value="diarized" className="flex-1">
+                  Diarized
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="raw" className="mt-3">
+                <TranscriptViewer
+                  transcript={transcript.full_text}
+                  currentTimeMs={currentTimeMs}
+                  onSeek={onSeek || (() => {})}
+                  showSummary={true}
+                  showActionItems={true}
+                  summary={transcript.summary ?? undefined}
+                  actionItems={parseJsonArray<string>(transcript.action_items)}
+                  transcriptLabel="Raw Transcript"
+                />
+              </TabsContent>
+              <TabsContent value="diarized" className="mt-3">
+                <TranscriptViewer
+                  transcript={transcriptSegments.length > 0 ? transcript.full_text : ''}
+                  segments={transcriptSegments}
+                  currentTimeMs={currentTimeMs}
+                  onSeek={onSeek || (() => {})}
+                  showSummary={false}
+                  showActionItems={false}
+                  transcriptLabel="Diarized Transcript"
+                  emptyMessage="Diarized transcript not available for this recording."
+                />
+              </TabsContent>
+            </Tabs>
           </div>
         ) : recording.transcriptionStatus === 'complete' ? (
           <div className="text-center text-muted-foreground py-8">

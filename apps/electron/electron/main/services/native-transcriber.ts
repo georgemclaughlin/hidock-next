@@ -237,7 +237,7 @@ export async function transcribeWithNativeModel(
     throw new Error(`${model.name} is not downloaded. Open Settings and click Download Model before transcribing.`)
   }
 
-  progressCallback?.('running native transcription', 20)
+  progressCallback?.('running native transcription and diarization', 20)
   await runNativeJson<{ success: boolean; output: string }>([
     'transcribe',
     '--model-id',

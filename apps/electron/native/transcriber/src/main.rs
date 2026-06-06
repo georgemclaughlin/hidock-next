@@ -1,6 +1,14 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use flate2::read::GzDecoder;
+use polyvoice::{
+    clusterer::KMeansClusterer,
+    models::ModelRegistry,
+    pipeline_v2::hybrid::HybridPipeline,
+    segmentation::PowersetSegmenter,
+    types::{Profile, SampleRate, SpeakerTurn},
+    ResNet34Adapter,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -89,6 +97,8 @@ struct TranscriptSegment {
     text: String,
     start: Option<f64>,
     end: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    speaker: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -423,7 +433,7 @@ fn transcribe(
     let audio = read_audio_as_f32(input)?;
     let model_path = models_dir.join(&model.filename);
 
-    let text = match model.engine_type {
+    let result = match model.engine_type {
         #[cfg(windows)]
         EngineType::Whisper => {
             return Err(anyhow!(
@@ -445,7 +455,7 @@ fn transcribe(
             let result = engine
                 .transcribe_with(&audio, &params)
                 .with_context(|| format!("Whisper transcription failed for {}", input.display()))?;
-            result.text
+            result
         }
         EngineType::Parakeet => {
             let mut engine = ParakeetModel::load(&model_path, &Quantization::Int8)
@@ -457,15 +467,97 @@ fn transcribe(
             let result = engine.transcribe_with(&audio, &params).with_context(|| {
                 format!("Parakeet transcription failed for {}", input.display())
             })?;
-            result.text
+            result
         }
     };
 
+    let mut segments = transcript_segments(result.segments);
+    if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
+        eprintln!("Speaker diarization skipped: {error:#}");
+    }
+
     Ok(TranscriptOutput {
-        text,
+        text: result.text,
         language: language.to_string(),
-        segments: Vec::new(),
+        segments,
     })
+}
+
+fn transcript_segments(
+    segments: Option<Vec<transcribe_rs::TranscriptionSegment>>,
+) -> Vec<TranscriptSegment> {
+    segments
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|segment| !segment.text.trim().is_empty())
+        .map(|segment| TranscriptSegment {
+            text: segment.text.trim().to_string(),
+            start: Some(segment.start as f64),
+            end: Some(segment.end as f64),
+            speaker: None,
+        })
+        .collect()
+}
+
+fn assign_speakers(
+    models_dir: &Path,
+    audio: &[f32],
+    segments: &mut [TranscriptSegment],
+) -> Result<()> {
+    if audio.is_empty() || segments.is_empty() {
+        return Ok(());
+    }
+
+    let registry = ModelRegistry::with_cache_dir(models_dir.join("diarization"))
+        .context("Failed to initialize diarization model registry")?;
+    let models = registry
+        .ensure_for_profile(Profile::Balanced)
+        .context("Failed to prepare diarization models")?;
+
+    let segmenter = PowersetSegmenter::new(&models.segmenter_path)
+        .context("Failed to load diarization segmentation model")?;
+    let embedder = ResNet34Adapter::new(&models.embedder_path, 4)
+        .context("Failed to load diarization embedding model")?;
+    let clusterer = KMeansClusterer::new(20);
+    let pipeline =
+        HybridPipeline::new(Box::new(segmenter), Box::new(embedder), Box::new(clusterer));
+    let sample_rate = SampleRate::new(TARGET_SAMPLE_RATE)
+        .ok_or_else(|| anyhow!("Unsupported diarization sample rate: {TARGET_SAMPLE_RATE}"))?;
+    let diarization = pipeline
+        .run(audio, sample_rate)
+        .context("Speaker diarization failed")?;
+
+    for segment in segments {
+        segment.speaker = best_speaker_for_segment(segment, &diarization.turns);
+    }
+
+    Ok(())
+}
+
+fn best_speaker_for_segment(segment: &TranscriptSegment, turns: &[SpeakerTurn]) -> Option<String> {
+    let start = segment.start?;
+    let end = segment.end.unwrap_or(start);
+    if end <= start {
+        return None;
+    }
+
+    let mut best_speaker = None;
+    let mut best_overlap = 0.0_f64;
+
+    for turn in turns {
+        let overlap_start = start.max(turn.time.start);
+        let overlap_end = end.min(turn.time.end);
+        let overlap = (overlap_end - overlap_start).max(0.0);
+
+        if overlap > best_overlap {
+            best_overlap = overlap;
+            best_speaker = Some(turn.speaker);
+        }
+    }
+
+    best_speaker
+        .filter(|_| best_overlap >= 0.05)
+        .map(|speaker| format!("Speaker {}", speaker.0 + 1))
 }
 
 fn read_audio_as_f32(path: &Path) -> Result<Vec<f32>> {

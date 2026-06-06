@@ -341,19 +341,21 @@ function countWords(text: string): number {
   return matches ? matches.length : 0
 }
 
-function buildSpeakersJson(output: NativeTranscriptOutput): string | undefined {
-  if (!output.segments?.some((segment) => segment.speaker)) {
+function buildTranscriptSegmentsJson(output: NativeTranscriptOutput): string | undefined {
+  const segments = output.segments
+    ?.map((segment) => ({
+      speaker: segment.speaker?.trim() || undefined,
+      start: typeof segment.start === 'number' ? segment.start : undefined,
+      end: typeof segment.end === 'number' ? segment.end : undefined,
+      text: segment.text?.trim()
+    }))
+    .filter((segment) => Boolean(segment.text))
+
+  if (!segments?.length) {
     return undefined
   }
 
-  return JSON.stringify(
-    output.segments.map((segment) => ({
-      speaker: segment.speaker,
-      start: segment.start,
-      end: segment.end,
-      text: segment.text
-    }))
-  )
+  return JSON.stringify(segments)
 }
 
 async function transcribeRecording(
@@ -393,7 +395,7 @@ async function transcribeRecording(
       full_text: fullText,
       language,
       word_count: countWords(fullText),
-      speakers: buildSpeakersJson(result.output),
+      speakers: buildTranscriptSegmentsJson(result.output),
       transcription_provider: result.provider,
       transcription_model: result.model
     })
