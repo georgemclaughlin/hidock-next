@@ -19,9 +19,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, FormatReader};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
@@ -183,6 +183,30 @@ struct TranscribeRunOutput {
 struct ParakeetRunOutput {
     result: transcribe_rs::TranscriptionResult,
     checkpoint_dir: Option<PathBuf>,
+}
+
+struct AudioDecodeStream {
+    format: Box<dyn FormatReader>,
+    decoder: Box<dyn Decoder>,
+    track_id: u32,
+    source_sample_rate: u32,
+    path: PathBuf,
+}
+
+struct ResampledAudioReader {
+    decoder: AudioDecodeStream,
+    resampler: StreamingLinearResampler,
+    finished: bool,
+}
+
+struct StreamingLinearResampler {
+    source_rate: u32,
+    target_rate: u32,
+    source_buffer: Vec<f32>,
+    source_base_index: usize,
+    total_source_seen: usize,
+    next_output_index: usize,
+    finished: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -813,12 +837,12 @@ fn transcribe(
     language: &str,
     diarization_enabled: bool,
 ) -> Result<TranscribeRunOutput> {
-    emit_transcription_progress("loading audio", 10);
-    let audio = read_audio_as_f32(input)?;
     let model_path = models_dir.join(&model.filename);
 
-    emit_transcription_progress("transcribing audio", 20);
     let mut checkpoint_dir = None;
+    let mut diarization_audio = None;
+    let mut audio_duration_secs: f32;
+
     let result = match model.engine_type {
         #[cfg(windows)]
         EngineType::Whisper => {
@@ -828,6 +852,11 @@ fn transcribe(
         }
         #[cfg(not(windows))]
         EngineType::Whisper => {
+            emit_transcription_progress("loading audio", 10);
+            let audio = read_audio_as_f32(input)?;
+            audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
+
+            emit_transcription_progress("transcribing audio", 20);
             let mut engine = WhisperEngine::load(&model_path)
                 .with_context(|| format!("Failed to load Whisper model {}", model.id))?;
             let params = WhisperInferenceParams {
@@ -841,17 +870,50 @@ fn transcribe(
             let result = engine
                 .transcribe_with(&audio, &params)
                 .with_context(|| format!("Whisper transcription failed for {}", input.display()))?;
+            diarization_audio = Some(audio);
             result
         }
         EngineType::Parakeet => {
-            let mut engine = ParakeetModel::load(&model_path, &Quantization::Int8)
-                .with_context(|| format!("Failed to load Parakeet model {}", model.id))?;
+            let streaming_sample_count = parakeet_streaming_sample_count(input)?;
+            audio_duration_secs = streaming_sample_count
+                .map(samples_to_seconds)
+                .unwrap_or(0.0);
             let params = ParakeetParams {
                 timestamp_granularity: Some(TimestampGranularity::Word),
                 ..Default::default()
             };
-            let output =
-                transcribe_parakeet(&mut engine, &audio, &params, input, models_dir, &model.id)?;
+
+            let output = if let Some(total_audio_samples) = streaming_sample_count {
+                emit_transcription_progress("transcribing audio", 20);
+                let mut engine = ParakeetModel::load(&model_path, &Quantization::Int8)
+                    .with_context(|| format!("Failed to load Parakeet model {}", model.id))?;
+                transcribe_parakeet_streaming(
+                    &mut engine,
+                    input,
+                    &params,
+                    models_dir,
+                    &model.id,
+                    total_audio_samples,
+                )?
+            } else {
+                emit_transcription_progress("loading audio", 10);
+                let audio = read_audio_as_f32(input)?;
+                audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
+                emit_transcription_progress("transcribing audio", 20);
+                let mut engine = ParakeetModel::load(&model_path, &Quantization::Int8)
+                    .with_context(|| format!("Failed to load Parakeet model {}", model.id))?;
+                let output = transcribe_parakeet(
+                    &mut engine,
+                    &audio,
+                    &params,
+                    input,
+                    models_dir,
+                    &model.id,
+                )?;
+                diarization_audio = Some(audio);
+                output
+            };
+
             checkpoint_dir = output.checkpoint_dir;
             output.result
         }
@@ -861,10 +923,16 @@ fn transcribe(
     let text = transcript_text_from_segments(&segments).unwrap_or(result.text);
     if diarization_enabled {
         emit_transcription_progress("diarizing speakers", 72);
-        let audio_duration_secs = audio.len() as f32 / TARGET_SAMPLE_RATE as f32;
         if audio_duration_secs <= DIARIZATION_MAX_FULL_AUDIO_SECS {
-            if let Err(error) = assign_speakers(models_dir, &audio, &mut segments) {
-                eprintln!("Speaker diarization skipped: {error:#}");
+            if diarization_audio.is_none() {
+                emit_transcription_progress("loading audio for diarization", 72);
+                diarization_audio = Some(read_audio_as_f32(input)?);
+            }
+
+            if let Some(audio) = diarization_audio.as_deref() {
+                if let Err(error) = assign_speakers(models_dir, audio, &mut segments) {
+                    eprintln!("Speaker diarization skipped: {error:#}");
+                }
             }
         } else {
             eprintln!(
@@ -919,6 +987,22 @@ fn transcribe_parakeet(
     }
 
     transcribe_parakeet_chunked(engine, audio, params, input, models_dir, model_id)
+}
+
+fn parakeet_streaming_sample_count(input: &Path) -> Result<Option<usize>> {
+    if let Some(estimated_samples) = estimate_resampled_audio_samples(input)? {
+        if samples_to_seconds(estimated_samples) <= PARAKEET_CHUNKING_THRESHOLD_SECS {
+            return Ok(None);
+        }
+    }
+
+    emit_transcription_progress("analyzing audio", 12);
+    let total_audio_samples = count_resampled_audio_samples(input)?;
+    if samples_to_seconds(total_audio_samples) <= PARAKEET_CHUNKING_THRESHOLD_SECS {
+        return Ok(None);
+    }
+
+    Ok(Some(total_audio_samples))
 }
 
 fn transcribe_parakeet_chunked(
@@ -1024,6 +1108,213 @@ fn transcribe_parakeet_chunked(
         result: merge_transcription_results(chunk_results),
         checkpoint_dir: Some(checkpoint.dir),
     })
+}
+
+fn transcribe_parakeet_streaming(
+    engine: &mut ParakeetModel,
+    input: &Path,
+    params: &ParakeetParams,
+    models_dir: &Path,
+    model_id: &str,
+    total_audio_samples: usize,
+) -> Result<ParakeetRunOutput> {
+    if total_audio_samples == 0 {
+        return Err(anyhow!(
+            "Audio file did not contain decodable samples: {}",
+            input.display()
+        ));
+    }
+
+    let primary_chunk_samples = seconds_to_samples(PARAKEET_CHUNK_SECS).max(1);
+    let overlap_samples = seconds_to_samples(PARAKEET_CHUNK_OVERLAP_SECS);
+    let total_chunks = total_audio_samples.div_ceil(primary_chunk_samples).max(1);
+    let checkpoint = ParakeetCheckpoint::prepare(
+        models_dir,
+        input,
+        model_id,
+        total_audio_samples,
+        primary_chunk_samples,
+        overlap_samples,
+        total_chunks,
+    )?;
+    let mut chunk_results = Vec::with_capacity(total_chunks);
+    let mut reader = ResampledAudioReader::open(input, TARGET_SAMPLE_RATE)?;
+    let mut audio_window = Vec::with_capacity(primary_chunk_samples + (overlap_samples * 2));
+    let mut audio_window_start = 0usize;
+
+    eprintln!(
+        "Parakeet streaming transcription: {:.1}s audio, {total_chunks} chunks of {:.1}s with {:.1}s overlap",
+        samples_to_seconds(total_audio_samples),
+        PARAKEET_CHUNK_SECS,
+        PARAKEET_CHUNK_OVERLAP_SECS
+    );
+
+    for chunk_index in 0..total_chunks {
+        let chunk_number = chunk_index + 1;
+        let chunk_start_progress = parakeet_chunk_progress(chunk_index, total_chunks);
+        let chunk_stage = format!("transcribing chunk {chunk_number} of {total_chunks}");
+        emit_transcription_progress(&chunk_stage, chunk_start_progress);
+
+        let primary_start = chunk_index * primary_chunk_samples;
+        if primary_start >= total_audio_samples {
+            break;
+        }
+
+        let primary_end = ((chunk_index + 1) * primary_chunk_samples).min(total_audio_samples);
+        let slice_start = if chunk_index == 0 {
+            0
+        } else {
+            primary_start.saturating_sub(overlap_samples)
+        };
+        let slice_end = if primary_end >= total_audio_samples {
+            total_audio_samples
+        } else {
+            (primary_end + overlap_samples).min(total_audio_samples)
+        };
+
+        fill_audio_window_until(
+            &mut reader,
+            &mut audio_window,
+            audio_window_start,
+            slice_end,
+        )?;
+
+        if let Some(cached_chunk) = checkpoint.read_chunk(chunk_index)? {
+            eprintln!("Parakeet checkpoint: loaded chunk {chunk_number} of {total_chunks}");
+            chunk_results.push(cached_chunk.into_transcription_result());
+            let progress = parakeet_chunk_progress(chunk_number, total_chunks);
+            emit_transcription_progress(&chunk_stage, progress);
+            drain_audio_window_before(
+                &mut audio_window,
+                &mut audio_window_start,
+                next_chunk_slice_start(
+                    chunk_index,
+                    total_chunks,
+                    primary_chunk_samples,
+                    overlap_samples,
+                    slice_end,
+                ),
+            );
+            continue;
+        }
+
+        let available_end = (audio_window_start + audio_window.len()).min(slice_end);
+        if available_end <= slice_start {
+            return Err(anyhow!(
+                "Streaming audio ended before chunk {} of {} for {}",
+                chunk_number,
+                total_chunks,
+                input.display()
+            ));
+        }
+
+        let relative_start = slice_start
+            .checked_sub(audio_window_start)
+            .ok_or_else(|| anyhow!("Streaming audio window no longer contains chunk start"))?;
+        let relative_end = available_end
+            .checked_sub(audio_window_start)
+            .ok_or_else(|| anyhow!("Streaming audio window no longer contains chunk end"))?;
+
+        let mut chunk_result = transcribe_parakeet_with_tail_rescue(
+            engine,
+            &audio_window[relative_start..relative_end],
+            params,
+            input,
+        )
+        .with_context(|| {
+            format!(
+                "Parakeet chunk {} of {} failed for {}",
+                chunk_number,
+                total_chunks,
+                input.display()
+            )
+        })?;
+        chunk_result.offset_timestamps(samples_to_seconds(slice_start));
+
+        let filtered_segments = chunk_result
+            .segments
+            .take()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|segment| {
+                segment_belongs_to_primary_window(segment, primary_start, primary_end)
+            })
+            .collect::<Vec<_>>();
+        let text = transcription_text_from_segments(Some(&filtered_segments)).unwrap_or_default();
+        let chunk_checkpoint = ParakeetChunkCheckpoint::from_segments(
+            chunk_index,
+            total_chunks,
+            text,
+            filtered_segments,
+        );
+        checkpoint.write_chunk(&chunk_checkpoint)?;
+        chunk_results.push(chunk_checkpoint.into_transcription_result());
+
+        let progress = parakeet_chunk_progress(chunk_number, total_chunks);
+        emit_transcription_progress(&chunk_stage, progress);
+        drain_audio_window_before(
+            &mut audio_window,
+            &mut audio_window_start,
+            next_chunk_slice_start(
+                chunk_index,
+                total_chunks,
+                primary_chunk_samples,
+                overlap_samples,
+                slice_end,
+            ),
+        );
+    }
+
+    Ok(ParakeetRunOutput {
+        result: merge_transcription_results(chunk_results),
+        checkpoint_dir: Some(checkpoint.dir),
+    })
+}
+
+fn fill_audio_window_until(
+    reader: &mut ResampledAudioReader,
+    audio_window: &mut Vec<f32>,
+    audio_window_start: usize,
+    target_end: usize,
+) -> Result<()> {
+    while audio_window_start + audio_window.len() < target_end {
+        let Some(mut samples) = reader.next_samples()? else {
+            break;
+        };
+        audio_window.append(&mut samples);
+    }
+
+    Ok(())
+}
+
+fn drain_audio_window_before(
+    audio_window: &mut Vec<f32>,
+    audio_window_start: &mut usize,
+    keep_from: usize,
+) {
+    let drain_count = keep_from
+        .saturating_sub(*audio_window_start)
+        .min(audio_window.len());
+    if drain_count == 0 {
+        return;
+    }
+
+    audio_window.drain(..drain_count);
+    *audio_window_start += drain_count;
+}
+
+fn next_chunk_slice_start(
+    chunk_index: usize,
+    total_chunks: usize,
+    primary_chunk_samples: usize,
+    overlap_samples: usize,
+    fallback: usize,
+) -> usize {
+    if chunk_index + 1 >= total_chunks {
+        return fallback;
+    }
+
+    ((chunk_index + 1) * primary_chunk_samples).saturating_sub(overlap_samples)
 }
 
 fn parakeet_chunk_progress(completed_chunks: usize, total_chunks: usize) -> u8 {
@@ -1667,7 +1958,273 @@ fn best_speaker_for_segment(segment: &TranscriptSegment, turns: &[SpeakerTurn]) 
         .map(|speaker| format!("Speaker {}", speaker.0 + 1))
 }
 
-fn read_audio_as_f32(path: &Path) -> Result<Vec<f32>> {
+impl AudioDecodeStream {
+    fn open(path: &Path) -> Result<Self> {
+        let file = File::open(path)
+            .with_context(|| format!("Failed to open audio file {}", path.display()))?;
+
+        let mut hint = Hint::new();
+        if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
+            hint.with_extension(extension);
+        }
+
+        let media_source = MediaSourceStream::new(Box::new(file), Default::default());
+        let probed = get_probe()
+            .format(
+                &hint,
+                media_source,
+                &FormatOptions::default(),
+                &MetadataOptions::default(),
+            )
+            .with_context(|| format!("Failed to detect audio format for {}", path.display()))?;
+
+        let format = probed.format;
+        let (track_id, source_sample_rate, decoder) = {
+            let track = format
+                .tracks()
+                .iter()
+                .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
+                .ok_or_else(|| anyhow!("No supported audio track found in {}", path.display()))?;
+
+            let source_sample_rate = track.codec_params.sample_rate.ok_or_else(|| {
+                anyhow!("Audio track is missing a sample rate: {}", path.display())
+            })?;
+            let decoder = get_codecs()
+                .make(&track.codec_params, &DecoderOptions::default())
+                .with_context(|| {
+                    format!("Failed to create audio decoder for {}", path.display())
+                })?;
+
+            (track.id, source_sample_rate, decoder)
+        };
+
+        Ok(Self {
+            format,
+            decoder,
+            track_id,
+            source_sample_rate,
+            path: path.to_path_buf(),
+        })
+    }
+
+    fn next_mono_samples(&mut self) -> Result<Option<Vec<f32>>> {
+        loop {
+            let packet = match self.format.next_packet() {
+                Ok(packet) => packet,
+                Err(SymphoniaError::IoError(error)) if error.kind() == ErrorKind::UnexpectedEof => {
+                    return Ok(None)
+                }
+                Err(SymphoniaError::ResetRequired) => {
+                    return Err(anyhow!(
+                        "Audio decoder reset is not supported for {}",
+                        self.path.display()
+                    ))
+                }
+                Err(error) => {
+                    return Err(anyhow!(
+                        "Failed to read audio packet from {}: {}",
+                        self.path.display(),
+                        error
+                    ))
+                }
+            };
+
+            if packet.track_id() != self.track_id {
+                continue;
+            }
+
+            match self.decoder.decode(&packet) {
+                Ok(decoded) => {
+                    let channel_count = decoded.spec().channels.count();
+                    if channel_count == 0 {
+                        return Err(anyhow!(
+                            "Audio track has no channels: {}",
+                            self.path.display()
+                        ));
+                    }
+
+                    let mut sample_buffer =
+                        SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                    sample_buffer.copy_interleaved_ref(decoded);
+
+                    let mut mono_samples =
+                        Vec::with_capacity(sample_buffer.samples().len() / channel_count);
+                    for frame in sample_buffer.samples().chunks(channel_count) {
+                        let mono = frame.iter().copied().sum::<f32>() / channel_count as f32;
+                        mono_samples.push(mono.clamp(-1.0, 1.0));
+                    }
+
+                    if !mono_samples.is_empty() {
+                        return Ok(Some(mono_samples));
+                    }
+                }
+                Err(SymphoniaError::DecodeError(_)) => continue,
+                Err(error) => {
+                    return Err(anyhow!(
+                        "Failed to decode audio from {}: {}",
+                        self.path.display(),
+                        error
+                    ))
+                }
+            }
+        }
+    }
+}
+
+impl ResampledAudioReader {
+    fn open(path: &Path, target_rate: u32) -> Result<Self> {
+        let decoder = AudioDecodeStream::open(path)?;
+        let resampler = StreamingLinearResampler::new(decoder.source_sample_rate, target_rate);
+
+        Ok(Self {
+            decoder,
+            resampler,
+            finished: false,
+        })
+    }
+
+    fn next_samples(&mut self) -> Result<Option<Vec<f32>>> {
+        loop {
+            if let Some(mono_samples) = self.decoder.next_mono_samples()? {
+                let samples = self.resampler.push(&mono_samples);
+                if !samples.is_empty() {
+                    return Ok(Some(samples));
+                }
+                continue;
+            }
+
+            if !self.finished {
+                self.finished = true;
+                let samples = self.resampler.finish();
+                if !samples.is_empty() {
+                    return Ok(Some(samples));
+                }
+            }
+
+            return Ok(None);
+        }
+    }
+}
+
+impl StreamingLinearResampler {
+    fn new(source_rate: u32, target_rate: u32) -> Self {
+        Self {
+            source_rate,
+            target_rate,
+            source_buffer: Vec::new(),
+            source_base_index: 0,
+            total_source_seen: 0,
+            next_output_index: 0,
+            finished: false,
+        }
+    }
+
+    fn push(&mut self, samples: &[f32]) -> Vec<f32> {
+        if samples.is_empty() {
+            return Vec::new();
+        }
+
+        if self.source_rate == self.target_rate {
+            self.total_source_seen += samples.len();
+            self.next_output_index += samples.len();
+            return samples.to_vec();
+        }
+
+        self.source_buffer.extend_from_slice(samples);
+        self.total_source_seen += samples.len();
+        self.emit_available(false)
+    }
+
+    fn finish(&mut self) -> Vec<f32> {
+        if self.finished {
+            return Vec::new();
+        }
+
+        self.finished = true;
+        if self.source_rate == self.target_rate {
+            return Vec::new();
+        }
+
+        self.emit_available(true)
+    }
+
+    fn emit_available(&mut self, finish: bool) -> Vec<f32> {
+        let mut output = Vec::new();
+        let output_len = if finish {
+            Some(
+                ((self.total_source_seen as f64 * self.target_rate as f64)
+                    / self.source_rate as f64)
+                    .round()
+                    .max(1.0) as usize,
+            )
+        } else {
+            None
+        };
+
+        loop {
+            if let Some(output_len) = output_len {
+                if self.next_output_index >= output_len {
+                    break;
+                }
+            }
+
+            let source_position =
+                self.next_output_index as f64 * self.source_rate as f64 / self.target_rate as f64;
+            let left_abs = source_position.floor() as usize;
+            let mut right_abs = left_abs + 1;
+
+            if finish {
+                if self.total_source_seen == 0 {
+                    break;
+                }
+                if left_abs >= self.total_source_seen {
+                    break;
+                }
+                right_abs = right_abs.min(self.total_source_seen - 1);
+            } else if right_abs >= self.total_source_seen {
+                break;
+            }
+
+            let left_index = left_abs.saturating_sub(self.source_base_index);
+            let right_index = right_abs.saturating_sub(self.source_base_index);
+            let Some(left) = self.source_buffer.get(left_index).copied() else {
+                break;
+            };
+            let Some(right) = self.source_buffer.get(right_index).copied() else {
+                break;
+            };
+            let fraction = (source_position - left_abs as f64) as f32;
+            output.push((left + (right - left) * fraction).clamp(-1.0, 1.0));
+            self.next_output_index += 1;
+        }
+
+        if !finish {
+            self.drain_consumed_source();
+        }
+
+        output
+    }
+
+    fn drain_consumed_source(&mut self) {
+        if self.source_buffer.is_empty() {
+            return;
+        }
+
+        let source_position =
+            self.next_output_index as f64 * self.source_rate as f64 / self.target_rate as f64;
+        let next_left_abs = source_position.floor() as usize;
+        let drain_count = next_left_abs
+            .saturating_sub(self.source_base_index)
+            .min(self.source_buffer.len().saturating_sub(1));
+
+        if drain_count > 0 {
+            self.source_buffer.drain(..drain_count);
+            self.source_base_index += drain_count;
+        }
+    }
+}
+
+fn estimate_resampled_audio_samples(path: &Path) -> Result<Option<usize>> {
     let file = File::open(path)
         .with_context(|| format!("Failed to open audio file {}", path.display()))?;
 
@@ -1686,118 +2243,91 @@ fn read_audio_as_f32(path: &Path) -> Result<Vec<f32>> {
         )
         .with_context(|| format!("Failed to detect audio format for {}", path.display()))?;
 
-    let mut format = probed.format;
-    let track = format
+    let track = probed
+        .format
         .tracks()
         .iter()
         .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
         .ok_or_else(|| anyhow!("No supported audio track found in {}", path.display()))?;
-
-    let track_id = track.id;
-    let sample_rate = track
+    let source_sample_rate = track
         .codec_params
         .sample_rate
         .ok_or_else(|| anyhow!("Audio track is missing a sample rate: {}", path.display()))?;
-    let mut decoder = get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
-        .with_context(|| format!("Failed to create audio decoder for {}", path.display()))?;
+    let Some(source_samples) = track.codec_params.n_frames else {
+        return Ok(None);
+    };
 
-    let mut mono_samples = Vec::new();
+    Ok(Some(
+        ((source_samples as f64 * TARGET_SAMPLE_RATE as f64) / source_sample_rate as f64)
+            .round()
+            .max(1.0) as usize,
+    ))
+}
 
-    loop {
-        let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            Err(SymphoniaError::IoError(error)) if error.kind() == ErrorKind::UnexpectedEof => {
-                break
-            }
-            Err(SymphoniaError::ResetRequired) => {
-                return Err(anyhow!(
-                    "Audio decoder reset is not supported for {}",
-                    path.display()
-                ))
-            }
-            Err(error) => {
-                return Err(anyhow!(
-                    "Failed to read audio packet from {}: {}",
-                    path.display(),
-                    error
-                ))
-            }
-        };
+fn count_resampled_audio_samples(path: &Path) -> Result<usize> {
+    let mut reader = ResampledAudioReader::open(path, TARGET_SAMPLE_RATE)?;
+    let mut samples = 0usize;
 
-        if packet.track_id() != track_id {
-            continue;
-        }
-
-        match decoder.decode(&packet) {
-            Ok(decoded) => {
-                let channel_count = decoded.spec().channels.count();
-                if channel_count == 0 {
-                    return Err(anyhow!("Audio track has no channels: {}", path.display()));
-                }
-
-                let mut sample_buffer =
-                    SampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
-                sample_buffer.copy_interleaved_ref(decoded);
-
-                for frame in sample_buffer.samples().chunks(channel_count) {
-                    let mono = frame.iter().copied().sum::<f32>() / channel_count as f32;
-                    mono_samples.push(mono.clamp(-1.0, 1.0));
-                }
-            }
-            Err(SymphoniaError::DecodeError(_)) => continue,
-            Err(error) => {
-                return Err(anyhow!(
-                    "Failed to decode audio from {}: {}",
-                    path.display(),
-                    error
-                ))
-            }
-        }
+    while let Some(chunk) = reader.next_samples()? {
+        samples += chunk.len();
     }
 
-    if mono_samples.is_empty() {
+    if samples == 0 {
         return Err(anyhow!(
             "Audio file did not contain decodable samples: {}",
             path.display()
         ));
     }
 
-    Ok(resample_linear(
-        &mono_samples,
-        sample_rate,
-        TARGET_SAMPLE_RATE,
-    ))
+    Ok(samples)
 }
 
-fn resample_linear(samples: &[f32], source_rate: u32, target_rate: u32) -> Vec<f32> {
-    if source_rate == target_rate || samples.is_empty() {
-        return samples.to_vec();
+fn read_audio_as_f32(path: &Path) -> Result<Vec<f32>> {
+    let mut reader = ResampledAudioReader::open(path, TARGET_SAMPLE_RATE)?;
+    let mut samples = Vec::new();
+
+    while let Some(chunk) = reader.next_samples()? {
+        samples.extend(chunk);
     }
 
-    let output_len = ((samples.len() as f64 * target_rate as f64) / source_rate as f64)
-        .round()
-        .max(1.0) as usize;
-    let step = source_rate as f64 / target_rate as f64;
-    let mut output = Vec::with_capacity(output_len);
-
-    for index in 0..output_len {
-        let source_position = index as f64 * step;
-        let left_index = source_position.floor() as usize;
-        let right_index = (left_index + 1).min(samples.len() - 1);
-        let fraction = (source_position - left_index as f64) as f32;
-        let left = samples[left_index];
-        let right = samples[right_index];
-        output.push((left + (right - left) * fraction).clamp(-1.0, 1.0));
+    if samples.is_empty() {
+        return Err(anyhow!(
+            "Audio file did not contain decodable samples: {}",
+            path.display()
+        ));
     }
 
-    output
+    Ok(samples)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::SystemTime;
+
+    fn batch_resample_linear(samples: &[f32], source_rate: u32, target_rate: u32) -> Vec<f32> {
+        if source_rate == target_rate || samples.is_empty() {
+            return samples.to_vec();
+        }
+
+        let output_len = ((samples.len() as f64 * target_rate as f64) / source_rate as f64)
+            .round()
+            .max(1.0) as usize;
+        let step = source_rate as f64 / target_rate as f64;
+        let mut output = Vec::with_capacity(output_len);
+
+        for index in 0..output_len {
+            let source_position = index as f64 * step;
+            let left_index = source_position.floor() as usize;
+            let right_index = (left_index + 1).min(samples.len() - 1);
+            let fraction = (source_position - left_index as f64) as f32;
+            let left = samples[left_index];
+            let right = samples[right_index];
+            output.push((left + (right - left) * fraction).clamp(-1.0, 1.0));
+        }
+
+        output
+    }
 
     fn unique_test_dir(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -1847,5 +2377,25 @@ mod tests {
         assert_eq!(result.segments.expect("segments").len(), 1);
 
         fs::remove_dir_all(&root).expect("remove test root");
+    }
+
+    #[test]
+    fn streaming_resampler_matches_batch_resample_across_boundaries() {
+        let samples = (0..10_003)
+            .map(|index| ((index as f32 / 17.0).sin() * 0.75).clamp(-1.0, 1.0))
+            .collect::<Vec<_>>();
+        let expected = batch_resample_linear(&samples, 44_100, TARGET_SAMPLE_RATE);
+        let mut resampler = StreamingLinearResampler::new(44_100, TARGET_SAMPLE_RATE);
+        let mut actual = Vec::new();
+
+        for chunk in samples.chunks(257) {
+            actual.extend(resampler.push(chunk));
+        }
+        actual.extend(resampler.finish());
+
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected.iter()) {
+            assert!((actual - expected).abs() < 0.000_001);
+        }
     }
 }
