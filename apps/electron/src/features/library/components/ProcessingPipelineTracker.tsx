@@ -117,6 +117,31 @@ function normalizeStage(stage?: string): string {
   return stage?.toLowerCase() ?? ''
 }
 
+function formatEta(seconds?: number): string {
+  if (!seconds || seconds <= 0) return ''
+
+  const roundedSeconds = Math.max(1, Math.round(seconds))
+  const hours = Math.floor(roundedSeconds / 3600)
+  const minutes = Math.floor((roundedSeconds % 3600) / 60)
+  const remainingSeconds = roundedSeconds % 60
+
+  if (hours > 0) {
+    return `About ${hours}h ${minutes}m remaining`
+  }
+
+  if (minutes > 0) {
+    return `About ${minutes}m remaining`
+  }
+
+  return `About ${remainingSeconds}s remaining`
+}
+
+function buildProgressDetail(item: TranscriptionItem | null, fallback: string): string {
+  const progressText = item?.progress != null ? ` (${Math.round(item.progress)}%)` : ''
+  const etaText = formatEta(item?.etaSeconds)
+  return `${item?.stage || fallback}${progressText}${etaText ? ` - ${etaText}` : ''}.`
+}
+
 function hasSpeakerSegments(transcript?: Transcript): boolean {
   return parseJsonArray<SpeakerSegment>(transcript?.speakers).some((segment) => Boolean(segment.speaker?.trim()))
 }
@@ -197,7 +222,7 @@ function buildStages(
         id: 'transcribe',
         label: 'Transcribe',
         status: 'running',
-        detail: `${item?.stage || 'Transcribing audio'}${item?.progress != null ? ` (${Math.round(item.progress)}%)` : ''}.`
+        detail: buildProgressDetail(item, 'Transcribing audio')
       }
     }
 
@@ -224,7 +249,7 @@ function buildStages(
         id: 'diarize',
         label: 'Diarize',
         status: 'running',
-        detail: `${item?.stage || 'Separating speakers'}${item?.progress != null ? ` (${Math.round(item.progress)}%)` : ''}.`
+        detail: buildProgressDetail(item, 'Separating speakers')
       }
     }
 
@@ -288,7 +313,7 @@ function buildStages(
         id: 'index',
         label: 'Index',
         status: 'running',
-        detail: `${item?.stage || 'Indexing transcript'}${item?.progress != null ? ` (${Math.round(item.progress)}%)` : ''}.`
+        detail: buildProgressDetail(item, 'Indexing transcript')
       }
     }
 

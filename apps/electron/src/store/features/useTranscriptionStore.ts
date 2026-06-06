@@ -19,6 +19,10 @@ export interface TranscriptionItem {
   status: TranscriptionStatus
   progress: number // 0-100 (estimated)
   stage?: string
+  chunkIndex?: number
+  completedChunks?: number
+  totalChunks?: number
+  etaSeconds?: number
   error?: string
   retryCount: number
   attempts: number
@@ -35,7 +39,7 @@ export interface TranscriptionQueueStore {
 
   // Actions
   addToQueue: (id: string, recordingId: string, filename: string) => void
-  updateProgress: (id: string, progress: number, stage?: string) => void
+  updateProgress: (id: string, progress: number, stage?: string, details?: Pick<TranscriptionItem, 'chunkIndex' | 'completedChunks' | 'totalChunks' | 'etaSeconds'>) => void
   markCompleted: (id: string, provider: string) => void
   markFailed: (id: string, error: string) => void
   retry: (id: string) => void
@@ -72,7 +76,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
       })
     },
 
-    updateProgress: (id, progress, stage) => {
+    updateProgress: (id, progress, stage, details) => {
       set((state) => {
         const item = state.queue.get(id)
         if (!item) return state
@@ -82,6 +86,10 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
           ...item,
           progress,
           stage: stage ?? item.stage,
+          chunkIndex: details?.chunkIndex ?? item.chunkIndex,
+          completedChunks: details?.completedChunks ?? item.completedChunks,
+          totalChunks: details?.totalChunks ?? item.totalChunks,
+          etaSeconds: details?.etaSeconds,
           status: 'processing',
           startedAt: item.startedAt || new Date(),
           attempts: item.attempts + (item.startedAt ? 0 : 1)
@@ -105,6 +113,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
           progress: 100,
           status: 'completed',
           stage: undefined,
+          etaSeconds: undefined,
           provider,
           completedAt: new Date()
         })
@@ -126,6 +135,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
           ...item,
           status: 'failed',
           stage: undefined,
+          etaSeconds: undefined,
           error
         })
 

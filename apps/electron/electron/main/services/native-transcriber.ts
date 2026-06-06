@@ -82,6 +82,9 @@ export interface NativeEmbeddingDownloadResult {
 export interface NativeTranscriptionProgress {
   stage: string
   progress: number
+  chunk_index?: number
+  completed_chunks?: number
+  total_chunks?: number
 }
 
 interface RunResult {
@@ -271,7 +274,7 @@ export async function transcribeWithNativeModel(
   inputPath: string,
   outputPath: string,
   language: string,
-  progressCallback?: (stage: string, progress: number) => void,
+  progressCallback?: (stage: string, progress: number, nativeProgress?: NativeTranscriptionProgress) => void,
   diarizationEnabled: boolean = true
 ): Promise<NativeTranscriptionResult> {
   const model = await getNativeTranscriptionModel(modelId)
@@ -299,7 +302,7 @@ export async function transcribeWithNativeModel(
     ],
     {
       onTranscriptionProgress: (progress) => {
-        progressCallback?.(progress.stage, progress.progress)
+        progressCallback?.(progress.stage, progress.progress, progress)
       }
     }
   )

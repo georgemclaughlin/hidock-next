@@ -257,6 +257,12 @@ struct DownloadProgressEvent<'a> {
 struct TranscriptionProgressEvent<'a> {
     stage: &'a str,
     progress: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chunk_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completed_chunks: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_chunks: Option<usize>,
 }
 
 struct SerialEmbedder<E: Embedder> {
@@ -798,7 +804,39 @@ fn emit_download_progress(
 }
 
 fn emit_transcription_progress(stage: &str, progress: u8) {
-    let event = TranscriptionProgressEvent { stage, progress };
+    emit_transcription_progress_event(stage, progress, None, None, None);
+}
+
+fn emit_transcription_chunk_progress(
+    stage: &str,
+    progress: u8,
+    chunk_index: usize,
+    completed_chunks: usize,
+    total_chunks: usize,
+) {
+    emit_transcription_progress_event(
+        stage,
+        progress,
+        Some(chunk_index),
+        Some(completed_chunks),
+        Some(total_chunks),
+    );
+}
+
+fn emit_transcription_progress_event(
+    stage: &str,
+    progress: u8,
+    chunk_index: Option<usize>,
+    completed_chunks: Option<usize>,
+    total_chunks: Option<usize>,
+) {
+    let event = TranscriptionProgressEvent {
+        stage,
+        progress,
+        chunk_index,
+        completed_chunks,
+        total_chunks,
+    };
 
     if let Ok(json) = serde_json::to_string(&event) {
         eprintln!("{TRANSCRIPTION_PROGRESS_PREFIX}{json}");
@@ -1036,13 +1074,25 @@ fn transcribe_parakeet_chunked(
         let chunk_number = chunk_index + 1;
         let chunk_start_progress = parakeet_chunk_progress(chunk_index, total_chunks);
         let chunk_stage = format!("transcribing chunk {chunk_number} of {total_chunks}");
-        emit_transcription_progress(&chunk_stage, chunk_start_progress);
+        emit_transcription_chunk_progress(
+            &chunk_stage,
+            chunk_start_progress,
+            chunk_number,
+            chunk_index,
+            total_chunks,
+        );
 
         if let Some(cached_chunk) = checkpoint.read_chunk(chunk_index)? {
             eprintln!("Parakeet checkpoint: loaded chunk {chunk_number} of {total_chunks}");
             chunk_results.push(cached_chunk.into_transcription_result());
             let progress = parakeet_chunk_progress(chunk_number, total_chunks);
-            emit_transcription_progress(&chunk_stage, progress);
+            emit_transcription_chunk_progress(
+                &chunk_stage,
+                progress,
+                chunk_number,
+                chunk_number,
+                total_chunks,
+            );
             continue;
         }
 
@@ -1099,7 +1149,13 @@ fn transcribe_parakeet_chunked(
         chunk_results.push(chunk_checkpoint.into_transcription_result());
 
         let progress = parakeet_chunk_progress(chunk_number, total_chunks);
-        emit_transcription_progress(&chunk_stage, progress);
+        emit_transcription_chunk_progress(
+            &chunk_stage,
+            progress,
+            chunk_number,
+            chunk_number,
+            total_chunks,
+        );
     }
 
     Ok(ParakeetRunOutput {
@@ -1151,7 +1207,13 @@ fn transcribe_parakeet_streaming(
         let chunk_number = chunk_index + 1;
         let chunk_start_progress = parakeet_chunk_progress(chunk_index, total_chunks);
         let chunk_stage = format!("transcribing chunk {chunk_number} of {total_chunks}");
-        emit_transcription_progress(&chunk_stage, chunk_start_progress);
+        emit_transcription_chunk_progress(
+            &chunk_stage,
+            chunk_start_progress,
+            chunk_number,
+            chunk_index,
+            total_chunks,
+        );
 
         let primary_start = chunk_index * primary_chunk_samples;
         if primary_start >= total_audio_samples {
@@ -1181,7 +1243,13 @@ fn transcribe_parakeet_streaming(
             eprintln!("Parakeet checkpoint: loaded chunk {chunk_number} of {total_chunks}");
             chunk_results.push(cached_chunk.into_transcription_result());
             let progress = parakeet_chunk_progress(chunk_number, total_chunks);
-            emit_transcription_progress(&chunk_stage, progress);
+            emit_transcription_chunk_progress(
+                &chunk_stage,
+                progress,
+                chunk_number,
+                chunk_number,
+                total_chunks,
+            );
             drain_audio_window_before(
                 &mut audio_window,
                 &mut audio_window_start,
@@ -1249,7 +1317,13 @@ fn transcribe_parakeet_streaming(
         chunk_results.push(chunk_checkpoint.into_transcription_result());
 
         let progress = parakeet_chunk_progress(chunk_number, total_chunks);
-        emit_transcription_progress(&chunk_stage, progress);
+        emit_transcription_chunk_progress(
+            &chunk_stage,
+            progress,
+            chunk_number,
+            chunk_number,
+            total_chunks,
+        );
         drain_audio_window_before(
             &mut audio_window,
             &mut audio_window_start,

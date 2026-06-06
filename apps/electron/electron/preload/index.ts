@@ -553,7 +553,15 @@ export interface ElectronAPI {
 
   // Transcription Events
   onTranscriptionStarted: (callback: (data: { queueItemId?: string; recordingId: string }) => void) => () => void
-  onTranscriptionProgress: (callback: (data: { queueItemId: string; progress: number; stage: string }) => void) => () => void
+  onTranscriptionProgress: (callback: (data: {
+    queueItemId: string
+    progress: number
+    stage: string
+    chunkIndex?: number
+    completedChunks?: number
+    totalChunks?: number
+    etaSeconds?: number
+  }) => void) => () => void
   onTranscriptionCompleted: (callback: (data: { queueItemId?: string; recordingId: string }) => void) => () => void
   onTranscriptionFailed: (callback: (data: { queueItemId?: string; recordingId: string; error: string }) => void) => () => void
   onTranscriptionCancelled: (callback: (data: { recordingId: string }) => void) => () => void
@@ -936,8 +944,24 @@ const electronAPI: ElectronAPI = {
     }
   },
 
-  onTranscriptionProgress: (callback: (data: { queueItemId: string; progress: number; stage: string }) => void) => {
-    const handler = (_event: any, data: { queueItemId: string; progress: number; stage: string }) => callback(data)
+  onTranscriptionProgress: (callback: (data: {
+    queueItemId: string
+    progress: number
+    stage: string
+    chunkIndex?: number
+    completedChunks?: number
+    totalChunks?: number
+    etaSeconds?: number
+  }) => void) => {
+    const handler = (_event: any, data: {
+      queueItemId: string
+      progress: number
+      stage: string
+      chunkIndex?: number
+      completedChunks?: number
+      totalChunks?: number
+      etaSeconds?: number
+    }) => callback(data)
     ipcRenderer.on('transcription:progress', handler)
     return () => {
       ipcRenderer.removeListener('transcription:progress', handler)

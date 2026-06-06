@@ -29,13 +29,28 @@ import {
   type NativeTranscriptionEngine,
   type NativeTranscriptionModel,
   type NativeTranscriptOutput,
-  type NativeTranscriptionResult
+  type NativeTranscriptionResult,
+  type NativeTranscriptionProgress
 } from './native-transcriber'
 
 let mainWindow: BrowserWindow | null = null
 let isProcessing = false
 let processingInterval: ReturnType<typeof setInterval> | null = null
 let lastSkipLogAt = 0 // Throttle "skipping" spam to once per 60s
+
+type TranscriptionProgressDetails = {
+  chunkIndex?: number
+  completedChunks?: number
+  totalChunks?: number
+  etaSeconds?: number
+}
+
+type ChunkEtaState = {
+  startedAt?: number
+  lastCompletedChunks: number
+}
+
+const MIN_COMPLETED_CHUNKS_FOR_ETA = 3
 
 function progressTickerLimit(stage: string): number | null {
   const normalizedStage = stage.toLowerCase()
@@ -203,7 +218,11 @@ async function processQueue(): Promise<void> {
         }, 3000)
 
         // spec-014: Progress callback for transcription stages
-        const progressCallback = (stage: string, progress: number) => {
+        const etaState: ChunkEtaState = {
+          lastCompletedChunks: 0
+        }
+
+        const progressCallback = (stage: string, progress: number, details?: TranscriptionProgressDetails) => {
           currentStage = stage
           tickerProgress = progress // Sync ticker with actual progress
           updateQueueProgress(item.id, progress)
@@ -211,12 +230,15 @@ async function processQueue(): Promise<void> {
             queueItemId: item.id,
             recordingId: item.recording_id,
             stage,
-            progress
+            progress,
+            ...details
           })
         }
 
         try {
-          await transcribeRecording(item.recording_id, progressCallback)
+          await transcribeRecording(item.recording_id, (stage, progress, nativeProgress) => {
+            progressCallback(stage, progress, buildTranscriptionProgressDetails(nativeProgress, etaState))
+          })
         } finally {
           clearInterval(progressTicker) // Always clean up the ticker
         }
@@ -271,7 +293,7 @@ export async function processQueueManually(): Promise<void> {
 async function transcribeWithWhisper(
   inputPath: string,
   outputDir: string,
-  progressCallback?: (stage: string, progress: number) => void
+  progressCallback?: (stage: string, progress: number, nativeProgress?: NativeTranscriptionProgress) => void
 ): Promise<NativeTranscriptionResult> {
   const config = getConfig()
   const model = config.transcription.localModel || 'whisper-small'
@@ -289,7 +311,7 @@ async function transcribeWithWhisper(
 async function transcribeWithParakeet(
   inputPath: string,
   outputDir: string,
-  progressCallback?: (stage: string, progress: number) => void
+  progressCallback?: (stage: string, progress: number, nativeProgress?: NativeTranscriptionProgress) => void
 ): Promise<NativeTranscriptionResult> {
   const config = getConfig()
   const model = config.transcription.parakeetModel || 'parakeet-v3'
@@ -382,7 +404,7 @@ function buildTranscriptSegmentsJson(output: NativeTranscriptOutput): string | u
 
 async function transcribeRecording(
   recordingId: string,
-  progressCallback?: (stage: string, progress: number) => void
+  progressCallback?: (stage: string, progress: number, nativeProgress?: NativeTranscriptionProgress) => void
 ): Promise<void> {
   const recording = getRecordingById(recordingId)
   if (!recording || !recording.file_path) {
@@ -439,6 +461,42 @@ async function transcribeRecording(
   } finally {
     rmSync(outputDir, { recursive: true, force: true })
   }
+}
+
+function buildTranscriptionProgressDetails(
+  nativeProgress: NativeTranscriptionProgress | undefined,
+  etaState: ChunkEtaState
+): TranscriptionProgressDetails | undefined {
+  if (!nativeProgress?.total_chunks || nativeProgress.completed_chunks === undefined) {
+    return undefined
+  }
+
+  etaState.startedAt ??= Date.now()
+
+  const completedChunks = nativeProgress.completed_chunks
+  const totalChunks = nativeProgress.total_chunks
+  const details: TranscriptionProgressDetails = {
+    chunkIndex: nativeProgress.chunk_index,
+    completedChunks,
+    totalChunks
+  }
+
+  if (completedChunks > etaState.lastCompletedChunks) {
+    etaState.lastCompletedChunks = completedChunks
+  }
+
+  if (completedChunks >= MIN_COMPLETED_CHUNKS_FOR_ETA && completedChunks < totalChunks) {
+    const elapsedSeconds = (Date.now() - etaState.startedAt) / 1000
+    const averageSecondsPerChunk = elapsedSeconds / completedChunks
+    const remainingChunks = totalChunks - completedChunks
+    const etaSeconds = Math.round(averageSecondsPerChunk * remainingChunks)
+
+    if (Number.isFinite(etaSeconds) && etaSeconds > 0) {
+      details.etaSeconds = etaSeconds
+    }
+  }
+
+  return details
 }
 
 export async function transcribeManually(recordingId: string): Promise<void> {

@@ -154,6 +154,24 @@ describe('useTranscriptionStore', () => {
       expect(useTranscriptionStore.getState().processing.has('rec-1')).toBe(true)
     })
 
+    it('stores chunk progress and ETA details', () => {
+      const { addToQueue, updateProgress } = useTranscriptionStore.getState()
+
+      addToQueue('q-1', 'rec-1', 'meeting.wav')
+      updateProgress('q-1', 42, 'transcribing chunk 3 of 10', {
+        chunkIndex: 3,
+        completedChunks: 2,
+        totalChunks: 10,
+        etaSeconds: 240
+      })
+
+      const item = useTranscriptionStore.getState().queue.get('q-1')
+      expect(item!.chunkIndex).toBe(3)
+      expect(item!.completedChunks).toBe(2)
+      expect(item!.totalChunks).toBe(10)
+      expect(item!.etaSeconds).toBe(240)
+    })
+
     it('does nothing for non-existent item', () => {
       const { updateProgress } = useTranscriptionStore.getState()
 
