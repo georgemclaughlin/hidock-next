@@ -98,7 +98,7 @@ vi.mock('fs', async (importOriginal) => {
   return {
     ...actual,
     existsSync: vi.fn(() => true),
-    mkdtempSync: vi.fn(() => '/tmp/hidock-transcription-test'),
+    mkdtempSync: vi.fn(() => '/tmp/recorder-transcription-test'),
     rmSync: vi.fn()
   }
 })

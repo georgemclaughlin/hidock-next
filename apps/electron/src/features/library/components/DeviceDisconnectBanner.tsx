@@ -30,7 +30,7 @@ export function DeviceDisconnectBanner({
           </p>
           <p className="text-xs text-orange-600 dark:text-orange-400">
             {isReconnecting
-              ? 'Please wait while we reconnect to your HiDock.'
+              ? 'Please wait while we reconnect to your device.'
               : 'Downloads have been paused. Reconnect to continue.'}
           </p>
         </div>

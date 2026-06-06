@@ -27,8 +27,8 @@ use transcribe_rs::{
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 
 #[derive(Parser)]
-#[command(name = "hidock-transcriber")]
-#[command(about = "Local HiDock transcription sidecar")]
+#[command(name = "recorder-transcriber")]
+#[command(about = "Local Recorder transcription sidecar")]
 struct Cli {
     #[arg(long, global = true)]
     data_dir: Option<PathBuf>,
@@ -142,7 +142,7 @@ fn models_dir(data_dir: Option<&Path>) -> Result<PathBuf> {
 
     let base =
         dirs::data_dir().ok_or_else(|| anyhow!("Could not determine local app data directory"))?;
-    Ok(base.join("HiDock").join("models"))
+    Ok(base.join("LocalRecorder").join("models"))
 }
 
 fn catalog() -> HashMap<String, ModelInfo> {

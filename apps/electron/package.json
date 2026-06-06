@@ -1,9 +1,9 @@
 {
-  "name": "hidock-universal-knowledge-hub",
+  "name": "local-recorder",
   "version": "1.0.0",
-  "description": "Local-first HiDock recorder workflow with USB download, local transcription, and local transcript search",
+  "description": "Local-first recorder workflow with USB download, local transcription, and local transcript search",
   "main": "./out/main/index.js",
-  "author": "HiDock",
+  "author": "Local Recorder Contributors",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",

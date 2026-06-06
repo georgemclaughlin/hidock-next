@@ -1,10 +1,8 @@
-# HiDock Local
+# Local Recorder
 
-Local-only Electron app for HiDock recorder workflows.
+Local-only Electron app for USB recorder workflows.
 
-This is an unofficial fork focused on one job: download recordings from a HiDock device, transcribe them on the local machine, and make the resulting transcripts searchable without sending recording data to a third-party service.
-
-HiDock is a trademark of its respective owner. This project is not affiliated with or endorsed by HiDock or its manufacturers.
+This fork is focused on one job: download recordings from a compatible USB recorder, transcribe them on the local machine, and make the resulting transcripts searchable without sending recording data to a third-party service.
 
 ## Supported App
 
@@ -16,7 +14,7 @@ The older Python desktop app, browser app, audio-insights prototype, meeting rec
 
 The Electron app is designed around these constraints:
 
-- Recordings are downloaded over USB from the HiDock device.
+- Recordings are downloaded over USB from the device.
 - Recordings, transcripts, indexes, and app data are stored on the local computer.
 - Speech-to-text is local: Parakeet by default, Whisper as a fallback.
 - Transcript chat/search uses local Ollama by default.
@@ -30,7 +28,7 @@ Manual export is still possible. If a user copies a transcript into ChatGPT, Mic
 - Node.js 20 or newer
 - npm
 - Rust and CMake for building the local transcription sidecar
-- A HiDock H1, H1E, P1, or compatible recorder
+- A compatible USB recorder
 - Optional: Ollama for local transcript chat/search
 
 Linux/WSL packaging may also need libudev development headers for the existing USB native module, for example `sudo apt install libudev-dev`. If the `usb` native rebuild fails with C++ language feature errors, run packaging with `CXXFLAGS="-std=c++17"`.
@@ -42,8 +40,8 @@ For Windows users, run the Electron app from native Windows PowerShell or Comman
 ### Windows Native
 
 ```powershell
-git clone https://github.com/sgeraldes/hidock-next.git
-cd hidock-next
+git clone <your-fork-url>
+cd local-recorder
 cd apps\electron
 npm install
 npm run build:transcriber
@@ -59,8 +57,8 @@ You can also use the root helper:
 ### macOS / Linux / WSL Build
 
 ```bash
-git clone https://github.com/sgeraldes/hidock-next.git
-cd hidock-next/apps/electron
+git clone <your-fork-url>
+cd local-recorder/apps/electron
 npm install
 npm run build:transcriber
 npm run build
@@ -83,7 +81,7 @@ cd apps/electron
 npm run build:transcriber
 ```
 
-Then use `Settings -> Local Transcription -> Download Model` to download the selected local model. The app stores models under the local HiDock data directory and does not upload recordings or transcripts.
+Then use `Settings -> Local Transcription -> Download Model` to download the selected local model. The app stores models under the local app data directory and does not upload recordings or transcripts.
 
 The default Parakeet model is:
 
@@ -151,7 +149,7 @@ make test
 ## Project Layout
 
 ```text
-hidock-next/
+local-recorder/
   apps/electron/        Electron main/preload/renderer app
   docs/                 Local-only setup notes
   run-electron.*        Root launch helpers

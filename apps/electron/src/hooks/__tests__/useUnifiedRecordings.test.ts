@@ -4,8 +4,8 @@ import { useUnifiedRecordings } from '../useUnifiedRecordings'
 import { useAppStore } from '@/store/useAppStore'
 
 // Mock dependencies
-vi.mock('@/services/hidock-device', () => ({
-  getHiDockDeviceService: vi.fn(() => ({
+vi.mock('@/services/recorder-device', () => ({
+  getRecorderDeviceService: vi.fn(() => ({
     isConnected: vi.fn(() => false),
     onConnectionChange: vi.fn(() => () => {}),
     onStatusChange: vi.fn(() => () => {}),

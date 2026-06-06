@@ -4,7 +4,7 @@ This fork is scoped to local device management and local transcript processing.
 
 ## In Scope
 
-- USB communication with HiDock devices
+- USB communication with compatible recorder devices
 - Local download of recordings
 - Local playback
 - Local Parakeet transcription through the Rust sidecar
@@ -26,7 +26,7 @@ This fork is scoped to local device management and local transcript processing.
 The app stores recordings and transcript data on the user's computer. By default, recording storage is under:
 
 ```text
-~/HiDock/
+~/LocalRecorder/
 ```
 
 Electron configuration uses the OS-specific Electron user data path.

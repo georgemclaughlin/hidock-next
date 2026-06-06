@@ -7,7 +7,7 @@ The app can be edited, built, and tested from WSL, but the Electron GUI and USB 
 Use Windows PowerShell or Command Prompt:
 
 ```powershell
-cd path\to\hidock-next\apps\electron
+cd path\to\local-recorder\apps\electron
 npm install
 npm run build:transcriber
 npm run dev
@@ -24,7 +24,7 @@ Or from the repo root:
 Use WSL for code and build checks:
 
 ```bash
-cd /home/george/code/hidock-next/apps/electron
+cd /home/george/code/local-recorder/apps/electron
 npm install
 npm run build:transcriber
 npm run build
@@ -33,7 +33,7 @@ npm run test:run
 
 Running the Electron GUI from WSL requires a working display server such as WSLg. USB access also requires USB forwarding, typically through `usbipd-win`.
 
-For this project, native Windows is the pragmatic path when testing real HiDock device behavior.
+For this project, native Windows is the pragmatic path when testing real device behavior.
 
 ## Rust Sidecar
 
@@ -43,7 +43,7 @@ Local transcription uses a Rust sidecar. Install Rust and CMake in the environme
 npm run build:transcriber
 ```
 
-If the Electron app runs from Windows, build the sidecar from Windows so `native/transcriber/target/release/hidock-transcriber.exe` exists. A Linux sidecar built in WSL cannot be launched by the Windows Electron process.
+If the Electron app runs from Windows, build the sidecar from Windows so `native/transcriber/target/release/recorder-transcriber.exe` exists. A Linux sidecar built in WSL cannot be launched by the Windows Electron process.
 
 Linux/WSL packaging can also require libudev development headers for the app's existing USB native module:
 

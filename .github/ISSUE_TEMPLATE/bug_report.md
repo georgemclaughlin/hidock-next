@@ -25,7 +25,7 @@ Describe what you expected.
 - OS:
 - Running from Windows native, macOS, Linux, or WSL:
 - Node.js version:
-- HiDock device model:
+- Device model:
 - Transcription engine: Parakeet, Whisper, or none
 - Ollama enabled: yes/no
 

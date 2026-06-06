@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/components/ui/toaster'
 import { parseError, getErrorMessage } from '@/features/library/utils/errorHandling'
@@ -47,7 +47,7 @@ export function cancelDownloads(): void {
     _downloadAbortControllerRef = null
   }
   // Cancel all downloads at device service level (aborts USB transfers)
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
   deviceService.cancelAllDownloads()
   // DL-003: Also cancel main-process transfers
   window.electronAPI?.downloadService?.cancelAll?.()
@@ -60,7 +60,7 @@ export function cancelDownloadsComplete(): void {
 }
 
 export function useDownloadOrchestrator() {
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
   const isProcessingDownloads = useRef(false)
   const downloadAbortControllerRef = useRef<AbortController | null>(null)
   // DL-STALL: Track the filename currently being downloaded so onStateUpdate can abort
@@ -288,7 +288,7 @@ export function useDownloadOrchestrator() {
     // Emit a custom event so useUnifiedRecordings can do a forced refresh (with device data)
     // instead of just invalidating (which only refreshes cached data)
     if (completed > 0) {
-      window.dispatchEvent(new CustomEvent('hidock:downloads-completed'))
+      window.dispatchEvent(new CustomEvent('recorder:downloads-completed'))
     }
 
     if (completed > 0 || failed > 0 || aborted) {

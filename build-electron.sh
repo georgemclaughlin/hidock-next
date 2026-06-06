@@ -1,7 +1,7 @@
 #!/bin/bash
-# HiDock Local - Build Script
+# Local Recorder - Build Script
 
-echo "Building HiDock Local..."
+echo "Building Local Recorder..."
 echo
 
 # Navigate to script directory (project root)
@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR"
 # Check if electron app directory exists
 if [ ! -d "apps/electron" ]; then
     echo "Error: apps/electron directory not found!"
-    echo "Make sure the hidock-next project structure is intact."
+    echo "Make sure the local-recorder project structure is intact."
     echo "Current directory: $(pwd)"
     exit 1
 fi
@@ -38,7 +38,7 @@ echo
 
 echo
 echo "================================"
-echo "Building HiDock Local Electron App"
+echo "Building Local Recorder Electron App"
 echo "================================"
 echo "Compiling local transcription sidecar..."
 echo

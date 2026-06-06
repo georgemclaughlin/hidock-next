@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { getDatabase, queryAll, run } from '../services/database'
 
-// Device cache stores the list of files from the HiDock device for offline access
+// Device cache stores the list of files from the device for offline access
 // This allows the UI to show the device file list even when disconnected
 
 interface CachedDeviceFile {

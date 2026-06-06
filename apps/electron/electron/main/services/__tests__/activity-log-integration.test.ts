@@ -51,7 +51,7 @@ describe('Activity Log Integration - Spec Compliance', () => {
 
   describe('Criterion 1: File List Sync - Start Entry', () => {
     it('SHOULD emit "Scanning device files..." when listRecordings() starts', () => {
-      // BUG AL-001: This test will FAIL because hidock-device.ts does not emit this log
+      // BUG AL-001: This test will FAIL because recorder-device.ts does not emit this log
       // Expected: logActivity('info', 'Scanning device files...', 'Reading file list from device')
       // Actual: No such call exists
 
@@ -84,7 +84,7 @@ describe('Activity Log Integration - Spec Compliance', () => {
 
   describe('Criterion 2: File List Sync - Completion Entry', () => {
     it('SHOULD emit "Found N files on device" when listRecordings() completes', () => {
-      // BUG AL-002: This test will FAIL because hidock-device.ts does not emit this log
+      // BUG AL-002: This test will FAIL because recorder-device.ts does not emit this log
       // Expected: logActivity('success', 'Found N files on device', 'N recordings available')
       // Actual: No such call exists
 

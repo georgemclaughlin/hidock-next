@@ -1,7 +1,7 @@
 #!/bin/bash
-# HiDock Local - Development Run Script
+# Local Recorder - Development Run Script
 
-echo "Starting HiDock Local..."
+echo "Starting Local Recorder..."
 echo
 
 # Navigate to script directory (project root)
@@ -17,7 +17,7 @@ fi
 # Check if electron app directory exists
 if [ ! -d "apps/electron" ]; then
     echo "Error: apps/electron directory not found!"
-    echo "Make sure the hidock-next project structure is intact."
+    echo "Make sure the local-recorder project structure is intact."
     echo "Current directory: $(pwd)"
     exit 1
 fi
@@ -38,7 +38,7 @@ fi
 
 echo
 echo "================================"
-echo "HiDock Local"
+echo "Local Recorder"
 echo "================================"
 echo
 echo "To stop the application, close the window or press Ctrl+C here."

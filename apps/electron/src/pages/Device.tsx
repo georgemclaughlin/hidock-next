@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import {
-  getHiDockDeviceService,
+  getRecorderDeviceService,
   BatteryStatus
-} from '@/services/hidock-device'
+} from '@/services/recorder-device'
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/components/ui/toaster'
 import { useAppStore } from '@/store/useAppStore'
@@ -32,7 +32,7 @@ export function Device() {
   const deviceSyncEta = useAppStore(state => state.deviceSyncEta)
 
   // Initialize service
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
   const { recordings, loading: loadingRecordings, refresh: refreshRecordings } = useUnifiedRecordings()
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -400,7 +400,7 @@ export function Device() {
       if (!deviceService.isConnected()) {
         clearConnectionTimers()
         setConnecting(false)
-        setError('Connection timed out. Make sure your HiDock is connected via USB and not in use by another application.')
+        setError('Connection timed out. Make sure your device is connected via USB and not in use by another application.')
         deviceService.disconnect()
       }
     }, CONNECTION_TIMEOUT_MS)
@@ -441,7 +441,7 @@ export function Device() {
   const handleSyncAll = async () => {
     // Validate connection before starting
     if (!deviceService.isConnected()) {
-      setError('Device not connected. Please connect your HiDock first.')
+      setError('Device not connected. Please connect your device first.')
       return
     }
 
@@ -788,7 +788,7 @@ export function Device() {
       {/* Header */}
       <header className="border-b px-6 py-4">
         <h1 className="text-2xl font-bold">Device Sync</h1>
-        <p className="text-sm text-muted-foreground">Manage your HiDock device and sync recordings</p>
+        <p className="text-sm text-muted-foreground">Manage your device and sync recordings</p>
       </header>
 
       {/* Content */}
@@ -836,7 +836,7 @@ export function Device() {
                         <span>Timeout in {Math.max(0, (CONNECTION_TIMEOUT_MS - connectionElapsed) / 1000).toFixed(0)}s</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Make sure your HiDock is connected via USB...
+                        Make sure your device is connected via USB...
                       </p>
                       <Button
                         variant="outline"
@@ -851,7 +851,7 @@ export function Device() {
                   ) : (
                     <>
                       <p className="text-muted-foreground mb-4">
-                        Connect your HiDock device via USB to begin syncing recordings
+                        Connect your device via USB to begin syncing recordings
                       </p>
                       <Button onClick={handleConnect} disabled={connecting}>
                         <Usb className="h-4 w-4 mr-2" />
@@ -1285,7 +1285,7 @@ export function Device() {
                   Realtime Audio Streaming
                 </CardTitle>
                 <CardDescription>
-                  Stream live audio from your HiDock device
+                  Stream live audio from your device
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1475,7 +1475,7 @@ export function Device() {
                 <div className="space-y-2">
                   <h3 className="font-medium">1. Connect your device</h3>
                   <p className="text-sm text-muted-foreground">
-                    Plug in your HiDock via USB and click "Connect Device" to establish a connection
+                    Plug in your device via USB and click "Connect Device" to establish a connection
                   </p>
                 </div>
                 <div className="space-y-2">

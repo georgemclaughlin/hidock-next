@@ -2,7 +2,7 @@
  * Data Integrity Service
  *
  * Ensures consistency between:
- * - Device files (HiDock)
+ * - Device files (Recorder)
  * - Local file system (recordings folder)
  * - Database records (recordings, synced_files tables)
  *
@@ -63,20 +63,20 @@ export interface RepairResult {
 // Filename Date Parsing
 // =============================================================================
 
-// Month name mapping for HiDock filename parsing
+// Month name mapping for recorder filename parsing
 const MONTH_NAMES: Record<string, number> = {
   'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
   'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
 }
 
 /**
- * Parse recording date from HiDock filename formats.
+ * Parse recording date from recorder filename formats.
  * Supports:
  * - 2025Jul08-160405-Rec59.hda (YYYYMonDD-HHMMSS format)
  * - 2025-07-08_1604.wav (YYYY-MM-DD_HHMM format, our saved format)
  * - HDA_20250708_160405.hda (HDA_YYYYMMDD_HHMMSS format)
  */
-function parseHiDockFilenameDate(filename: string): Date | undefined {
+function parseRecorderFilenameDate(filename: string): Date | undefined {
   // Format 1: 2025Jul08-160405-Rec59.hda (YYYYMonDD-HHMMSS) - Device format
   const monthNameMatch = filename.match(/(\d{4})(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{1,2})-(\d{2})(\d{2})(\d{2})/)
   if (monthNameMatch) {
@@ -351,7 +351,7 @@ class IntegrityService {
       if (!audioExtensions.includes(ext)) continue
 
       const filePath = join(recordingsPath, file)
-      const filenameDate = parseHiDockFilenameDate(file)
+      const filenameDate = parseRecorderFilenameDate(file)
 
       if (!filenameDate) {
         // Can't parse date from filename, skip
@@ -575,7 +575,7 @@ class IntegrityService {
   private findDateMismatches(): IntegrityIssue[] {
     const issues: IntegrityIssue[] = []
     const now = new Date()
-    const minValidDate = new Date('2020-01-01') // HiDock devices weren't made before 2020
+    const minValidDate = new Date('2020-01-01') // supported devices weren't made before 2020
     const maxValidDate = new Date(now.getTime() + 24 * 60 * 60 * 1000) // 1 day in future max
 
     // 1. Check database recordings for invalid/suspicious dates
@@ -644,7 +644,7 @@ class IntegrityService {
         if (!audioExtensions.includes(ext)) continue
 
         const filePath = join(recordingsPath, file)
-        const filenameDate = parseHiDockFilenameDate(file)
+        const filenameDate = parseRecorderFilenameDate(file)
 
         if (!filenameDate) {
           // Can't parse date from filename, skip

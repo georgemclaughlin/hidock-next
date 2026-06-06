@@ -7,7 +7,7 @@
  * Validates a device file path to prevent directory traversal attacks.
  *
  * SECURITY CONTEXT:
- * HiDock devices allow accessing files by path. Without validation, malicious
+ * supported devices allow accessing files by path. Without validation, malicious
  * filenames like "../../../etc/passwd" could potentially access files outside
  * the intended recording directory on the device.
  *

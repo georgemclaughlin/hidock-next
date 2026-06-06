@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { Meeting, CalendarSyncResult } from '@/types'
-import type { HiDockDeviceState, ConnectionStatus, ActivityLogEntry } from '@/services/hidock-device'
+import type { RecorderDeviceState, ConnectionStatus, ActivityLogEntry } from '@/services/recorder-device'
 import type { UnifiedRecording } from '@/types/unified-recording'
 // CA-10: CalendarViewType shared between store and calendar-utils
 import type { CalendarViewType } from '@/lib/calendar-utils'
@@ -42,7 +42,7 @@ interface AppState {
   calendarView: CalendarViewType
 
   // Device state (updated by OperationController)
-  deviceState: HiDockDeviceState
+  deviceState: RecorderDeviceState
   connectionStatus: ConnectionStatus
   activityLog: ActivityLogEntry[]
 
@@ -83,7 +83,7 @@ interface AppState {
   goToToday: () => void
 
   // Device state actions (updated by OperationController)
-  setDeviceState: (state: HiDockDeviceState) => void
+  setDeviceState: (state: RecorderDeviceState) => void
   setConnectionStatus: (status: ConnectionStatus) => void
   addActivityLogEntry: (entry: ActivityLogEntry) => void
   addActivityLogBatch: (entries: ActivityLogEntry[]) => void

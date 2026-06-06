@@ -1,7 +1,7 @@
 @echo off
-REM HiDock Local - Build Script
+REM Local Recorder - Build Script
 setlocal
-echo Building HiDock Local...
+echo Building Local Recorder...
 echo.
 
 REM Navigate to script directory (project root)
@@ -10,7 +10,7 @@ cd /d "%~dp0"
 REM Check if electron app directory exists
 if not exist "apps\electron" (
     echo Error: apps\electron directory not found!
-    echo Make sure the hidock-next project structure is intact.
+    echo Make sure the local-recorder project structure is intact.
     echo Current directory: %CD%
     pause
     exit /b 1
@@ -39,7 +39,7 @@ echo.
 
 echo.
 echo ================================
-echo Building HiDock Local Electron App
+echo Building Local Recorder Electron App
 echo ================================
 echo Compiling local transcription sidecar...
 echo.

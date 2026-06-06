@@ -1,5 +1,5 @@
 import { useConfigStore } from '@/store/domain/useConfigStore'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 
 export interface AutoSyncResult {
   allowed: boolean
@@ -15,7 +15,7 @@ export interface AutoSyncResult {
  */
 export function checkAutoSyncAllowed(): AutoSyncResult {
   const configStore = useConfigStore.getState()
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
 
   // Guard 1: Config must be loaded
   if (!configStore.configReady) {
@@ -77,7 +77,7 @@ export async function waitForConfig(timeoutMs: number = 5000): Promise<boolean> 
  * Wait for device to be fully ready with timeout.
  */
 export async function waitForDeviceReady(timeoutMs: number = 60000): Promise<boolean> {
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
   const startTime = Date.now()
 
   while (Date.now() - startTime < timeoutMs) {

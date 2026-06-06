@@ -27,7 +27,7 @@ import { RecordingLinkDialog } from '@/components/RecordingLinkDialog'
 import { useUnifiedRecordings } from '@/hooks/useUnifiedRecordings'
 import { useToday } from '@/hooks/useToday'
 import { UnifiedRecording, hasLocalPath, isDeviceOnly, hasDeviceFile } from '@/types/unified-recording'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { useAudioControls } from '@/components/OperationController'
 import { useUIStore } from '@/store/useUIStore'
@@ -539,7 +539,7 @@ export function Calendar() {
   const handleDeleteFromDevice = useCallback(async (recording: UnifiedRecording) => {
     if (!hasDeviceFile(recording)) return
 
-    const deviceService = getHiDockDeviceService()
+    const deviceService = getRecorderDeviceService()
     if (!deviceService.isConnected()) return
 
     // Confirm deletion

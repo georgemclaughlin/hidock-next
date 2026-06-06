@@ -3,7 +3,7 @@ ELECTRON_DIR := apps/electron
 .PHONY: help install dev transcriber build test typecheck clean
 
 help:
-	@echo "HiDock Local targets:"
+	@echo "Local Recorder targets:"
 	@echo "  make install    Install Electron app dependencies"
 	@echo "  make dev        Run the Electron app in development mode"
 	@echo "  make transcriber Build the local transcription sidecar"

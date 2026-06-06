@@ -1,12 +1,12 @@
 /**
- * HiDock Device Service Tests
+ * Recorder Device Service Tests
  *
- * Tests for the HiDockDeviceService, focusing on activity log historical replay
+ * Tests for the RecorderDeviceService, focusing on activity log historical replay
  * and listener management.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { ActivityLogEntry } from '../hidock-device'
+import type { ActivityLogEntry } from '../recorder-device'
 
 // Mock jensen module
 vi.mock('../jensen', () => ({
@@ -49,8 +49,8 @@ vi.mock('../qa-monitor', () => ({
   shouldLogQa: vi.fn(() => false)
 }))
 
-describe('HiDockDeviceService - Activity Log Historical Replay', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Activity Log Historical Replay', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
@@ -58,12 +58,12 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
     vi.resetModules()
 
     // Dynamically import after mocks are set up
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should replay historical logs to new listener', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     // Generate some historical logs using the private logActivity method
     // Access via type assertion since it's private
@@ -95,7 +95,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should replay historical logs in correct order', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate multiple logs
@@ -118,7 +118,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should receive both historical and new logs', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate historical logs
@@ -151,7 +151,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should handle listener errors during replay without breaking iteration', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate historical logs
@@ -189,7 +189,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should handle initialization log and receive new logs', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     // Subscribe a listener - should receive initialization log
     const receivedLogs: ActivityLogEntry[] = []
@@ -211,7 +211,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should support multiple listeners with independent replays', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate historical logs
@@ -252,7 +252,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should return unsubscribe function that works correctly', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate historical log
@@ -283,7 +283,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should handle concurrent modification during replay safely', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate historical logs
@@ -325,7 +325,7 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 
   it('should include all log entry properties in replay', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Generate log with details
@@ -350,18 +350,18 @@ describe('HiDockDeviceService - Activity Log Historical Replay', () => {
   })
 })
 
-describe('HiDockDeviceService - State Management', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - State Management', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return initial state when not connected', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state).toBeDefined()
@@ -375,7 +375,7 @@ describe('HiDockDeviceService - State Management', () => {
   })
 
   it('should allow updating state fields', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Update state fields
@@ -394,7 +394,7 @@ describe('HiDockDeviceService - State Management', () => {
   })
 
   it('should update storage information', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.storage = {
@@ -412,7 +412,7 @@ describe('HiDockDeviceService - State Management', () => {
   })
 
   it('should notify state change listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -428,7 +428,7 @@ describe('HiDockDeviceService - State Management', () => {
   })
 
   it('should handle multiple state change listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener1 = vi.fn()
@@ -452,7 +452,7 @@ describe('HiDockDeviceService - State Management', () => {
   })
 
   it('should unsubscribe state change listener', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -470,18 +470,18 @@ describe('HiDockDeviceService - State Management', () => {
   })
 })
 
-describe('HiDockDeviceService - Connection Status Management', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Connection Status Management', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return initial connection status', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const status = service.getConnectionStatus()
 
     expect(status).toBeDefined()
@@ -490,7 +490,7 @@ describe('HiDockDeviceService - Connection Status Management', () => {
   })
 
   it('should update connection status', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.updateStatus('requesting', 'Requesting device access', 10)
@@ -502,7 +502,7 @@ describe('HiDockDeviceService - Connection Status Management', () => {
   })
 
   it('should notify status change listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -526,7 +526,7 @@ describe('HiDockDeviceService - Connection Status Management', () => {
   })
 
   it('should handle multiple status change listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener1 = vi.fn()
@@ -550,7 +550,7 @@ describe('HiDockDeviceService - Connection Status Management', () => {
   })
 
   it('should unsubscribe status change listener', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -568,7 +568,7 @@ describe('HiDockDeviceService - Connection Status Management', () => {
   })
 
   it('should handle connection status with no progress', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -587,18 +587,18 @@ describe('HiDockDeviceService - Connection Status Management', () => {
   })
 })
 
-describe('HiDockDeviceService - Connection Change Management', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Connection Change Management', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should notify connection change listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -611,7 +611,7 @@ describe('HiDockDeviceService - Connection Change Management', () => {
   })
 
   it('should handle multiple connection change listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener1 = vi.fn()
@@ -627,7 +627,7 @@ describe('HiDockDeviceService - Connection Change Management', () => {
   })
 
   it('should unsubscribe connection change listener', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -642,30 +642,30 @@ describe('HiDockDeviceService - Connection Change Management', () => {
   })
 
   it('should handle connection change with no listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(() => serviceAny.notifyConnectionChange(true)).not.toThrow()
   })
 })
 
-describe('HiDockDeviceService - isConnected', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - isConnected', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return false when not connected', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(service.isConnected()).toBe(false)
   })
 
   it('should return true when connected', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // isConnected checks both state.connected AND jensen.isConnected()
@@ -675,7 +675,7 @@ describe('HiDockDeviceService - isConnected', () => {
   })
 
   it('should return false when disconnected after connection', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -688,18 +688,18 @@ describe('HiDockDeviceService - isConnected', () => {
   })
 })
 
-describe('HiDockDeviceService - Activity Log Management', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Activity Log Management', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return empty activity log initially', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const logs = service.getActivityLog()
 
     // Should only have initialization log
@@ -708,7 +708,7 @@ describe('HiDockDeviceService - Activity Log Management', () => {
   })
 
   it('should add activity logs', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.logActivity('info', 'Test log 1')
@@ -726,7 +726,7 @@ describe('HiDockDeviceService - Activity Log Management', () => {
   })
 
   it('should add activity logs with details', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.logActivity('error', 'Error occurred', 'Stack trace here')
@@ -740,7 +740,7 @@ describe('HiDockDeviceService - Activity Log Management', () => {
   })
 
   it('should clear activity log', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.logActivity('info', 'Test log 1')
@@ -756,7 +756,7 @@ describe('HiDockDeviceService - Activity Log Management', () => {
   })
 
   it('should add logs with correct timestamp order', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.logActivity('info', 'First log')
@@ -771,7 +771,7 @@ describe('HiDockDeviceService - Activity Log Management', () => {
   })
 
   it('should support all log types', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.logActivity('error', 'Error log')
@@ -791,18 +791,18 @@ describe('HiDockDeviceService - Activity Log Management', () => {
   })
 })
 
-describe('HiDockDeviceService - Progress Listener Management', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Progress Listener Management', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should register and notify progress listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -822,7 +822,7 @@ describe('HiDockDeviceService - Progress Listener Management', () => {
   })
 
   it('should handle multiple progress listeners', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener1 = vi.fn()
@@ -845,7 +845,7 @@ describe('HiDockDeviceService - Progress Listener Management', () => {
   })
 
   it('should unsubscribe progress listener', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -863,7 +863,7 @@ describe('HiDockDeviceService - Progress Listener Management', () => {
   })
 
   it('should handle progress with 0%', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -881,7 +881,7 @@ describe('HiDockDeviceService - Progress Listener Management', () => {
   })
 
   it('should handle progress with 100%', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const listener = vi.fn()
@@ -899,18 +899,18 @@ describe('HiDockDeviceService - Progress Listener Management', () => {
   })
 })
 
-describe('HiDockDeviceService - Error Handling', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Error Handling', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should handle listener errors in state change notification', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -942,7 +942,7 @@ describe('HiDockDeviceService - Error Handling', () => {
   })
 
   it('should handle listener errors in connection change notification', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -968,7 +968,7 @@ describe('HiDockDeviceService - Error Handling', () => {
   })
 
   it('should handle listener errors in status change notification', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -1000,7 +1000,7 @@ describe('HiDockDeviceService - Error Handling', () => {
   })
 
   it('should handle listener errors in progress notification', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -1027,7 +1027,7 @@ describe('HiDockDeviceService - Error Handling', () => {
   })
 
   it('should handle listener errors in activity notification', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -1053,18 +1053,18 @@ describe('HiDockDeviceService - Error Handling', () => {
   })
 })
 
-describe('HiDockDeviceService - FileInfo Conversion', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - FileInfo Conversion', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
-  it('should convert FileInfo to HiDockRecording', () => {
-    const service = new HiDockDeviceService()
+  it('should convert FileInfo to RecorderRecording', () => {
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const fileInfo = {
@@ -1090,7 +1090,7 @@ describe('HiDockDeviceService - FileInfo Conversion', () => {
   })
 
   it('should handle FileInfo with missing signature', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const fileInfo = {
@@ -1114,18 +1114,18 @@ describe('HiDockDeviceService - FileInfo Conversion', () => {
   })
 })
 
-describe('HiDockDeviceService - Constructor and Initialization', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Constructor and Initialization', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with default state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     expect(service.isConnected()).toBe(false)
     expect(service.getConnectionStatus().step).toBe('idle')
@@ -1133,7 +1133,7 @@ describe('HiDockDeviceService - Constructor and Initialization', () => {
   })
 
   it('should initialize listeners as Sets', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.connectionListeners).toBeInstanceOf(Set)
@@ -1144,7 +1144,7 @@ describe('HiDockDeviceService - Constructor and Initialization', () => {
   })
 
   it('should log initialization activity', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const logs = service.getActivityLog()
 
     const initLog = logs.find(log => log.message === 'Device service initialized')
@@ -1153,25 +1153,25 @@ describe('HiDockDeviceService - Constructor and Initialization', () => {
   })
 })
 
-describe('HiDockDeviceService - Cache Management', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Cache Management', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with null cached recordings', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.cachedRecordings).toBeNull()
   })
 
   it('should initialize cache timestamp as undefined', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // cachedRecordings and related fields are not explicitly initialized in constructor
@@ -1179,7 +1179,7 @@ describe('HiDockDeviceService - Cache Management', () => {
   })
 
   it('should set cache timestamp when recordings are cached', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const mockRecordings = [
@@ -1202,23 +1202,23 @@ describe('HiDockDeviceService - Cache Management', () => {
   })
 })
 
-describe('HiDockDeviceService - Initialization State', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Initialization State', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return false for isInitialized when not initialized', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(service.isInitialized()).toBe(false)
   })
 
   it('should return true for isInitialized when initialized', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.initializationComplete = true
@@ -1226,7 +1226,7 @@ describe('HiDockDeviceService - Initialization State', () => {
   })
 
   it('should track initialization state changes', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(service.isInitialized()).toBe(false)
@@ -1239,25 +1239,25 @@ describe('HiDockDeviceService - Initialization State', () => {
   })
 })
 
-describe('HiDockDeviceService - Cached Recordings', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Cached Recordings', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return empty array when no cached recordings', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const cached = service.getCachedRecordings()
 
     expect(cached).toEqual([])
   })
 
   it('should return cached recordings when available', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const mockRecordings = [
@@ -1290,7 +1290,7 @@ describe('HiDockDeviceService - Cached Recordings', () => {
   })
 
   it('should return same reference to cached recordings', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const mockRecordings = [
@@ -1314,7 +1314,7 @@ describe('HiDockDeviceService - Cached Recordings', () => {
   })
 
   it('should handle null cached recordings', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.cachedRecordings = null
@@ -1324,18 +1324,18 @@ describe('HiDockDeviceService - Cached Recordings', () => {
   })
 })
 
-describe('HiDockDeviceService - Abort Controllers', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Abort Controllers', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with empty abort controllers map', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.abortControllers).toBeInstanceOf(Map)
@@ -1343,7 +1343,7 @@ describe('HiDockDeviceService - Abort Controllers', () => {
   })
 
   it('should track abort controllers', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const controller1 = new AbortController()
@@ -1358,7 +1358,7 @@ describe('HiDockDeviceService - Abort Controllers', () => {
   })
 
   it('should remove abort controllers', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const controller = new AbortController()
@@ -1372,18 +1372,18 @@ describe('HiDockDeviceService - Abort Controllers', () => {
   })
 })
 
-describe('HiDockDeviceService - Auto-Connect Configuration', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Auto-Connect Configuration', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with default auto-connect config disabled', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.autoConnectConfig.enabled).toBe(false)
@@ -1392,14 +1392,14 @@ describe('HiDockDeviceService - Auto-Connect Configuration', () => {
   })
 
   it('should track config loaded state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.configLoaded).toBe(false)
   })
 
   it('should track auto-connect enabled state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // BUG-001 fix: autoConnectEnabled initializes to false, set to true after config loads
@@ -1407,7 +1407,7 @@ describe('HiDockDeviceService - Auto-Connect Configuration', () => {
   })
 
   it('should track user initiated disconnect', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.userInitiatedDisconnect).toBe(false)
@@ -1417,32 +1417,32 @@ describe('HiDockDeviceService - Auto-Connect Configuration', () => {
   })
 })
 
-describe('HiDockDeviceService - List Recordings Lock', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - List Recordings Lock', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with no list recordings promise', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.listRecordingsPromise).toBeNull()
   })
 
   it('should initialize with list recordings lock as false', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.listRecordingsLock).toBe(false)
   })
 
   it('should track list recordings lock state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.listRecordingsLock = true
@@ -1453,7 +1453,7 @@ describe('HiDockDeviceService - List Recordings Lock', () => {
   })
 
   it('should track last completed timestamp', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.listRecordingsLastCompleted).toBe(0)
@@ -1464,25 +1464,25 @@ describe('HiDockDeviceService - List Recordings Lock', () => {
   })
 })
 
-describe('HiDockDeviceService - Model Information', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Model Information', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return initial model as unknown', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state.model).toBe('unknown')
   })
 
   it('should update model in state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.model = 'H1'
@@ -1492,7 +1492,7 @@ describe('HiDockDeviceService - Model Information', () => {
   })
 
   it('should handle different device models', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const models = ['H1', 'H1E', 'P1', 'unknown']
@@ -1505,25 +1505,25 @@ describe('HiDockDeviceService - Model Information', () => {
   })
 })
 
-describe('HiDockDeviceService - Initialization Abort', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Initialization Abort', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with initAborted as false', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.initAborted).toBe(false)
   })
 
   it('should track abort initialization state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.initAborted = true
@@ -1534,25 +1534,25 @@ describe('HiDockDeviceService - Initialization Abort', () => {
   })
 })
 
-describe('HiDockDeviceService - Ready Status Deduplication', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Ready Status Deduplication', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize with last ready status timestamp as 0', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.lastReadyStatusTimestamp).toBe(0)
   })
 
   it('should track last ready status timestamp', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const now = Date.now()
@@ -1561,25 +1561,25 @@ describe('HiDockDeviceService - Ready Status Deduplication', () => {
   })
 })
 
-describe('HiDockDeviceService - Storage Information', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Storage Information', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return null storage initially', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state.storage).toBeNull()
   })
 
   it('should update storage with all fields', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const storageInfo = {
@@ -1595,7 +1595,7 @@ describe('HiDockDeviceService - Storage Information', () => {
   })
 
   it('should handle full storage', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.storage = {
@@ -1609,7 +1609,7 @@ describe('HiDockDeviceService - Storage Information', () => {
   })
 
   it('should handle empty storage', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.storage = {
@@ -1623,25 +1623,25 @@ describe('HiDockDeviceService - Storage Information', () => {
   })
 })
 
-describe('HiDockDeviceService - Device Settings', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Device Settings', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return null settings initially', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state.settings).toBeNull()
   })
 
   it('should store device settings', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const mockSettings = {
@@ -1657,32 +1657,32 @@ describe('HiDockDeviceService - Device Settings', () => {
   })
 })
 
-describe('HiDockDeviceService - Serial Number and Firmware', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Serial Number and Firmware', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return null serial number initially', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state.serialNumber).toBeNull()
   })
 
   it('should return null firmware version initially', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state.firmwareVersion).toBeNull()
   })
 
   it('should update serial number', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.serialNumber = 'SN123456789'
@@ -1692,7 +1692,7 @@ describe('HiDockDeviceService - Serial Number and Firmware', () => {
   })
 
   it('should update firmware version', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.firmwareVersion = '2.1.5'
@@ -1702,25 +1702,25 @@ describe('HiDockDeviceService - Serial Number and Firmware', () => {
   })
 })
 
-describe('HiDockDeviceService - Recording Count', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Recording Count', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should initialize recording count as 0', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const state = service.getState()
 
     expect(state.recordingCount).toBe(0)
   })
 
   it('should update recording count', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.recordingCount = 5
@@ -1730,7 +1730,7 @@ describe('HiDockDeviceService - Recording Count', () => {
   })
 
   it('should handle large recording counts', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.recordingCount = 1000
@@ -1740,18 +1740,18 @@ describe('HiDockDeviceService - Recording Count', () => {
   })
 })
 
-describe('HiDockDeviceService - Public Log Method', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Public Log Method', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should add log via public log method', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     service.log('info', 'Public log message')
 
@@ -1763,7 +1763,7 @@ describe('HiDockDeviceService - Public Log Method', () => {
   })
 
   it('should add log with details via public log method', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     service.log('error', 'Public error', 'Error details')
 
@@ -1776,7 +1776,7 @@ describe('HiDockDeviceService - Public Log Method', () => {
   })
 
   it('should support all log types via public log method', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     service.log('info', 'Info message')
     service.log('success', 'Success message')
@@ -1796,7 +1796,7 @@ describe('HiDockDeviceService - Public Log Method', () => {
   })
 
   it('should notify listeners when using public log method', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     const listener = vi.fn()
     service.onActivity(listener)
@@ -1811,15 +1811,15 @@ describe('HiDockDeviceService - Public Log Method', () => {
   })
 })
 
-describe('HiDockDeviceService - Activity Log Max Entries', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Activity Log Max Entries', () => {
+  let RecorderDeviceService: any
   let MAX_ACTIVITY_LOG_ENTRIES: number
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
 
     // Import the constant
     const constantsModule = await import('../../constants/activity-log')
@@ -1827,7 +1827,7 @@ describe('HiDockDeviceService - Activity Log Max Entries', () => {
   })
 
   it('should limit activity log to max entries', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     // Add more logs than the max
     for (let i = 0; i < MAX_ACTIVITY_LOG_ENTRIES + 50; i++) {
@@ -1841,7 +1841,7 @@ describe('HiDockDeviceService - Activity Log Max Entries', () => {
   })
 
   it('should keep most recent entries when exceeding max', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     // Add more logs than the max
     for (let i = 0; i < MAX_ACTIVITY_LOG_ENTRIES + 10; i++) {
@@ -1856,7 +1856,7 @@ describe('HiDockDeviceService - Activity Log Max Entries', () => {
   })
 
   it('should discard oldest entries when exceeding max', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     // Add more logs than the max
     for (let i = 0; i < MAX_ACTIVITY_LOG_ENTRIES + 10; i++) {
@@ -1871,18 +1871,18 @@ describe('HiDockDeviceService - Activity Log Max Entries', () => {
   })
 })
 
-describe('HiDockDeviceService - State Copy Immutability', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - State Copy Immutability', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return a copy of state, not the original', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const state1 = service.getState()
@@ -1896,7 +1896,7 @@ describe('HiDockDeviceService - State Copy Immutability', () => {
   })
 
   it('should not affect internal state when modifying returned state', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.recordingCount = 5
@@ -1910,18 +1910,18 @@ describe('HiDockDeviceService - State Copy Immutability', () => {
   })
 })
 
-describe('HiDockDeviceService - Connection Status Copy Immutability', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Connection Status Copy Immutability', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return a copy of connection status, not the original', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     const status1 = service.getConnectionStatus()
     const status2 = service.getConnectionStatus()
@@ -1934,7 +1934,7 @@ describe('HiDockDeviceService - Connection Status Copy Immutability', () => {
   })
 
   it('should not affect internal status when modifying returned status', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const status = service.getConnectionStatus()
@@ -1948,18 +1948,18 @@ describe('HiDockDeviceService - Connection Status Copy Immutability', () => {
   })
 })
 
-describe('HiDockDeviceService - Activity Log Copy', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Activity Log Copy', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return a copy of activity log, not the original', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     service.log('info', 'Test log')
 
@@ -1974,7 +1974,7 @@ describe('HiDockDeviceService - Activity Log Copy', () => {
   })
 
   it('should not affect internal log when modifying returned log', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     service.log('info', 'Test log')
 
@@ -1993,8 +1993,8 @@ describe('HiDockDeviceService - Activity Log Copy', () => {
   })
 })
 
-describe('HiDockDeviceService - Refresh Device Info', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Refresh Device Info', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2023,12 +2023,12 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     // Not connected
     mockJensen.isConnected.mockReturnValue(false)
@@ -2040,7 +2040,7 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
   })
 
   it('should call jensen.getDeviceInfo when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Simulate connected state
@@ -2061,7 +2061,7 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
   })
 
   it('should update state with device info', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2083,7 +2083,7 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
   })
 
   it('should log activity when getting device info', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2107,7 +2107,7 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
   })
 
   it('should log error when device info fails', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2124,7 +2124,7 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
   })
 
   it('should notify state change after updating device info', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2149,8 +2149,8 @@ describe('HiDockDeviceService - Refresh Device Info', () => {
   })
 })
 
-describe('HiDockDeviceService - Refresh Storage Info', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Refresh Storage Info', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2177,12 +2177,12 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -2193,7 +2193,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should call jensen.getCardInfo when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2212,7 +2212,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should convert MiB to bytes correctly', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2234,7 +2234,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should calculate free percent correctly', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2254,7 +2254,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should handle zero capacity', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2274,7 +2274,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should set default storage on null card info', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2293,7 +2293,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should log error on null card info', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2310,7 +2310,7 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 
   it('should handle card info exception', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2330,8 +2330,8 @@ describe('HiDockDeviceService - Refresh Storage Info', () => {
   })
 })
 
-describe('HiDockDeviceService - Refresh Settings', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Refresh Settings', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2360,12 +2360,12 @@ describe('HiDockDeviceService - Refresh Settings', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -2376,7 +2376,7 @@ describe('HiDockDeviceService - Refresh Settings', () => {
   })
 
   it('should call jensen.getSettings when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2395,7 +2395,7 @@ describe('HiDockDeviceService - Refresh Settings', () => {
   })
 
   it('should update state with settings', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2414,7 +2414,7 @@ describe('HiDockDeviceService - Refresh Settings', () => {
   })
 
   it('should log error when settings fail', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2431,8 +2431,8 @@ describe('HiDockDeviceService - Refresh Settings', () => {
   })
 })
 
-describe('HiDockDeviceService - Sync Time', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Sync Time', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2461,12 +2461,12 @@ describe('HiDockDeviceService - Sync Time', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -2477,7 +2477,7 @@ describe('HiDockDeviceService - Sync Time', () => {
   })
 
   it('should call jensen.setTime when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2492,7 +2492,7 @@ describe('HiDockDeviceService - Sync Time', () => {
   })
 
   it('should return true on success', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2506,7 +2506,7 @@ describe('HiDockDeviceService - Sync Time', () => {
   })
 
   it('should return false on failure', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2520,7 +2520,7 @@ describe('HiDockDeviceService - Sync Time', () => {
   })
 
   it('should log success on successful sync', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2537,7 +2537,7 @@ describe('HiDockDeviceService - Sync Time', () => {
   })
 
   it('should log error on failed sync', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2554,8 +2554,8 @@ describe('HiDockDeviceService - Sync Time', () => {
   })
 })
 
-describe('HiDockDeviceService - Get Recording Count', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Get Recording Count', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2584,12 +2584,12 @@ describe('HiDockDeviceService - Get Recording Count', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return 0 when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -2600,7 +2600,7 @@ describe('HiDockDeviceService - Get Recording Count', () => {
   })
 
   it('should call jensen.getFileCount when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2615,7 +2615,7 @@ describe('HiDockDeviceService - Get Recording Count', () => {
   })
 
   it('should update state with recording count', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2630,7 +2630,7 @@ describe('HiDockDeviceService - Get Recording Count', () => {
   })
 
   it('should handle missing count property', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2644,7 +2644,7 @@ describe('HiDockDeviceService - Get Recording Count', () => {
   })
 
   it('should log activity when getting recording count', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2664,7 +2664,7 @@ describe('HiDockDeviceService - Get Recording Count', () => {
   })
 
   it('should notify state change after updating count', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2683,8 +2683,8 @@ describe('HiDockDeviceService - Get Recording Count', () => {
   })
 })
 
-describe('HiDockDeviceService - List Recordings Not Connected', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - List Recordings Not Connected', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2714,12 +2714,12 @@ describe('HiDockDeviceService - List Recordings Not Connected', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return empty array when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -2730,7 +2730,7 @@ describe('HiDockDeviceService - List Recordings Not Connected', () => {
   })
 
   it('should log error when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -2745,8 +2745,8 @@ describe('HiDockDeviceService - List Recordings Not Connected', () => {
   })
 })
 
-describe('HiDockDeviceService - List Recordings Debounce', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - List Recordings Debounce', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2776,12 +2776,12 @@ describe('HiDockDeviceService - List Recordings Debounce', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return cached recordings within debounce window', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Simulate connected state
@@ -2811,7 +2811,7 @@ describe('HiDockDeviceService - List Recordings Debounce', () => {
   })
 
   it('should call progress callback with cached data in debounce', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2838,7 +2838,7 @@ describe('HiDockDeviceService - List Recordings Debounce', () => {
   })
 
   it('should bypass debounce when forceRefresh is true', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2879,8 +2879,8 @@ describe('HiDockDeviceService - List Recordings Debounce', () => {
   })
 })
 
-describe('HiDockDeviceService - List Recordings Lock Cases', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - List Recordings Lock Cases', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -2910,12 +2910,12 @@ describe('HiDockDeviceService - List Recordings Lock Cases', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return cached recordings when download lock is held', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2944,7 +2944,7 @@ describe('HiDockDeviceService - List Recordings Lock Cases', () => {
   })
 
   it('should return empty array when download lock is held and no cache', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2959,7 +2959,7 @@ describe('HiDockDeviceService - List Recordings Lock Cases', () => {
   })
 
   it('should return cached recordings when delete lock is held', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -2987,7 +2987,7 @@ describe('HiDockDeviceService - List Recordings Lock Cases', () => {
   })
 
   it('should call progress callback when returning cached due to lock', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3015,8 +3015,8 @@ describe('HiDockDeviceService - List Recordings Lock Cases', () => {
   })
 })
 
-describe('HiDockDeviceService - Delete Recording', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Delete Recording', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -3046,12 +3046,12 @@ describe('HiDockDeviceService - Delete Recording', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -3062,7 +3062,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should call jensen.deleteFile when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3076,7 +3076,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should return true on successful delete', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3090,7 +3090,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should return false on failed delete', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3104,7 +3104,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should log success on successful delete', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3122,7 +3122,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should invalidate cache on successful delete', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3141,7 +3141,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should log error on failed delete', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3158,7 +3158,7 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 
   it('should validate filenames before deleting', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3176,8 +3176,8 @@ describe('HiDockDeviceService - Delete Recording', () => {
   })
 })
 
-describe('HiDockDeviceService - Format Storage', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Format Storage', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -3208,12 +3208,12 @@ describe('HiDockDeviceService - Format Storage', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -3224,7 +3224,7 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 
   it('should call jensen.formatCard when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3239,7 +3239,7 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 
   it('should return true on successful format', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3254,7 +3254,7 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 
   it('should return false on failed format', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3268,7 +3268,7 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 
   it('should invalidate cache on successful format', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3288,7 +3288,7 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 
   it('should throw error on format exception', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3300,7 +3300,7 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 
   it('should invalidate cache on format exception', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3320,8 +3320,8 @@ describe('HiDockDeviceService - Format Storage', () => {
   })
 })
 
-describe('HiDockDeviceService - Set Auto Record', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Set Auto Record', () => {
+  let RecorderDeviceService: any
   let mockJensen: any
 
   beforeEach(async () => {
@@ -3351,12 +3351,12 @@ describe('HiDockDeviceService - Set Auto Record', () => {
       }
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
 
     mockJensen.isConnected.mockReturnValue(false)
 
@@ -3367,7 +3367,7 @@ describe('HiDockDeviceService - Set Auto Record', () => {
   })
 
   it('should call jensen.setAutoRecord when connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3382,7 +3382,7 @@ describe('HiDockDeviceService - Set Auto Record', () => {
   })
 
   it('should return true on success', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3397,7 +3397,7 @@ describe('HiDockDeviceService - Set Auto Record', () => {
   })
 
   it('should update state settings on success', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3412,7 +3412,7 @@ describe('HiDockDeviceService - Set Auto Record', () => {
   })
 
   it('should return false on failure', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.state.connected = true
@@ -3426,8 +3426,8 @@ describe('HiDockDeviceService - Set Auto Record', () => {
   })
 })
 
-describe('HiDockDeviceService - QA Logging Path', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - QA Logging Path', () => {
+  let RecorderDeviceService: any
   let mockShouldLogQa: any
 
   beforeEach(async () => {
@@ -3440,12 +3440,12 @@ describe('HiDockDeviceService - QA Logging Path', () => {
       shouldLogQa: mockShouldLogQa
     }))
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should log activity notification count when QA logging is enabled', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     // Add a listener so the count is non-zero
@@ -3465,19 +3465,19 @@ describe('HiDockDeviceService - QA Logging Path', () => {
   })
 })
 
-describe('HiDockDeviceService - persistCacheToStorage', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - persistCacheToStorage', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should return early when cachedRecordings is empty', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Ensure no cached recordings
@@ -3489,7 +3489,7 @@ describe('HiDockDeviceService - persistCacheToStorage', () => {
   })
 
   it('should return early when cachedRecordings is null', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     serviceAny.cachedRecordings = null
@@ -3499,7 +3499,7 @@ describe('HiDockDeviceService - persistCacheToStorage', () => {
   })
 
   it('should convert recordings and call deviceCache.saveAll', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const mockSaveAll = vi.fn().mockResolvedValue(undefined)
@@ -3533,19 +3533,19 @@ describe('HiDockDeviceService - persistCacheToStorage', () => {
   })
 })
 
-describe('HiDockDeviceService - Constructor Callbacks', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Constructor Callbacks', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should set onconnect and ondisconnect callbacks on jensen device', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     expect(serviceAny.jensen.onconnect).toBeDefined()
@@ -3555,7 +3555,7 @@ describe('HiDockDeviceService - Constructor Callbacks', () => {
   })
 
   it('should call handleConnect when onconnect callback fires', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Spy on handleConnect
@@ -3569,7 +3569,7 @@ describe('HiDockDeviceService - Constructor Callbacks', () => {
   })
 
   it('should call handleDisconnect when ondisconnect callback fires', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const handleDisconnectSpy = vi.spyOn(serviceAny, 'handleDisconnect').mockImplementation(() => {})
@@ -3581,19 +3581,19 @@ describe('HiDockDeviceService - Constructor Callbacks', () => {
   })
 })
 
-describe('HiDockDeviceService - persistCacheToStorage error path', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - persistCacheToStorage error path', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('should handle saveAll rejection gracefully', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -3623,7 +3623,7 @@ describe('HiDockDeviceService - persistCacheToStorage error path', () => {
   })
 
   it('should use current date when dateCreated is missing', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     const mockSaveAll = vi.fn().mockResolvedValue(undefined)
@@ -3650,63 +3650,63 @@ describe('HiDockDeviceService - persistCacheToStorage error path', () => {
   })
 })
 
-describe('HiDockDeviceService - Realtime/Battery/Bluetooth (not connected)', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - Realtime/Battery/Bluetooth (not connected)', () => {
+  let RecorderDeviceService: any
 
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   it('getRealtimeSettings returns null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.getRealtimeSettings()).toBeNull()
   })
 
   it('startRealtime returns false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.startRealtime()).toBe(false)
   })
 
   it('pauseRealtime returns false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.pauseRealtime()).toBe(false)
   })
 
   it('stopRealtime returns false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.stopRealtime()).toBe(false)
   })
 
   it('getRealtimeData returns null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.getRealtimeData(0)).toBeNull()
   })
 
   it('getBatteryStatus returns null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.getBatteryStatus()).toBeNull()
   })
 
   it('startBluetoothScan returns false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.startBluetoothScan()).toBe(false)
   })
 
   it('stopBluetoothScan returns false when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.stopBluetoothScan()).toBe(false)
   })
 
   it('getBluetoothStatus returns null when not connected', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     expect(await service.getBluetoothStatus()).toBeNull()
   })
 
   it('isP1Device delegates to jensen', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
     serviceAny.jensen.isP1Device = vi.fn(() => true)
     expect(service.isP1Device()).toBe(true)
@@ -3715,15 +3715,15 @@ describe('HiDockDeviceService - Realtime/Battery/Bluetooth (not connected)', () 
   })
 })
 
-describe('HiDockDeviceService - Singleton Factory', () => {
+describe('RecorderDeviceService - Singleton Factory', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
   })
 
-  it('getHiDockDeviceService returns same instance on repeated calls', async () => {
-    const module = await import('../hidock-device')
-    const getService = (module as any).getHiDockDeviceService
+  it('getRecorderDeviceService returns same instance on repeated calls', async () => {
+    const module = await import('../recorder-device')
+    const getService = (module as any).getRecorderDeviceService
 
     const instance1 = getService()
     const instance2 = getService()

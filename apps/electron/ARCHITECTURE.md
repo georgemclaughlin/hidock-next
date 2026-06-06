@@ -1,6 +1,6 @@
 # Architecture
 
-This fork keeps the Electron app as the only maintained runtime. The architecture is local-first and oriented around HiDock recordings.
+This fork keeps the Electron app as the only maintained runtime. The architecture is local-first and oriented around device recordings.
 
 ## Process Model
 
@@ -54,7 +54,7 @@ The app can still open external links through Electron shell behavior, but recor
 ### Device Download
 
 1. The renderer requests device status or file actions through IPC.
-2. Main-process USB/Jensen services communicate with the HiDock device.
+2. Main-process USB/Jensen services communicate with the device.
 3. Downloaded recordings are stored under the configured local storage path.
 4. SQLite metadata tracks device/local state.
 
@@ -62,8 +62,8 @@ The app can still open external links through Electron shell behavior, but recor
 
 1. A recording is queued for transcription.
 2. `services/transcription.ts` selects the configured local engine.
-3. Parakeet runs through a configured Python command and local NeMo model cache.
-4. Whisper runs through a configured local CLI command.
+3. The native sidecar runs Parakeet or Whisper locally.
+4. Python/CLI transcription commands remain fallback paths when the sidecar is unavailable.
 5. Transcript text is written to SQLite.
 6. The vector store attempts to index the transcript through local Ollama embeddings.
 
@@ -79,14 +79,14 @@ The app can still open external links through Electron shell behavior, but recor
 Default recording storage:
 
 ```text
-~/HiDock/
+~/LocalRecorder/
 ```
 
 Typical contents:
 
 ```text
-~/HiDock/
-  data/hidock.db
+~/LocalRecorder/
+  data/recorder.db
   recordings/
   transcripts/
 ```

@@ -16,13 +16,13 @@ jobs:
         include:
           - os: windows-latest
             command: npm run build:win
-            artifact: hidock-local-windows
+            artifact: local-recorder-windows
           - os: macos-latest
             command: npm run build:mac
-            artifact: hidock-local-macos
+            artifact: local-recorder-macos
           - os: ubuntu-latest
             command: npm run build:linux
-            artifact: hidock-local-linux
+            artifact: local-recorder-linux
 
     runs-on: ${{ matrix.os }}
 

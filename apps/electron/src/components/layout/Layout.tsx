@@ -151,7 +151,7 @@ export function Layout({ children }: LayoutProps) {
     // Show toast on connection state change
     if (wasConnected !== isNowConnected) {
       if (isNowConnected) {
-        const modelName = deviceState.model?.replace('hidock-', '').toUpperCase() || 'Device'
+        const modelName = deviceState.model?.replace('recorder-', '').toUpperCase() || 'Device'
         toast({
           title: 'Device Connected',
           description: `${modelName} is ready to use`,
@@ -163,7 +163,7 @@ export function Layout({ children }: LayoutProps) {
         if (hasShownInitialToast.current) {
           toast({
             title: 'Device Disconnected',
-            description: 'HiDock has been disconnected',
+            description: 'Device has been disconnected',
             variant: 'default'
           })
         }
@@ -206,7 +206,7 @@ export function Layout({ children }: LayoutProps) {
   const isConnected = deviceState.connected
   const isConnecting = connectionStatus.step !== 'idle' && connectionStatus.step !== 'ready' && connectionStatus.step !== 'error'
   const isScanning = connectionStatus.step === 'counting-files'
-  const deviceModel = deviceState.model?.replace('hidock-', '').toUpperCase() || 'Device'
+  const deviceModel = deviceState.model?.replace('recorder-', '').toUpperCase() || 'Device'
 
   return (
     <div className="flex h-screen bg-background">
@@ -223,7 +223,7 @@ export function Layout({ children }: LayoutProps) {
         {/* Logo/Header - matching page header height (text-2xl + py-4 = ~85px) */}
         <div className="flex h-[85px] items-center justify-between border-b border-slate-700 px-4 titlebar-drag-region">
           {sidebarOpen && (
-            <span className="font-bold text-2xl titlebar-no-drag">HiDock Next</span>
+            <span className="font-bold text-2xl titlebar-no-drag">Local Recorder</span>
           )}
           <Button
             variant="ghost"

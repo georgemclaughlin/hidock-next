@@ -5,7 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SecurityWarningBanner } from '@/components/SecurityWarningBanner'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { ToastProvider } from '@/components/ui/toaster'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 import { NavigationLogger, initInteractionLogger, initErrorLogger, cleanupQAMonitor } from '@/services/qa-monitor'
 import { lazyWithRetry } from '@/lib/lazyWithRetry'
 
@@ -30,7 +30,7 @@ function App(): React.ReactElement {
     initInteractionLogger();
     initErrorLogger();
 
-    const deviceService = getHiDockDeviceService()
+    const deviceService = getRecorderDeviceService()
     deviceService.initAutoConnect()
 
     // Critical: Disconnect device when window closes to release USB interface

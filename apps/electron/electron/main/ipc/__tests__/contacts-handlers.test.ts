@@ -54,7 +54,7 @@ describe('Contacts IPC Handlers', () => {
       email: 'mario@example.com',
       type: 'team',
       role: 'Dev',
-      company: 'HiDock',
+      company: 'Acme',
       notes: 'Notes',
       tags: '["tag1"]',
       firstSeenAt: '2025-01-01',
@@ -75,7 +75,7 @@ describe('Contacts IPC Handlers', () => {
     const person = result.data.contacts[0]
     expect(person.type).toBe('team')
     expect(person.role).toBe('Dev')
-    expect(person.company).toBe('HiDock')
+    expect(person.company).toBe('Acme')
     expect(person.tags).toEqual(['tag1'])
   })
 

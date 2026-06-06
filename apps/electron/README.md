@@ -1,8 +1,8 @@
-# HiDock Local Electron App
+# Local Recorder Electron App
 
 This is the only maintained application in this fork.
 
-It provides a local workflow for HiDock recorders:
+It provides a local workflow for compatible USB recorders:
 
 1. Connect a device over USB.
 2. Browse and download recordings.
@@ -18,7 +18,7 @@ No hosted transcription provider is configured in this supported path.
 - npm
 - Rust and CMake for the local transcription sidecar
 - Electron-compatible desktop environment
-- USB access to the HiDock device
+- USB access to the recorder device
 - Optional: Ollama for transcript chat/search
 
 Linux/WSL packaging may also need libudev development headers for the existing USB native module, for example `sudo apt install libudev-dev`. If the `usb` native rebuild fails with C++ language feature errors, run packaging with `CXXFLAGS="-std=c++17"`.
@@ -69,7 +69,7 @@ npx vitest run \
 Default recording storage is:
 
 ```text
-~/HiDock/
+~/LocalRecorder/
 ```
 
 The Electron config file is stored under Electron's per-user app data directory for the current OS. The storage path can be changed in app settings.
@@ -77,8 +77,8 @@ The Electron config file is stored under Electron's per-user app data directory 
 Typical local data:
 
 ```text
-~/HiDock/
-  data/hidock.db
+~/LocalRecorder/
+  data/recorder.db
   recordings/
   transcripts/
 ```
@@ -93,7 +93,7 @@ Build or refresh the sidecar:
 npm run build:transcriber
 ```
 
-Use `Settings -> Local Transcription -> Download Model` to download the selected model. Model files are stored under the local HiDock data directory.
+Use `Settings -> Local Transcription -> Download Model` to download the selected model. Model files are stored under the local app data directory.
 
 ### Parakeet
 

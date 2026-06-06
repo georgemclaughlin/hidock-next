@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS meetings (
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Recordings from HiDock device
+-- Recordings from device
 CREATE TABLE IF NOT EXISTS recordings (
     id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS recordings (
     on_device INTEGER DEFAULT 1,
     device_last_seen TEXT,
     on_local INTEGER DEFAULT 0,
-    source TEXT DEFAULT 'hidock',
+    source TEXT DEFAULT 'recorder',
     is_imported INTEGER DEFAULT 0,
     storage_tier TEXT DEFAULT NULL CHECK(storage_tier IN (NULL, 'hot', 'warm', 'cold', 'archive')),
     -- Migration tracking columns (v11)
@@ -523,7 +523,7 @@ const MIGRATIONS: Record<number, () => void> = {
       "ALTER TABLE recordings ADD COLUMN on_device INTEGER DEFAULT 1",
       "ALTER TABLE recordings ADD COLUMN device_last_seen TEXT",
       "ALTER TABLE recordings ADD COLUMN on_local INTEGER DEFAULT 0",
-      "ALTER TABLE recordings ADD COLUMN source TEXT DEFAULT 'hidock'",
+      "ALTER TABLE recordings ADD COLUMN source TEXT DEFAULT 'recorder'",
       "ALTER TABLE recordings ADD COLUMN is_imported INTEGER DEFAULT 0"
     ]
 
@@ -1951,7 +1951,7 @@ export interface Recording {
   on_device: number
   device_last_seen?: string
   on_local: number
-  source: 'hidock' | 'import' | 'external'
+  source: 'recorder' | 'import' | 'external'
   is_imported: number
   storage_tier?: 'hot' | 'warm' | 'cold' | 'archive' | null
   // Migration fields (for Phase 0 -> Phase 1 migration)
@@ -2054,7 +2054,7 @@ export function upsertRecordingFromDevice(deviceFile: {
     run(
       `INSERT INTO recordings (id, filename, file_path, file_size, duration_seconds, date_recorded,
         status, location, transcription_status, on_device, device_last_seen, on_local, source, is_imported)
-       VALUES (?, ?, NULL, ?, ?, ?, 'none', 'device-only', 'none', 1, ?, 0, 'hidock', 0)`,
+       VALUES (?, ?, NULL, ?, ?, ?, 'none', 'device-only', 'none', 1, ?, 0, 'recorder', 0)`,
       [id, deviceFile.filename, deviceFile.size, deviceFile.duration, deviceFile.dateCreated.toISOString(), now]
     )
     return getRecordingById(id)!

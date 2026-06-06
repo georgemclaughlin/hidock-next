@@ -130,7 +130,7 @@ export function parseError(error: unknown, context: string = ''): LibraryError {
       message: 'Device disconnected',
       recoverable: true,
       retryable: true,
-      details: 'Reconnect your HiDock device to continue.'
+      details: 'Reconnect your device to continue.'
     }
   }
 
@@ -169,7 +169,7 @@ export function getErrorMessage(type: LibraryErrorType): string {
     transcription_failed: 'Transcription failed. Please try again.',
     transcription_timeout: 'Transcription timed out. Try again with a shorter audio file.',
     transcription_rate_limit: 'Transcription service is busy. Please wait and try again.',
-    device_disconnected: 'Device disconnected. Please reconnect your HiDock.',
+    device_disconnected: 'Device disconnected. Please reconnect your device.',
     network_error: 'Network error. Check your connection and try again.',
     unknown: 'An unexpected error occurred. Please try again.'
   }

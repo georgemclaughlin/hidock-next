@@ -122,7 +122,7 @@ export const useUIStore = create<UIStore>()(
   },
     }),
     {
-      name: 'hidock-ui-store',
+      name: 'recorder-ui-store',
       storage: createJSONStorage(() => localStorage),
       // Only persist user preferences, NOT transient playback/waveform state
       partialize: (state) => ({

@@ -51,12 +51,12 @@ interface RunResult {
 }
 
 function sidecarBinaryName(): string {
-  return process.platform === 'win32' ? 'hidock-transcriber.exe' : 'hidock-transcriber'
+  return process.platform === 'win32' ? 'recorder-transcriber.exe' : 'recorder-transcriber'
 }
 
 export function getNativeTranscriberPath(): string | null {
   const binaryName = sidecarBinaryName()
-  const configuredPath = process.env.HIDOCK_TRANSCRIBER_PATH
+  const configuredPath = process.env.RECORDER_TRANSCRIBER_PATH
   const appPath = app.getAppPath()
 
   const candidates = [

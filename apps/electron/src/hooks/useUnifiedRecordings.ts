@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { getHiDockDeviceService, HiDockRecording } from '@/services/hidock-device'
+import { getRecorderDeviceService, RecorderRecording } from '@/services/recorder-device'
 import { useAppStore } from '@/store/useAppStore'
 import {
   UnifiedRecording,
@@ -47,7 +47,7 @@ function getBaseFilename(filename: string): string {
   return filename.replace(/\.(hda|wav|mp3|m4a|aac|ogg|flac)$/i, '')
 }
 
-// Parse date from HiDock filename formats
+// Parse date from recorder filename formats
 function parseDateFromFilename(filename: string): Date | null {
   const monthNames: Record<string, number> = {
     'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
@@ -74,10 +74,10 @@ function parseDateFromFilename(filename: string): Date | null {
 
 // Get the best date for a recording - parse from filename first (most reliable), then fallback
 function getBestDate(filename: string, deviceDate: Date | null | undefined, fallback: Date): Date {
-  // Always try to parse from filename first - HiDock filenames contain accurate timestamps
+  // Always try to parse from filename first - recorder filenames contain accurate timestamps
   const parsed = parseDateFromFilename(filename)
   if (parsed && !isNaN(parsed.getTime())) {
-    // Note: HiDock filenames appear to be in LOCAL time, not UTC
+    // Note: recorder filenames appear to be in LOCAL time, not UTC
     return parsed
   }
 
@@ -94,7 +94,7 @@ function getBestDate(filename: string, deviceDate: Date | null | undefined, fall
  * Used as fallback when filename matching fails (for wrongly-named downloads)
  */
 function findMatchByDateTime(
-  deviceRec: HiDockRecording,
+  deviceRec: RecorderRecording,
   dbRecs: DatabaseRecording[],
   syncedFiles: SyncedFile[],
   matchedBaseNames: Set<string>,
@@ -131,7 +131,7 @@ function findMatchByDateTime(
 
 // Build unified recordings from multiple sources
 function buildRecordingMap(
-  deviceRecs: HiDockRecording[],
+  deviceRecs: RecorderRecording[],
   dbRecs: DatabaseRecording[],
   syncedFiles: SyncedFile[],
   cachedDeviceFiles: CachedDeviceFile[],
@@ -329,7 +329,7 @@ interface UseUnifiedRecordingsResult {
  * Hook that provides a unified view of all recordings across device and local storage.
  *
  * Merges:
- * - Device recordings (from HiDock device if connected)
+ * - Device recordings (from device if connected)
  * - Database recordings (downloaded/imported files)
  * - Synced files tracking (maps device filenames to local files)
  *
@@ -356,7 +356,7 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
   const lastLoadTimestampRef = useRef(0) // FL-02: Track last load to prevent triple-fire
   const connectionEventCooldownRef = useRef(0) // AUD5-014: Suppress polling right after connection events
 
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
 
   const loadRecordings = useCallback(async (forceRefresh: boolean = false) => {
     console.log('[useUnifiedRecordings] loadRecordings called, forceRefresh:', forceRefresh, 'loadingRef:', loadingRef.current)
@@ -467,7 +467,7 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
         decremented = true
       }
 
-      let deviceRecs: HiDockRecording[] = memoryCachedDeviceRecs
+      let deviceRecs: RecorderRecording[] = memoryCachedDeviceRecs
       if (needsDeviceFetch) {
         try {
           deviceRecs = await deviceService.listRecordings(undefined, forceRefresh)
@@ -589,8 +589,8 @@ export function useUnifiedRecordings(): UseUnifiedRecordingsResult {
       console.log('[useUnifiedRecordings] Downloads completed - refreshing from DB')
       loadRecordings(false)
     }
-    window.addEventListener('hidock:downloads-completed', handleDownloadsCompleted)
-    return () => window.removeEventListener('hidock:downloads-completed', handleDownloadsCompleted)
+    window.addEventListener('recorder:downloads-completed', handleDownloadsCompleted)
+    return () => window.removeEventListener('recorder:downloads-completed', handleDownloadsCompleted)
   }, [loadRecordings])
 
   // Subscribe to recording watcher events for auto-refresh

@@ -38,7 +38,7 @@ interface RecordingBase {
 }
 
 /**
- * Recording that exists only on the HiDock device (not yet downloaded)
+ * Recording that exists only on the device (not yet downloaded)
  */
 export interface DeviceOnlyRecording extends RecordingBase {
   location: 'device-only'

@@ -7,8 +7,8 @@
  * the security check fails silently and returns null.
  *
  * Example:
- *   recordingsPath = "C:\\Users\\Sebastian\\HiDock\\recordings"
- *   filePath from DB = "C:\\users\\sebastian\\hidock\\recordings\\test.wav"
+ *   recordingsPath = "C:\\Users\\Sebastian\\LocalRecorder\\recordings"
+ *   filePath from DB = "C:\\users\\sebastian\\localrecorder\\recordings\\test.wav"
  *   → startsWith() returns false → file read rejected
  */
 
@@ -19,8 +19,8 @@ import { join } from 'path'
 
 describe('FIX-013: Path case sensitivity', () => {
   it('demonstrates that startsWith is case-sensitive', () => {
-    const upper = 'C:\\Users\\Sebastian\\HiDock\\recordings'
-    const lower = 'C:\\users\\sebastian\\hidock\\recordings'
+    const upper = 'C:\\Users\\Sebastian\\LocalRecorder\\recordings'
+    const lower = 'C:\\users\\sebastian\\localrecorder\\recordings'
 
     // JavaScript startsWith is always case-sensitive
     expect(lower.startsWith(upper)).toBe(false)
@@ -31,7 +31,7 @@ describe('FIX-013: Path case sensitivity', () => {
   })
 
   it('should still reject paths outside allowed directories with case-insensitive check', () => {
-    const recordingsPath = 'C:\\Users\\Sebastian\\HiDock\\recordings'
+    const recordingsPath = 'C:\\Users\\Sebastian\\LocalRecorder\\recordings'
     const evilPath = 'C:\\Users\\Sebastian\\evil\\recordings\\test.wav'
 
     const normalizedEvil = normalize(resolve(evilPath))

@@ -220,9 +220,9 @@ describe('registerJensenHandlers', () => {
   })
 
   it('jensen:getModel returns model string', async () => {
-    mockJensen.getModel.mockReturnValue('hidock-h1')
+    mockJensen.getModel.mockReturnValue('recorder-h1')
     const result = await mockHandlers['jensen:getModel'](makeEvent())
-    expect(result).toBe('hidock-h1')
+    expect(result).toBe('recorder-h1')
   })
 
   // -------------------------------------------------------------------------

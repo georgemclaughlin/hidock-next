@@ -1,6 +1,6 @@
 /**
- * HiDock Device Service
- * High-level service for interacting with HiDock devices
+ * Recorder Device Service
+ * High-level service for interacting with Recorder devices
  */
 
 import {
@@ -22,7 +22,7 @@ import { validateDevicePath } from '../utils/path-validation'
 import { withTimeout, isAbortError } from '../utils/timeout'
 import { shouldLogQa } from './qa-monitor'
 
-export interface HiDockRecording {
+export interface RecorderRecording {
   id: string
   filename: string
   size: number
@@ -32,7 +32,7 @@ export interface HiDockRecording {
   signature: string
 }
 
-export interface HiDockDeviceState {
+export interface RecorderDeviceState {
   connected: boolean
   model: DeviceModel
   serialNumber: string | null
@@ -74,7 +74,7 @@ export interface ConnectionStatus {
 type ConnectionListener = (connected: boolean) => void
 type ProgressListener = (progress: DownloadProgress) => void
 type StatusListener = (status: ConnectionStatus) => void
-type StateChangeListener = (state: HiDockDeviceState) => void
+type StateChangeListener = (state: RecorderDeviceState) => void
 
 // Activity log entry for debugging USB communication
 export interface ActivityLogEntry {
@@ -89,9 +89,9 @@ import { MAX_ACTIVITY_LOG_ENTRIES } from '../constants/activity-log'
 
 type ActivityListener = (entry: ActivityLogEntry) => void
 
-class HiDockDeviceService {
+class RecorderDeviceService {
   private jensen: JensenDevice
-  private state: HiDockDeviceState = {
+  private state: RecorderDeviceState = {
     connected: false,
     model: 'unknown',
     serialNumber: null,
@@ -115,7 +115,7 @@ class HiDockDeviceService {
   private activityLog: ActivityLogEntry[] = []
 
   // Recording list cache - avoid re-fetching from device if count unchanged
-  private cachedRecordings: HiDockRecording[] | null = null
+  private cachedRecordings: RecorderRecording[] | null = null
   private cachedRecordingCount: number = -1
 
   // Auto-connect configuration (loaded from main process config)
@@ -137,7 +137,7 @@ class HiDockDeviceService {
   private initializationComplete: boolean = false
 
   // Lock to prevent concurrent listRecordings calls
-  private listRecordingsPromise: Promise<HiDockRecording[]> | null = null
+  private listRecordingsPromise: Promise<RecorderRecording[]> | null = null
   // Synchronous flag to prevent TOCTOU race in listRecordings
   // (set immediately before async work, checked before promise is set)
   private listRecordingsLock: boolean = false
@@ -188,22 +188,22 @@ class HiDockDeviceService {
   // Load auto-connect config from main process config file
   private async loadAutoConnectConfig(): Promise<void> {
     try {
-      if (shouldLogQa()) console.log('[HiDockDevice] Loading config from main process...')
+      if (shouldLogQa()) console.log('[RecorderDevice] Loading config from main process...')
 
       // Wait a small amount for electronAPI to be available (may not be ready immediately)
       let attempts = 0
       const maxAttempts = 20 // Increased to 2 seconds for slower startup
       while (!window.electronAPI?.config?.get && attempts < maxAttempts) {
-        if (shouldLogQa()) console.log(`[HiDockDevice] Waiting for electronAPI... attempt ${attempts + 1}/${maxAttempts}`)
+        if (shouldLogQa()) console.log(`[RecorderDevice] Waiting for electronAPI... attempt ${attempts + 1}/${maxAttempts}`)
         await new Promise((resolve) => setTimeout(resolve, 100))
         attempts++
       }
 
       // Use Electron IPC to get config from main process
       if (window.electronAPI?.config?.get) {
-        if (shouldLogQa()) console.log('[HiDockDevice] electronAPI available, fetching config...')
+        if (shouldLogQa()) console.log('[RecorderDevice] electronAPI available, fetching config...')
         const result = await window.electronAPI.config.get()
-        if (shouldLogQa()) console.log('[HiDockDevice] Config result received:', result?.success)
+        if (shouldLogQa()) console.log('[RecorderDevice] Config result received:', result?.success)
 
         if (result?.success && result?.data?.device) {
           const config = result.data
@@ -211,20 +211,20 @@ class HiDockDeviceService {
           this.autoConnectConfig.enabled = config.device.autoConnect === true
           this.autoConnectConfig.connectOnStartup = config.device.autoConnect === true
           this.configLoaded = true
-          if (shouldLogQa()) console.log(`[HiDockDevice] Config loaded: autoConnect = ${this.autoConnectConfig.enabled}`)
+          if (shouldLogQa()) console.log(`[RecorderDevice] Config loaded: autoConnect = ${this.autoConnectConfig.enabled}`)
         } else if (result?.success) {
-          console.warn('[HiDockDevice] Config loaded but device section missing, defaulting to disabled')
+          console.warn('[RecorderDevice] Config loaded but device section missing, defaulting to disabled')
           this.configLoaded = true // Mark as loaded even without device section
         } else {
-          console.warn('[HiDockDevice] Config load failed, defaulting to disabled')
+          console.warn('[RecorderDevice] Config load failed, defaulting to disabled')
           this.configLoaded = true // Mark as loaded to prevent infinite waiting
         }
       } else {
-        console.warn('[HiDockDevice] electronAPI.config not available after waiting, auto-connect will be disabled')
+        console.warn('[RecorderDevice] electronAPI.config not available after waiting, auto-connect will be disabled')
         this.configLoaded = true // Mark as loaded to prevent infinite waiting
       }
     } catch (error) {
-      console.error('[HiDockDevice] Failed to load auto-connect config:', error)
+      console.error('[RecorderDevice] Failed to load auto-connect config:', error)
       this.configLoaded = true // Mark as loaded to prevent infinite waiting
     }
   }
@@ -302,37 +302,37 @@ class HiDockDeviceService {
     // CRITICAL: Synchronous guard BEFORE any async work
     // This prevents duplicate initialization from React StrictMode double-invoking effects
     if (this.initAutoConnectStarted) {
-      if (shouldLogQa()) console.log('[HiDockDevice] initAutoConnect: Already started (sync guard), skipping')
+      if (shouldLogQa()) console.log('[RecorderDevice] initAutoConnect: Already started (sync guard), skipping')
       return
     }
     this.initAutoConnectStarted = true // Set immediately, before any await
 
     // Prevent duplicate initialization - check interval OR if already connected
     if (this.autoConnectInterval) {
-      if (shouldLogQa()) console.log('[HiDockDevice] initAutoConnect: Already initialized, skipping')
+      if (shouldLogQa()) console.log('[RecorderDevice] initAutoConnect: Already initialized, skipping')
       return
     }
 
     // If already connected, don't try to reconnect (handles HMR scenarios)
     if (this.state.connected) {
-      if (shouldLogQa()) console.log('[HiDockDevice] initAutoConnect: Already connected, skipping')
+      if (shouldLogQa()) console.log('[RecorderDevice] initAutoConnect: Already connected, skipping')
       return
     }
 
-    if (shouldLogQa()) console.log('[HiDockDevice] initAutoConnect: Waiting for config to load...')
+    if (shouldLogQa()) console.log('[RecorderDevice] initAutoConnect: Waiting for config to load...')
 
     // Wait for the config load promise to complete
     if (this.configLoadPromise) {
       try {
         await this.configLoadPromise
       } catch (error) {
-        console.error('[HiDockDevice] initAutoConnect: Config load promise failed:', error)
+        console.error('[RecorderDevice] initAutoConnect: Config load promise failed:', error)
       }
     }
 
     // Double-check with polling if needed (in case promise completed before we awaited it)
     if (!this.configLoaded) {
-      if (shouldLogQa()) console.log('[HiDockDevice] initAutoConnect: Config not yet loaded, waiting...')
+      if (shouldLogQa()) console.log('[RecorderDevice] initAutoConnect: Config not yet loaded, waiting...')
       // Wait up to 2 seconds for config to load
       for (let i = 0; i < 20; i++) {
         await new Promise((resolve) => setTimeout(resolve, 100))
@@ -340,7 +340,7 @@ class HiDockDeviceService {
       }
     }
 
-    if (shouldLogQa()) console.log(`[HiDockDevice] initAutoConnect: Config loaded=${this.configLoaded}, enabled=${this.autoConnectConfig.enabled}, connectOnStartup=${this.autoConnectConfig.connectOnStartup}`)
+    if (shouldLogQa()) console.log(`[RecorderDevice] initAutoConnect: Config loaded=${this.configLoaded}, enabled=${this.autoConnectConfig.enabled}, connectOnStartup=${this.autoConnectConfig.connectOnStartup}`)
 
     // Silently start auto-connect if enabled - no activity log spam
     if (this.autoConnectConfig.enabled && this.autoConnectConfig.connectOnStartup) {
@@ -419,23 +419,23 @@ class HiDockDeviceService {
 
     this.autoConnectInProgress = true
     try {
-      this.logActivity('info', 'Auto-connect', 'Checking for authorized HiDock devices...')
+      this.logActivity('info', 'Auto-connect', 'Checking for authorized Recorder devices...')
 
       const authorizedDevices = await navigator.usb.getDevices()
-      const authorizedHiDock = authorizedDevices.find((device) => {
+      const authorizedRecorder = authorizedDevices.find((device) => {
         if (!USB_VENDOR_IDS.includes(device.vendorId)) {
           return false
         }
 
         const productName = device.productName?.toLowerCase() ?? ''
-        if (productName.includes('hidock') || productName.includes('jensen')) {
+        if (productName.includes('recorder') || productName.includes('jensen')) {
           return true
         }
 
         return Object.values(USB_PRODUCT_IDS).includes(device.productId)
       })
 
-      if (!authorizedHiDock) {
+      if (!authorizedRecorder) {
         this.logActivity('info', 'Auto-connect', 'No authorized device found. Click Connect to authorize.')
         return false
       }
@@ -445,7 +445,7 @@ class HiDockDeviceService {
       const timeoutPromise = new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(false), TIMEOUT_MS)
       )
-      const success = await Promise.race([this.jensen.tryConnect(authorizedHiDock), timeoutPromise])
+      const success = await Promise.race([this.jensen.tryConnect(authorizedRecorder), timeoutPromise])
 
       // Note: handleConnect() is called via the onconnect callback in jensen.ts
       // We should NOT call it here to avoid duplicate initialization
@@ -507,11 +507,11 @@ class HiDockDeviceService {
       if (isAbortError(error)) {
         this.updateStatus('error', 'Connection timeout - device not responding', 0)
         this.logActivity('error', 'Connection timeout', 'Device did not respond within 5 seconds')
-        console.error('[HiDockDevice] Connection timeout:', error)
+        console.error('[RecorderDevice] Connection timeout:', error)
       } else {
         this.updateStatus('idle', 'Connection failed')
         this.logActivity('error', 'Connection failed', error instanceof Error ? error.message : 'Unknown error')
-        console.error('[HiDockDevice] Connection error:', error)
+        console.error('[RecorderDevice] Connection error:', error)
       }
       return false
     }
@@ -559,7 +559,7 @@ class HiDockDeviceService {
   }
 
   // Get cached recordings list (available even when disconnected)
-  getCachedRecordings(): HiDockRecording[] {
+  getCachedRecordings(): RecorderRecording[] {
     return this.cachedRecordings || []
   }
 
@@ -580,11 +580,11 @@ class HiDockDeviceService {
 
     // Fire and forget - don't block disconnect
     window.electronAPI.deviceCache.saveAll(cacheEntries).catch(err => {
-      console.warn('[HiDockDevice] Failed to persist cache to storage:', err)
+      console.warn('[RecorderDevice] Failed to persist cache to storage:', err)
     })
   }
 
-  getState(): HiDockDeviceState {
+  getState(): RecorderDeviceState {
     return { ...this.state }
   }
 
@@ -667,7 +667,7 @@ class HiDockDeviceService {
     // Notify listeners - log count for debugging
     const listenerCount = this.activityListeners.size
     if (shouldLogQa()) {
-      console.log(`[HiDockDevice] logActivity: ${type} "${message}" - notifying ${listenerCount} listeners`)
+      console.log(`[RecorderDevice] logActivity: ${type} "${message}" - notifying ${listenerCount} listeners`)
     }
 
     for (const listener of this.activityListeners) {
@@ -746,7 +746,7 @@ class HiDockDeviceService {
         try {
           await this.getRecordingCount()
         } catch (e) {
-          console.warn('[HiDockDevice] Failed to get file count during storage info:', e)
+          console.warn('[RecorderDevice] Failed to get file count during storage info:', e)
         }
 
         this.notifyStateChange()
@@ -811,10 +811,10 @@ class HiDockDeviceService {
   async listRecordings(
     onProgress?: (filesFound: number, expectedFiles: number) => void,
     forceRefresh: boolean = false
-  ): Promise<HiDockRecording[]> {
-    if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings ENTRY, connected:', this.isConnected(), 'initialized:', this.initializationComplete, 'forceRefresh:', forceRefresh)
+  ): Promise<RecorderRecording[]> {
+    if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings ENTRY, connected:', this.isConnected(), 'initialized:', this.initializationComplete, 'forceRefresh:', forceRefresh)
     if (!this.isConnected()) {
-      if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: NOT CONNECTED, returning []')
+      if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: NOT CONNECTED, returning []')
       this.logActivity('error', 'Cannot list files', 'Device not connected')
       return []
     }
@@ -823,8 +823,8 @@ class HiDockDeviceService {
     // return cached data (prevents triple-fire on device connection/ready/poll)
     if (!forceRefresh && this.cachedRecordings !== null) {
       const timeSinceLast = Date.now() - this.listRecordingsLastCompleted
-      if (timeSinceLast < HiDockDeviceService.LIST_RECORDINGS_DEBOUNCE_MS) {
-        if (shouldLogQa()) console.log(`[HiDockDevice] >>> listRecordings: DEBOUNCED (${timeSinceLast}ms since last), returning cached`)
+      if (timeSinceLast < RecorderDeviceService.LIST_RECORDINGS_DEBOUNCE_MS) {
+        if (shouldLogQa()) console.log(`[RecorderDevice] >>> listRecordings: DEBOUNCED (${timeSinceLast}ms since last), returning cached`)
         onProgress?.(this.cachedRecordings.length, this.cachedRecordings.length)
         return this.cachedRecordings
       }
@@ -836,7 +836,7 @@ class HiDockDeviceService {
 
       // After 5+ failures, stop auto-retrying entirely until user forces refresh
       if (this.listRecordingsFailureCount >= 5) {
-        if (shouldLogQa()) console.log('[HiDockDevice] listRecordings: backoff - 5+ failures, stopped auto-retry')
+        if (shouldLogQa()) console.log('[RecorderDevice] listRecordings: backoff - 5+ failures, stopped auto-retry')
         this.logActivity('error', 'File listing failed repeatedly', 'Please disconnect and reconnect your device')
         return this.cachedRecordings ?? []
       }
@@ -844,7 +844,7 @@ class HiDockDeviceService {
       // After 3+ failures use 60s delay, otherwise 10s delay
       const backoffMs = this.listRecordingsFailureCount >= 3 ? 60_000 : 10_000
       if (timeSinceFailure < backoffMs) {
-        if (shouldLogQa()) console.log(`[HiDockDevice] listRecordings: backoff - ${this.listRecordingsFailureCount} failures, waiting ${backoffMs / 1000}s`)
+        if (shouldLogQa()) console.log(`[RecorderDevice] listRecordings: backoff - ${this.listRecordingsFailureCount} failures, waiting ${backoffMs / 1000}s`)
         return this.cachedRecordings ?? []
       }
     }
@@ -852,7 +852,7 @@ class HiDockDeviceService {
     // FL-01/FL-08: forceRefresh must wait for existing operation to complete,
     // then start a new one — never run concurrently
     if (forceRefresh && (this.listRecordingsLock || this.listRecordingsPromise)) {
-      if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: forceRefresh waiting for existing operation to complete')
+      if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: forceRefresh waiting for existing operation to complete')
       if (this.listRecordingsPromise) {
         try {
           await this.listRecordingsPromise
@@ -869,7 +869,7 @@ class HiDockDeviceService {
     if (lockHolder) {
       // Case 1: File listing already in progress - wait for in-flight promise
       if (lockHolder === 'listFiles' && this.listRecordingsPromise) {
-        if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: listFiles lock held, waiting for in-flight promise')
+        if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: listFiles lock held, waiting for in-flight promise')
         try {
           const result = await this.listRecordingsPromise
           onProgress?.(result.length, this.state.recordingCount || result.length)
@@ -880,7 +880,7 @@ class HiDockDeviceService {
       }
       // Case 2: Download in progress - protect by returning cached data
       if (lockHolder.startsWith('downloadFile:')) {
-        if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: download in progress, returning cached')
+        if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: download in progress, returning cached')
         if (this.cachedRecordings !== null) {
           onProgress?.(this.cachedRecordings.length, this.cachedRecordings.length)
           return this.cachedRecordings
@@ -890,7 +890,7 @@ class HiDockDeviceService {
       }
       // Case 3: Delete in progress - protect it
       if (lockHolder.startsWith('deleteFile:')) {
-        if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: delete in progress, returning cached')
+        if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: delete in progress, returning cached')
         if (this.cachedRecordings !== null) {
           onProgress?.(this.cachedRecordings.length, this.cachedRecordings.length)
           return this.cachedRecordings
@@ -898,13 +898,13 @@ class HiDockDeviceService {
         return []
       }
       // Case 4: Init commands (short-lived) - fall through to init-wait guard
-      if (shouldLogQa()) console.log(`[HiDockDevice] >>> listRecordings: init lock '${lockHolder}' held, falling through to init wait`)
+      if (shouldLogQa()) console.log(`[RecorderDevice] >>> listRecordings: init lock '${lockHolder}' held, falling through to init wait`)
     }
 
     // Wait for initialization to complete before listing files
     // This ensures recordingCount is populated for accurate progress reporting
     if (!this.initializationComplete) {
-      if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: WAITING FOR INIT')
+      if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: WAITING FOR INIT')
       this.logActivity('info', 'Waiting for initialization', 'File list request waiting for device init...')
       // FL-06: Emit periodic status updates so the UI shows "Initializing device..."
       // instead of appearing frozen during the wait
@@ -947,19 +947,19 @@ class HiDockDeviceService {
       expectedFileCount > 0
 
     if (cacheValid) {
-      if (shouldLogQa()) console.log(`[HiDockDevice] >>> listRecordings: CACHE HIT (count unchanged at ${expectedFileCount}), returning ${this.cachedRecordings!.length} files`)
+      if (shouldLogQa()) console.log(`[RecorderDevice] >>> listRecordings: CACHE HIT (count unchanged at ${expectedFileCount}), returning ${this.cachedRecordings!.length} files`)
       onProgress?.(expectedFileCount, expectedFileCount)
       return this.cachedRecordings!
     }
-    if (shouldLogQa()) console.log(`[HiDockDevice] >>> listRecordings: CACHE MISS (cached=${this.cachedRecordingCount}, device=${expectedFileCount}), scanning device`)
+    if (shouldLogQa()) console.log(`[RecorderDevice] >>> listRecordings: CACHE MISS (cached=${this.cachedRecordingCount}, device=${expectedFileCount}), scanning device`)
 
     // Prevent concurrent requests - use synchronous lock to prevent TOCTOU race
     // Check both the lock flag (set synchronously) and promise (set after lock)
     if ((this.listRecordingsLock || this.listRecordingsPromise) && !forceRefresh) {
-      if (shouldLogQa()) console.log('[HiDockDevice] listRecordings: Request already in progress, waiting...')
+      if (shouldLogQa()) console.log('[RecorderDevice] listRecordings: Request already in progress, waiting...')
       // Don't log - this is just coordination between components
       // Wait for the promise if it exists, or poll for it if lock is set but promise not yet
-      const waitForPromise = async (): Promise<HiDockRecording[]> => {
+      const waitForPromise = async (): Promise<RecorderRecording[]> => {
         // Wait for promise to be set (if only lock is set)
         let waitAttempts = 0
         while (this.listRecordingsLock && !this.listRecordingsPromise && waitAttempts < 50) {
@@ -977,7 +977,7 @@ class HiDockDeviceService {
       try {
         const result = await Promise.race([
           waitForPromise(),
-          new Promise<HiDockRecording[]>((_, reject) => {
+          new Promise<RecorderRecording[]>((_, reject) => {
             timeoutId = setTimeout(() => reject(new Error('Timed out waiting for existing request')), 120000)
           })
         ])
@@ -992,7 +992,7 @@ class HiDockDeviceService {
         //   1. Break other concurrent waiters (their waitForPromise() loop sees null and returns [])
         //   2. Start a second concurrent USB operation (Jensen withLock would block it anyway)
         //   3. Create race conditions with the F01 lock-type-aware guard
-        console.warn('[HiDockDevice] listRecordings: Timed out waiting for existing request, returning cached data')
+        console.warn('[RecorderDevice] listRecordings: Timed out waiting for existing request, returning cached data')
         return this.cachedRecordings ?? []
       }
     }
@@ -1006,11 +1006,11 @@ class HiDockDeviceService {
 
     // Only log to console (DEBUG), not activity log - cache invalidation is internal detail
     if (!forceRefresh && this.cachedRecordings !== null && shouldLogQa()) {
-      console.log(`[HiDockDevice] Cache invalid: cached=${this.cachedRecordingCount}, device=${expectedFileCount}`)
+      console.log(`[RecorderDevice] Cache invalid: cached=${this.cachedRecordingCount}, device=${expectedFileCount}`)
     }
 
     this.logActivity('usb-out', 'CMD: List Files', `Requesting list of ${expectedFileCount} total files on device`)
-    if (shouldLogQa()) console.log('[HiDockDevice] >>> listRecordings: CALLING JENSEN.LISTFILES(), expected:', expectedFileCount)
+    if (shouldLogQa()) console.log('[RecorderDevice] >>> listRecordings: CALLING JENSEN.LISTFILES(), expected:', expectedFileCount)
 
     // BUG-002: Update connection status so UI shows scan progress instead of frozen "ready"
     this.updateStatus('counting-files', `Scanning files (0/${expectedFileCount})...`, 0)
@@ -1066,7 +1066,7 @@ class HiDockDeviceService {
           return []
         }
 
-        if (shouldLogQa()) console.log(`[HiDockDevice] listRecordings: Received ${files.length} files`)
+        if (shouldLogQa()) console.log(`[RecorderDevice] listRecordings: Received ${files.length} files`)
         this.logActivity('usb-in', 'File List Received', `${files.length} files found`)
         // User-facing result entry
         if (files.length === 0) {
@@ -1093,7 +1093,7 @@ class HiDockDeviceService {
       } catch (error) {
         animationCancelled = true
         clearInterval(animationInterval)
-        console.error('[HiDockDevice] listRecordings error:', error)
+        console.error('[RecorderDevice] listRecordings error:', error)
         const errorMsg = error instanceof Error ? error.message : 'Unknown error'
         const cachedCount = this.cachedRecordings?.length ?? 0
         this.logActivity('error', 'Failed to list files', `${errorMsg} (returned ${cachedCount} cached files)`)
@@ -1289,7 +1289,7 @@ class HiDockDeviceService {
         const receivedMB = (totalReceived / 1024 / 1024).toFixed(2)
         const expectedMB = (fileSize / 1024 / 1024).toFixed(2)
         const errorMsg = `Download incomplete: received ${receivedMB}MB of ${expectedMB}MB`
-        console.error(`[HiDockDevice] downloadRecordingToFile FAILED: ${filename} - ${errorMsg}`)
+        console.error(`[RecorderDevice] downloadRecordingToFile FAILED: ${filename} - ${errorMsg}`)
         this.logActivity('error', 'Download failed', `${filename}: ${errorMsg}`)
         return false
       }
@@ -1306,7 +1306,7 @@ class HiDockDeviceService {
       // Verify we got all the data
       if (totalLength !== fileSize) {
         const errorMsg = `Data mismatch: got ${totalLength} bytes, expected ${fileSize}`
-        console.error(`[HiDockDevice] downloadRecordingToFile FAILED: ${filename} - ${errorMsg}`)
+        console.error(`[RecorderDevice] downloadRecordingToFile FAILED: ${filename} - ${errorMsg}`)
         this.logActivity('error', 'Download failed', `${filename}: ${errorMsg}`)
         return false
       }
@@ -1322,7 +1322,7 @@ class HiDockDeviceService {
         return true
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-        console.error(`[HiDockDevice] downloadRecordingToFile FAILED to save: ${filename} -`, error)
+        console.error(`[RecorderDevice] downloadRecordingToFile FAILED to save: ${filename} -`, error)
         this.logActivity('error', 'Failed to save file', `${filename}: ${errorMsg}`)
         return false
       }
@@ -1340,7 +1340,7 @@ class HiDockDeviceService {
   cancelDownload(filename: string): boolean {
     const controller = this.abortControllers.get(filename)
     if (controller) {
-      if (shouldLogQa()) console.log(`[HiDockDevice] Cancelling download: ${filename}`)
+      if (shouldLogQa()) console.log(`[RecorderDevice] Cancelling download: ${filename}`)
       controller.abort()
       this.abortControllers.delete(filename)
       this.logActivity('warning', 'Download cancelled', filename)
@@ -1356,7 +1356,7 @@ class HiDockDeviceService {
   cancelAllDownloads(): number {
     let count = 0
     for (const [filename, controller] of this.abortControllers.entries()) {
-      if (shouldLogQa()) console.log(`[HiDockDevice] Cancelling download: ${filename}`)
+      if (shouldLogQa()) console.log(`[RecorderDevice] Cancelling download: ${filename}`)
       controller.abort()
       count++
     }
@@ -1369,14 +1369,14 @@ class HiDockDeviceService {
 
   // Private methods
   private async handleConnect(): Promise<void> {
-    if (shouldLogQa()) console.log('[HiDockDevice] handleConnect called')
+    if (shouldLogQa()) console.log('[RecorderDevice] handleConnect called')
     this.initAborted = false // Reset abort flag on new connection
     this.state.connected = true
     this.state.model = this.jensen.getModel()
     this.notifyStateChange()
 
     this.logActivity('success', 'USB device connected', `Model: ${this.state.model}`)
-    if (shouldLogQa()) console.log(`[HiDockDevice] Connected to ${this.state.model}`)
+    if (shouldLogQa()) console.log(`[RecorderDevice] Connected to ${this.state.model}`)
 
     const INIT_STEP_TIMEOUT = 15000
     const FIRST_CMD_TIMEOUT = 5000
@@ -1410,14 +1410,14 @@ class HiDockDeviceService {
             successCount++
           } catch (retryError) {
             if (isAbortError(retryError)) timeoutCount++
-            console.warn('[HiDockDevice] Failed to get device info (retry):', retryError)
+            console.warn('[RecorderDevice] Failed to get device info (retry):', retryError)
             this.logActivity('error', 'Failed to get device info', retryError instanceof Error ? retryError.message : 'Unknown error')
             this.logActivity('warning', 'Device may be unresponsive', 'Try disconnecting and reconnecting your device')
           }
         }
       } else {
         if (isAbortError(firstError)) timeoutCount++
-        console.warn('[HiDockDevice] Failed to get device info:', firstError)
+        console.warn('[RecorderDevice] Failed to get device info:', firstError)
         this.logActivity('error', 'Failed to get device info', firstError instanceof Error ? firstError.message : 'Unknown error')
       }
     }
@@ -1439,7 +1439,7 @@ class HiDockDeviceService {
     } catch (error) {
       const isTimeout = isAbortError(error)
       if (isTimeout) timeoutCount++
-      console.warn('[HiDockDevice] Failed to get storage info:', error)
+      console.warn('[RecorderDevice] Failed to get storage info:', error)
       this.logActivity('error', 'Failed to get storage info', error instanceof Error ? error.message : 'Unknown error')
     }
 
@@ -1460,7 +1460,7 @@ class HiDockDeviceService {
     } catch (error) {
       const isTimeout = isAbortError(error)
       if (isTimeout) timeoutCount++
-      console.warn('[HiDockDevice] Failed to get settings:', error)
+      console.warn('[RecorderDevice] Failed to get settings:', error)
       this.logActivity('error', 'Failed to get settings', error instanceof Error ? error.message : 'Unknown error')
     }
 
@@ -1484,7 +1484,7 @@ class HiDockDeviceService {
     } catch (error) {
       const isTimeout = isAbortError(error)
       if (isTimeout) timeoutCount++
-      console.warn('[HiDockDevice] Failed to sync time:', error)
+      console.warn('[RecorderDevice] Failed to sync time:', error)
       this.logActivity('error', 'Failed to sync time', error instanceof Error ? error.message : 'Unknown error')
     }
 
@@ -1512,7 +1512,7 @@ class HiDockDeviceService {
           }
         }
       } catch (resetError) {
-        console.warn('[HiDockDevice] USB reset failed:', resetError)
+        console.warn('[RecorderDevice] USB reset failed:', resetError)
       }
 
       if (resetAndReconnected) {
@@ -1587,8 +1587,8 @@ class HiDockDeviceService {
     // FL-09: If a 'ready' status notification just fired (within dedup window),
     // skip the connection change notification for 'connected=true' to prevent
     // duplicate refresh triggers in subscribers
-    if (connected && Date.now() - this.lastReadyStatusTimestamp < HiDockDeviceService.READY_DEDUP_MS) {
-      if (shouldLogQa()) console.log('[HiDockDevice] Skipping notifyConnectionChange(true) - ready status just fired')
+    if (connected && Date.now() - this.lastReadyStatusTimestamp < RecorderDeviceService.READY_DEDUP_MS) {
+      if (shouldLogQa()) console.log('[RecorderDevice] Skipping notifyConnectionChange(true) - ready status just fired')
       return
     }
     for (const listener of this.connectionListeners) {
@@ -1624,7 +1624,7 @@ class HiDockDeviceService {
     }
   }
 
-  private fileInfoToRecording(file: FileInfo): HiDockRecording {
+  private fileInfoToRecording(file: FileInfo): RecorderRecording {
     return {
       id: file.signature || file.name,
       filename: file.name,
@@ -1704,14 +1704,14 @@ class HiDockDeviceService {
 }
 
 // Singleton instance
-let serviceInstance: HiDockDeviceService | null = null
+let serviceInstance: RecorderDeviceService | null = null
 
-export function getHiDockDeviceService(): HiDockDeviceService {
+export function getRecorderDeviceService(): RecorderDeviceService {
   if (!serviceInstance) {
-    serviceInstance = new HiDockDeviceService()
+    serviceInstance = new RecorderDeviceService()
   }
   return serviceInstance
 }
 
-export { HiDockDeviceService }
+export { RecorderDeviceService }
 export type { RealtimeSettings, RealtimeData, BatteryStatus, BluetoothStatus }

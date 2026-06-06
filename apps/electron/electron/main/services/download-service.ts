@@ -96,7 +96,7 @@ class DownloadService {
 
   /**
    * B-DWN-003: Normalize .hda filenames to .mp3 extension
-   * HiDock devices output .hda files which are actually MP3 format
+   * supported devices output .hda files which are actually MP3 format
    */
   static normalizeFilename(filename: string): string {
     return filename.replace(/\.hda$/i, '.mp3')

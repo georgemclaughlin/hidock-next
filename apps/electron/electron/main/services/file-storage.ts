@@ -85,7 +85,7 @@ export function getCachePath(): string {
 }
 
 export function getDatabasePath(): string {
-  return join(getDataPath(), 'data', 'hidock.db')
+  return join(getDataPath(), 'data', 'recorder.db')
 }
 
 

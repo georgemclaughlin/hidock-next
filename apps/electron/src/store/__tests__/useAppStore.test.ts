@@ -21,7 +21,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { useAppStore } from '@/store/useAppStore'
-import type { HiDockDeviceState, ConnectionStatus, ActivityLogEntry } from '@/services/hidock-device'
+import type { RecorderDeviceState, ConnectionStatus, ActivityLogEntry } from '@/services/recorder-device'
 
 // Mock window.electronAPI for async tests
 const mockElectronAPI = {
@@ -109,7 +109,7 @@ describe('useAppStore', () => {
     it('setDeviceState updates full device state', () => {
       const { setDeviceState } = useAppStore.getState()
 
-      const newState: HiDockDeviceState = {
+      const newState: RecorderDeviceState = {
         connected: true,
         model: 'H1' as any,
         serialNumber: 'SN-12345',

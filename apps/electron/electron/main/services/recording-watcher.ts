@@ -197,7 +197,7 @@ async function processNewRecording(filePath: string): Promise<void> {
       on_device: 0,
       on_local: 1,
       transcription_status: 'none',
-      source: 'hidock',
+      source: 'recorder',
       is_imported: 0
     }
 

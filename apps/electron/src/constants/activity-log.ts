@@ -5,7 +5,7 @@
  * across service and store layers.
  */
 
-import type { ActivityLogEntry } from '@/services/hidock-device'
+import type { ActivityLogEntry } from '@/services/recorder-device'
 
 /**
  * Maximum number of activity log entries to retain.

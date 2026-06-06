@@ -1,5 +1,5 @@
-appId: com.hidock.meeting-intelligence
-productName: HiDock Meeting Intelligence
+appId: app.local-recorder.desktop
+productName: Local Recorder
 directories:
   buildResources: resources
   output: dist
@@ -16,14 +16,14 @@ extraResources:
   - from: native/transcriber/target/release
     to: native
     filter:
-      - hidock-transcriber
-      - hidock-transcriber.exe
+      - recorder-transcriber
+      - recorder-transcriber.exe
 win:
   target:
     - target: nsis
       arch:
         - x64
-  executableName: HiDock Meeting Intelligence
+  executableName: Local Recorder
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -48,7 +48,7 @@ linux:
     - target: AppImage
       arch:
         - x64
-  maintainer: hidock.com
+  maintainer: Local Recorder Contributors
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}

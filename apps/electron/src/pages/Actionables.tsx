@@ -580,7 +580,7 @@ export function Actionables() {
                 <h3 className="font-bold text-sm uppercase tracking-wider">How suggestions work</h3>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                HiDock automatically detects the intent to share information or follow up.
+                Local Recorder automatically detects the intent to share information or follow up.
                 For example, after a meeting with a candidate, I'll suggest generating **Interview Feedback**.
               </p>
             </CardContent>

@@ -81,7 +81,7 @@ describe('useUIStore', () => {
 
       setSidebarOpen(false)
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.sidebarOpen).toBe(false)
     })
 
@@ -90,7 +90,7 @@ describe('useUIStore', () => {
 
       setQaLogsEnabled(true)
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.qaLogsEnabled).toBe(true)
     })
 
@@ -101,7 +101,7 @@ describe('useUIStore', () => {
       store.setPlaybackProgress(30, 120)
       store.setIsPlaying(true)
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.currentlyPlayingId).toBeUndefined()
       expect(stored.state.currentlyPlayingPath).toBeUndefined()
       expect(stored.state.playbackCurrentTime).toBeUndefined()
@@ -114,7 +114,7 @@ describe('useUIStore', () => {
 
       store.setWaveformData(new Float32Array([0.1, 0.2, 0.3]))
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.playbackWaveformData).toBeUndefined()
     })
 
@@ -123,7 +123,7 @@ describe('useUIStore', () => {
 
       store.setWaveformLoading('rec-1')
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.waveformLoadingId).toBeUndefined()
       expect(stored.state.waveformLoadingError).toBeUndefined()
       expect(stored.state.waveformLoadedForId).toBeUndefined()
@@ -134,7 +134,7 @@ describe('useUIStore', () => {
 
       selectMeeting('meeting-123')
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.selectedMeetingId).toBeUndefined()
     })
 
@@ -144,7 +144,7 @@ describe('useUIStore', () => {
       store.setGeneratingOutput(true)
       store.setOutputContent('Some generated content')
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.isGeneratingOutput).toBeUndefined()
       expect(stored.state.outputContent).toBeUndefined()
     })
@@ -154,7 +154,7 @@ describe('useUIStore', () => {
 
       setSidebarContent('project')
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.sidebarContent).toBeUndefined()
     })
 
@@ -163,7 +163,7 @@ describe('useUIStore', () => {
 
       setSentimentData([{ startTime: 0, endTime: 10, sentiment: 'positive' }])
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       expect(stored.state.playbackSentimentData).toBeUndefined()
     })
 
@@ -176,7 +176,7 @@ describe('useUIStore', () => {
       store.setCurrentlyPlaying('rec-1', '/path')
       store.setIsPlaying(true)
 
-      const stored = JSON.parse(window.localStorage.getItem('hidock-ui-store') || '{}')
+      const stored = JSON.parse(window.localStorage.getItem('recorder-ui-store') || '{}')
       const persistedKeys = Object.keys(stored.state || {})
 
       expect(persistedKeys).toContain('sidebarOpen')

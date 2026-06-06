@@ -1,11 +1,11 @@
 
 import { describe, it } from 'vitest'
-import { getHiDockDeviceService } from '../../../../src/services/hidock-device'
+import { getRecorderDeviceService } from '../../../../src/services/recorder-device'
 import { getJensenDevice } from '../../../../src/services/jensen'
 
-describe('HiDock Initialization Benchmark', () => {
+describe('Recorder Initialization Benchmark', () => {
   it('measures sequential vs attempted parallel performance', async () => {
-    const service = getHiDockDeviceService()
+    const service = getRecorderDeviceService()
     const jensen = getJensenDevice()
 
     if (!jensen.isConnected()) {
@@ -47,7 +47,7 @@ describe('HiDock Initialization Benchmark', () => {
   })
 
   it('profiles List Files packet latency', async () => {
-    const service = getHiDockDeviceService()
+    const service = getRecorderDeviceService()
     const jensen = getJensenDevice()
 
     if (!jensen.isConnected()) return

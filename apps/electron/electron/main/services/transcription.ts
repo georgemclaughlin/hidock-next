@@ -701,7 +701,7 @@ async function transcribeRecording(
   updateRecordingTranscriptionStatus(recordingId, 'processing')
   progressCallback?.('preparing local transcription', 5)
 
-  const outputDir = mkdtempSync(join(tmpdir(), 'hidock-transcription-'))
+  const outputDir = mkdtempSync(join(tmpdir(), 'recorder-transcription-'))
   try {
     const result = config.transcription.localEngine === 'whisper'
       ? await transcribeWithWhisper(recording.file_path, outputDir, progressCallback)

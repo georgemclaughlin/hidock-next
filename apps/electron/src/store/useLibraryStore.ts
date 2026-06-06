@@ -277,7 +277,7 @@ export const useLibraryStore = create<LibraryStore>()(
       setScrollOffset: (offset) => set({ scrollOffset: offset })
     }),
     {
-      name: 'hidock-library-store',
+      name: 'recorder-library-store',
       storage: createJSONStorage(() => localStorage),
       // Only persist view preferences and filters, not selection or scroll
       partialize: (state) => ({

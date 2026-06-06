@@ -76,7 +76,7 @@ export interface AppConfig {
 const DEFAULT_CONFIG: AppConfig = {
   version: '1.0.0',
   storage: {
-    dataPath: join(app.getPath('home'), 'HiDock'),
+    dataPath: join(app.getPath('home'), 'LocalRecorder'),
     maxRecordingsGB: 50
   },
   privacy: {

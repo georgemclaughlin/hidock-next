@@ -17,7 +17,7 @@ export function EmptyState({ hasRecordings, onNavigateToDevice, onAddRecording }
           <>
             <h3 className="text-lg font-medium mb-2">No Knowledge Captured Yet</h3>
             <p className="text-muted-foreground mb-4">
-              Connect your HiDock device to sync your captured conversations, or import audio files from your computer.
+              Connect your device to sync your captured conversations, or import audio files from your computer.
             </p>
             <div className="flex gap-2 justify-center">
               <Button onClick={onNavigateToDevice}>Go to Device</Button>

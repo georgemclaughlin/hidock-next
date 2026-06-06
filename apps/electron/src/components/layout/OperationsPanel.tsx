@@ -3,7 +3,7 @@ import { X, Download, Sparkles, RefreshCw, AlertCircle, RotateCcw } from 'lucide
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDownloadQueue, useDeviceSyncProgress, useDeviceSyncEta } from '@/store/useAppStore'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 import { useTranscriptionStore, useTranscriptionStats } from '@/store/features/useTranscriptionStore'
 import { useOperations } from '@/hooks/useOperations'
 import { toast } from '@/components/ui/toaster'
@@ -50,7 +50,7 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
   const handleRetryFailed = useCallback(async () => {
     try {
       // AUD4-016: Pass device connection state so retryFailed can reject when disconnected
-      const deviceConnected = getHiDockDeviceService().isConnected()
+      const deviceConnected = getRecorderDeviceService().isConnected()
       const result = await window.electronAPI.downloadService.retryFailed(deviceConnected)
       if (result.error) {
         toast({
@@ -155,7 +155,7 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
                 <div key={id} className="space-y-0.5">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-slate-400 truncate max-w-[140px]" title={item.filename}>
-                      {/* DL-03: Preserve date portion of HiDock filenames (e.g. REC_20260225_143012.wav) */}
+                      {/* DL-03: Preserve date portion of Recorder filenames (e.g. REC_20260225_143012.wav) */}
                       {(() => {
                         const name = item.filename.replace(/\.(hda|wav|mp3|m4a)$/i, '')
                         return name.length > 24 ? `${name.slice(0, 24)}...` : name

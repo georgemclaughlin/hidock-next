@@ -2,7 +2,7 @@
  * Activity Log Bridge — main process to renderer IPC
  *
  * Main process services (transcription, calendar-sync, download-service) run
- * isolated from the renderer's HiDockDeviceService. They cannot call
+ * isolated from the renderer's RecorderDeviceService. They cannot call
  * deviceService.logActivity() directly. This module provides a lightweight
  * IPC bridge that emits activity log entries to the renderer window.
  *

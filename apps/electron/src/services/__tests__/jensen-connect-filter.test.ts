@@ -1,62 +1,41 @@
-/**
- * FIX-015: USB connect listener uses case-sensitive productName match
- *
- * BUG: The USB connect handler checks `device.productName?.includes('HiDock')`
- * which is case-sensitive. If firmware reports the name in different casing
- * (e.g. "HIDOCK", "hidock", "Hidock H1"), the filter would fail silently
- * and auto-connect would not trigger.
- *
- * Fix: Use case-insensitive comparison
- */
-
 import { describe, it, expect } from 'vitest'
+import { USB_PRODUCT_IDS, USB_VENDOR_IDS } from '../jensen'
 
-describe('FIX-015: USB connect device filter', () => {
-  // Test the filter logic pattern used in jensen.ts:392
-  function matchesHiDock(productName: string | undefined): boolean {
-    // Current buggy implementation
-    return productName?.includes('HiDock') ?? false
+describe('USB connect device filter', () => {
+  function matchesSupportedDevice(
+    vendorId: number,
+    productId: number,
+    productName: string | undefined
+  ): boolean {
+    if (!USB_VENDOR_IDS.includes(vendorId)) return false
+    if (Object.values(USB_PRODUCT_IDS).includes(productId)) return true
+    return productName?.toLowerCase().includes('jensen') ?? false
   }
 
-  function matchesHiDockFixed(productName: string | undefined): boolean {
-    return productName?.toLowerCase().includes('hidock') ?? false
-  }
-
-  it('BUG: case-sensitive filter misses uppercase variant', () => {
-    // Some firmware versions may report uppercase
-    expect(matchesHiDock('HIDOCK H1')).toBe(false) // BUG: should be true
-    expect(matchesHiDockFixed('HIDOCK H1')).toBe(true) // FIXED
+  it('matches known vendor and product IDs', () => {
+    expect(matchesSupportedDevice(USB_VENDOR_IDS[0], USB_PRODUCT_IDS.H1, undefined)).toBe(true)
+    expect(matchesSupportedDevice(USB_VENDOR_IDS[1], USB_PRODUCT_IDS.P1_MINI_ALT, '')).toBe(true)
   })
 
-  it('BUG: case-sensitive filter misses lowercase variant', () => {
-    expect(matchesHiDock('hidock p1')).toBe(false) // BUG: should be true
-    expect(matchesHiDockFixed('hidock p1')).toBe(true) // FIXED
+  it('matches the protocol marker case-insensitively for known vendors', () => {
+    expect(matchesSupportedDevice(USB_VENDOR_IDS[0], 0xffff, 'Jensen H1')).toBe(true)
+    expect(matchesSupportedDevice(USB_VENDOR_IDS[0], 0xffff, 'jensen p1')).toBe(true)
   })
 
-  it('should match standard casing', () => {
-    expect(matchesHiDockFixed('HiDock H1')).toBe(true)
-    expect(matchesHiDockFixed('HiDock H1E')).toBe(true)
-    expect(matchesHiDockFixed('HiDock P1')).toBe(true)
+  it('rejects unrelated devices', () => {
+    expect(matchesSupportedDevice(0x1234, USB_PRODUCT_IDS.H1, 'Jensen H1')).toBe(false)
+    expect(matchesSupportedDevice(USB_VENDOR_IDS[0], 0xffff, 'Webcam')).toBe(false)
+    expect(matchesSupportedDevice(USB_VENDOR_IDS[0], 0xffff, undefined)).toBe(false)
   })
 
-  it('should not match unrelated devices', () => {
-    expect(matchesHiDockFixed('Logitech Webcam')).toBe(false)
-    expect(matchesHiDockFixed(undefined)).toBe(false)
-    expect(matchesHiDockFixed('')).toBe(false)
-  })
-
-  it('jensen.ts must use case-insensitive product name matching', async () => {
+  it('does not use generic product-name matching in the source filter', async () => {
     const fs = await import('fs')
     const path = await import('path')
 
     const sourceFile = path.join(__dirname, '..', 'jensen.ts')
     const source = fs.readFileSync(sourceFile, 'utf-8')
 
-    const hasProductNameLowerCase = source.includes('productName?.toLowerCase()')
-      || source.includes('productName?.toLowerCase()')
-    expect(hasProductNameLowerCase, 'jensen.ts must lowercase productName before matching').toBe(true)
-
-    const hasCaseSensitiveCheck = /productName\??\.(includes|match)\(/g.test(source)
-    expect(hasCaseSensitiveCheck, 'No direct case-sensitive productName.includes() should exist').toBe(false)
+    expect(source).toContain("name.includes('jensen')")
+    expect(source).not.toContain("name.includes('recorder')")
   })
 })

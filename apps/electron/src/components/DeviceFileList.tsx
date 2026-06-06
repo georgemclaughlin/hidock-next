@@ -1,6 +1,6 @@
 /**
  * DeviceFileList Component
- * Displays individual files from connected HiDock device with download/delete actions.
+ * Displays individual files from connected device with download/delete actions.
  * Supports sortable columns (FL-003) and multi-select batch download (FL-005).
  */
 
@@ -19,7 +19,7 @@ import {
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/components/ui/toaster'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 import { hasDeviceFile, type DeviceOnlyRecording, type BothLocationsRecording } from '@/types/unified-recording'
 import { formatBytes, formatDuration } from '@/utils/formatters'
 import { useIsDownloading, useDownloadProgress } from '@/store/useAppStore'
@@ -167,7 +167,7 @@ function DeviceFileRow({
 }
 
 export function DeviceFileList({ recordings, syncedFilenames, onRefresh, onRecordingsRefresh }: DeviceFileListProps) {
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
   const [downloadErrors, setDownloadErrors] = useState<Map<string, string>>(new Map())
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [fileToDelete, setFileToDelete] = useState<string | null>(null)
@@ -326,7 +326,7 @@ export function DeviceFileList({ recordings, syncedFilenames, onRefresh, onRecor
               <CardDescription>
                 {selectedIds.size > 0
                   ? `${selectedIds.size} of ${sortedRecordings.length} selected`
-                  : 'Manage individual recordings on your HiDock device'}
+                  : 'Manage individual recordings on your device'}
               </CardDescription>
             </div>
             {selectedIds.size > 0 && (
@@ -392,7 +392,7 @@ export function DeviceFileList({ recordings, syncedFilenames, onRefresh, onRecor
               Delete File from Device?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <strong>{fileToDelete}</strong> from your HiDock device?
+              Are you sure you want to delete <strong>{fileToDelete}</strong> from your device?
               <br /><br />
               <span className="text-destructive font-medium">
                 This action cannot be undone. The file will be permanently removed from the device.

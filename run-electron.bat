@@ -1,7 +1,7 @@
 @echo off
-REM HiDock Local - Launch Script
+REM Local Recorder - Launch Script
 setlocal
-echo Starting HiDock Local...
+echo Starting Local Recorder...
 echo.
 
 REM Navigate to script directory (project root)
@@ -10,7 +10,7 @@ cd /d "%~dp0"
 REM Check if electron app directory exists
 if not exist "apps\electron" (
     echo Error: apps\electron directory not found!
-    echo Make sure the hidock-next project structure is intact.
+    echo Make sure the local-recorder project structure is intact.
     echo Current directory: %CD%
     pause
     exit /b 1
@@ -33,7 +33,7 @@ if not exist "node_modules" (
 
 echo.
 echo ================================
-echo HiDock Local
+echo Local Recorder
 echo ================================
 echo.
 echo To stop the application, close the window or press Ctrl+C here.

@@ -1,7 +1,7 @@
 /**
  * Database Entity Types
  *
- * Type definitions for all database entities in the HiDock Meeting Intelligence platform.
+ * Type definitions for all database entities in the Local Recorder platform.
  * These types mirror the SQLite schema and provide type safety across the application.
  */
 
@@ -39,7 +39,7 @@ export interface MeetingAttendee {
 }
 
 /**
- * Audio recording from HiDock device
+ * Audio recording from device
  */
 export interface Recording {
   id: string
@@ -60,7 +60,7 @@ export interface Recording {
   on_device: number
   device_last_seen?: string
   on_local: number
-  source: 'hidock' | 'import' | 'external'
+  source: 'recorder' | 'import' | 'external'
   is_imported: number
   storage_tier?: 'hot' | 'warm' | 'cold' | 'archive' | null
 }

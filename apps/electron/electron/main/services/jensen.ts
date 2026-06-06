@@ -1,8 +1,8 @@
 /**
- * Jensen Protocol Implementation for HiDock devices
+ * Jensen protocol implementation for supported recorder devices.
  *
  * Architecture: Event-driven continuous read loop + command queue + handler dispatch
- * HiDock Jensen protocol implementation for Electron USB device access.
+ * Main-process Jensen protocol implementation for Electron USB device access.
  *
  * Key mechanisms (matching jensen.js):
  *  1. Continuous read loop: transferIn always pending, data flows into buffer
@@ -103,7 +103,7 @@ export const EP_IN = 0x82
 // Types
 // ============================================================
 
-export type DeviceModel = 'hidock-h1' | 'hidock-h1e' | 'hidock-p1' | 'hidock-p1-mini' | 'unknown'
+export type DeviceModel = 'recorder-h1' | 'recorder-h1e' | 'recorder-p1' | 'recorder-p1-mini' | 'unknown'
 
 export interface DeviceInfo {
   versionCode: string
@@ -390,7 +390,7 @@ export class JensenDevice {
   }
 
   /**
-   * Auto-connect to a previously authorized HiDock device.
+   * Auto-connect to a previously authorized recorder device.
    * Matches jensen.js tryconnect(): disconnect first, find device, open, setup.
    */
   async tryConnect(preAuthorizedDevice?: USBDevice): Promise<boolean> {
@@ -414,14 +414,14 @@ export class JensenDevice {
     try {
       let target = preAuthorizedDevice
 
-      if (target && !this.isHiDockUsbDevice(target)) {
-        if (shouldLog()) console.log('[Jensen] tryConnect: provided device is not HiDock')
+      if (target && !this.isRecorderUsbDevice(target)) {
+        if (shouldLog()) console.log('[Jensen] tryConnect: provided device is not supported')
         return false
       }
 
       if (!target) {
         const devices = await webusb.getDevices()
-        target = devices.find(d => this.isHiDockUsbDevice(d))
+        target = devices.find(d => this.isRecorderUsbDevice(d))
       }
 
       if (!target) return false
@@ -521,7 +521,7 @@ export class JensenDevice {
 
   /**
    * Reset USB device to recover from stuck state.
-   * Not in jensen.js but needed by hidock-device.ts.
+   * Not in jensen.js but needed by recorder-device.ts.
    */
   async reset(): Promise<boolean> {
     if (!this.device) return false
@@ -566,11 +566,11 @@ export class JensenDevice {
   // USB helpers
   // ================================================================
 
-  private isHiDockUsbDevice(device: USBDevice): boolean {
+  private isRecorderUsbDevice(device: USBDevice): boolean {
     if (!USB_VENDOR_IDS.includes(device.vendorId)) return false
+    if (Object.values(USB_PRODUCT_IDS).includes(device.productId)) return true
     const name = device.productName?.toLowerCase() ?? ''
-    if (name.includes('hidock') || name.includes('jensen')) return true
-    return Object.values(USB_PRODUCT_IDS).includes(device.productId)
+    return name.includes('jensen')
   }
 
   private detectModel(productId: number): DeviceModel {
@@ -578,19 +578,19 @@ export class JensenDevice {
       case USB_PRODUCT_IDS.H1:
       case USB_PRODUCT_IDS.H1_ALT1:
       case USB_PRODUCT_IDS.H1_ALT2:
-        return 'hidock-h1'
+        return 'recorder-h1'
       case USB_PRODUCT_IDS.H1E_OLD:
       case USB_PRODUCT_IDS.H1E:
       case USB_PRODUCT_IDS.H1E_ALT1:
       case USB_PRODUCT_IDS.H1E_ALT2:
-        return 'hidock-h1e'
+        return 'recorder-h1e'
       case USB_PRODUCT_IDS.P1_OLD:
       case USB_PRODUCT_IDS.P1:
       case USB_PRODUCT_IDS.P1_ALT:
-        return 'hidock-p1'
+        return 'recorder-p1'
       case USB_PRODUCT_IDS.P1_MINI:
       case USB_PRODUCT_IDS.P1_MINI_ALT:
-        return 'hidock-p1-mini'
+        return 'recorder-p1-mini'
       default:
         return 'unknown'
     }
@@ -648,7 +648,7 @@ export class JensenDevice {
     if (!JensenDevice.isSupported()) return
 
     this.usbConnectHandler = (event: USBConnectionEvent) => {
-      if (this.isHiDockUsbDevice(event.device)) {
+      if (this.isRecorderUsbDevice(event.device)) {
         if (shouldLog()) console.log('[Jensen] USB connect event, triggering tryConnect')
         this.tryConnect(event.device)
       }
@@ -1043,7 +1043,7 @@ export class JensenDevice {
   }
 
   // ================================================================
-  // Lock compatibility (for hidock-device.ts)
+  // Lock compatibility (for recorder-device.ts)
   // ================================================================
 
   isOperationInProgress(): boolean {
@@ -1800,7 +1800,7 @@ export class JensenDevice {
   // ================================================================
 
   isP1Device(): boolean {
-    return this.model === 'hidock-p1' || this.model === 'hidock-p1-mini'
+    return this.model === 'recorder-p1' || this.model === 'recorder-p1-mini'
   }
 
   async getBatteryStatus(timeout = 5): Promise<BatteryStatus | null> {
@@ -2015,7 +2015,7 @@ export class JensenDevice {
   }
 
   /**
-   * Parse date/time from HiDock recording filename.
+   * Parse date/time from recorder filename.
    * Handles all known formats from H1, H1E, P1 devices.
    */
   parseFilenameDateTime(filename: string): { createDate: string; createTime: string; time: Date | null } {

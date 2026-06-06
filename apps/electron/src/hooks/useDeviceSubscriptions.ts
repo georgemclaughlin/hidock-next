@@ -7,13 +7,13 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { getHiDockDeviceService } from '@/services/hidock-device'
+import { getRecorderDeviceService } from '@/services/recorder-device'
 import { useAppStore } from '@/store/useAppStore'
 import { shouldLogQa } from '@/services/qa-monitor'
 import { checkAutoSyncAllowed, waitForConfig, waitForDeviceReady } from '@/utils/autoSyncGuard'
 
 export function useDeviceSubscriptions() {
-  const deviceService = getHiDockDeviceService()
+  const deviceService = getRecorderDeviceService()
   const deviceSubscriptionsInitialized = useRef(false)
   const autoSyncTriggeredRef = useRef(false)
   const syncDebounceTimerRef = useRef<NodeJS.Timeout | null>(null) // spec-007: debounce timer

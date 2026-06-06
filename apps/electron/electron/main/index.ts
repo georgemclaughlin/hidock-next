@@ -2,11 +2,11 @@ import { app, shell, BrowserWindow, session, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
-// HiDock USB Vendor/Product IDs
-// Source: Official HiDock HiNotes jensen.js (December 2025)
+// USB Vendor/Product IDs for supported recorder devices.
+// Source: upstream Jensen protocol reference.
 const USB_VENDOR_IDS = [
   0x10d6, // Actions Semiconductor (older H1, H1E, P1 devices)
-  0x3887  // HiDock (newer P1 Mini devices)
+  0x3887  // newer compact devices
 ]
 const USB_PRODUCT_IDS = [
   0xaf0c,  // H1
@@ -43,7 +43,7 @@ let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
 
 // Inline splash HTML to avoid build complexity
-const SPLASH_HTML = "<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"><title>HiDock</title>\n<style>\n*{margin:0;padding:0;box-sizing:border-box}\nbody{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);color:#e8e8e8;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;-webkit-app-region:drag;user-select:none}\n.logo{font-size:28px;font-weight:600;margin-bottom:24px;color:#fff}\n.spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,0.1);border-top-color:#4f8cff;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}\n@keyframes spin{to{transform:rotate(360deg)}}\n.status{font-size:13px;color:#a0a0a0;text-align:center;max-width:280px;min-height:40px}\n.progress-container{width:200px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin:16px 0;overflow:hidden}\n.progress-bar{height:100%;background:#4f8cff;border-radius:2px;transition:width 0.3s ease;width:0%}\n.cancel-btn{-webkit-app-region:no-drag;margin-top:24px;padding:8px 20px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:#a0a0a0;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s}\n.cancel-btn:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.3);color:#fff}\n</style></head>\n<body>\n<div class=\"logo\">HiDock</div>\n<div class=\"spinner\"></div>\n<div class=\"progress-container\"><div class=\"progress-bar\" id=\"progress\"></div></div>\n<div class=\"status\" id=\"status\">Initializing...</div>\n<button class=\"cancel-btn\" id=\"cancelBtn\">Cancel</button>\n<script>\nconst statusEl=document.getElementById('status');\nconst progressEl=document.getElementById('progress');\nconst cancelBtn=document.getElementById('cancelBtn');\nwindow.electronAPI?.onSplashStatus?.((status,progress)=>{statusEl.textContent=status;if(progress!==undefined)progressEl.style.width=progress+'%';});\ncancelBtn.addEventListener('click',()=>{window.electronAPI?.quitApp?.();});\n</script>\n</body></html>"
+const SPLASH_HTML = "<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"><title>Local Recorder</title>\n<style>\n*{margin:0;padding:0;box-sizing:border-box}\nbody{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);color:#e8e8e8;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;-webkit-app-region:drag;user-select:none}\n.logo{font-size:28px;font-weight:600;margin-bottom:24px;color:#fff}\n.spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,0.1);border-top-color:#4f8cff;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}\n@keyframes spin{to{transform:rotate(360deg)}}\n.status{font-size:13px;color:#a0a0a0;text-align:center;max-width:280px;min-height:40px}\n.progress-container{width:200px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin:16px 0;overflow:hidden}\n.progress-bar{height:100%;background:#4f8cff;border-radius:2px;transition:width 0.3s ease;width:0%}\n.cancel-btn{-webkit-app-region:no-drag;margin-top:24px;padding:8px 20px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:#a0a0a0;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s}\n.cancel-btn:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.3);color:#fff}\n</style></head>\n<body>\n<div class=\"logo\">Local Recorder</div>\n<div class=\"spinner\"></div>\n<div class=\"progress-container\"><div class=\"progress-bar\" id=\"progress\"></div></div>\n<div class=\"status\" id=\"status\">Initializing...</div>\n<button class=\"cancel-btn\" id=\"cancelBtn\">Cancel</button>\n<script>\nconst statusEl=document.getElementById('status');\nconst progressEl=document.getElementById('progress');\nconst cancelBtn=document.getElementById('cancelBtn');\nwindow.electronAPI?.onSplashStatus?.((status,progress)=>{statusEl.textContent=status;if(progress!==undefined)progressEl.style.width=progress+'%';});\ncancelBtn.addEventListener('click',()=>{window.electronAPI?.quitApp?.();});\n</script>\n</body></html>"
 
 function createSplashWindow(): BrowserWindow {
   console.log('[Splash] Creating splash window...')
@@ -170,13 +170,13 @@ async function initializeServices(): Promise<void> {
   updateSplashStatus('Starting application...', 100)
 }
 
-// Disable WebUSB blocklist to allow HiDock device access
+// Disable WebUSB blocklist to allow recorder device access
 // Required since Electron 37+ which introduced Chromium's WebUSB blocklist
 // Without this, devices on the blocklist get "Access denied" errors
 app.commandLine.appendSwitch('disable-usb-blocklist')
 
 // Suppress Chromium-level USB/device enumeration noise on Windows
-// (usb_service_win.cc SetupDiGetDeviceProperty errors for non-HiDock devices — harmless)
+// (usb_service_win.cc SetupDiGetDeviceProperty errors for unrelated devices are harmless)
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('disable-usb-device-event-log')
   // Suppress device_event_log severity to FATAL-only (3) to hide USB enumeration errors
@@ -192,7 +192,7 @@ if (enableRemoteDebugging) {
 
 app.whenReady().then(async () => {
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.hidock.meeting-intelligence')
+  electronApp.setAppUserModelId('app.local-recorder.desktop')
 
   // Show splash screen immediately
   splashWindow = createSplashWindow()
@@ -211,16 +211,15 @@ app.whenReady().then(async () => {
       productName: d.productName
     })))
 
-    const hidockDevice = details.deviceList.find(
+    const recorderDevice = details.deviceList.find(
       (device) =>
         USB_VENDOR_IDS.includes(device.vendorId) &&
-        (USB_PRODUCT_IDS.includes(device.productId) ||
-          device.productName?.toLowerCase().includes('hidock'))
+        USB_PRODUCT_IDS.includes(device.productId)
     )
 
-    if (hidockDevice) {
-      console.log('Auto-selecting HiDock device:', hidockDevice.productName)
-      callback(hidockDevice.deviceId)
+    if (recorderDevice) {
+      console.log('Auto-selecting recorder device:', recorderDevice.productName)
+      callback(recorderDevice.deviceId)
     } else if (details.deviceList.length > 0) {
       const vendorDevice = details.deviceList.find(d => USB_VENDOR_IDS.includes(d.vendorId))
       if (vendorDevice) {
@@ -252,7 +251,7 @@ app.whenReady().then(async () => {
   // This fixes "Unable to claim interface" errors on Windows
   session.defaultSession.setUSBProtectedClassesHandler(() => {
     // Return empty array to protect nothing (allow all classes)
-    // This is necessary for HiDock devices which may use protected USB classes
+    // This is necessary for supported devices which may use protected USB classes
     return []
   })
 

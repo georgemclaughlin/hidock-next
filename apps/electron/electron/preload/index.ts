@@ -14,7 +14,7 @@ function isQaLogsEnabled(): boolean {
   const now = Date.now()
   if (now - _qaLogsCacheTime < QA_CACHE_TTL) return _qaLogsCache
   try {
-    const stored = localStorage.getItem('hidock-ui-store')
+    const stored = localStorage.getItem('recorder-ui-store')
     if (stored) {
       const { state } = JSON.parse(stored)
       _qaLogsCache = state?.qaLogsEnabled ?? false

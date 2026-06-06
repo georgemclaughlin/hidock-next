@@ -9,7 +9,7 @@ vi.mock('electron', () => ({
     handle: vi.fn()
   },
   app: {
-    getPath: vi.fn(() => '/tmp/test-hidock')
+    getPath: vi.fn(() => '/tmp/test-recorder')
   },
   safeStorage: {
     isEncryptionAvailable: vi.fn(() => false),

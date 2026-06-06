@@ -72,7 +72,7 @@ vi.mock('fs', async () => {
 })
 
 vi.mock('../file-storage', () => ({
-  getDatabasePath: vi.fn(() => '/tmp/test-hidock.db')
+  getDatabasePath: vi.fn(() => '/tmp/test-recorder.db')
 }))
 
 // ---------------------------------------------------------------------------
@@ -266,7 +266,7 @@ describe('Database Service', () => {
         }
       })
       vi.doMock('../file-storage', () => ({
-        getDatabasePath: vi.fn(() => '/tmp/test-hidock.db')
+        getDatabasePath: vi.fn(() => '/tmp/test-recorder.db')
       }))
 
       const dbModule = await import('../database')
@@ -288,7 +288,7 @@ describe('Database Service', () => {
         on_device: 0,
         on_local: 1,
         date_recorded: '2026-01-01',
-        source: 'hidock',
+        source: 'recorder',
         is_imported: 0,
         created_at: '2026-01-01T00:00:00Z'
       }
@@ -826,7 +826,7 @@ describe('Database Service', () => {
 
       expect(mockDatabase.export).toHaveBeenCalled()
       expect(fs.writeFileSync).toHaveBeenCalledWith(
-        '/tmp/test-hidock.db',
+        '/tmp/test-recorder.db',
         expect.any(Buffer)
       )
     })

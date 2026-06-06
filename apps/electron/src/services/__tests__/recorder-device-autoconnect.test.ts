@@ -1,5 +1,5 @@
 /**
- * HiDock Device Service - Auto-connect Behavior Tests
+ * Recorder Device Service - Auto-connect Behavior Tests
  *
  * Spec: .claude/specs/spec-auto-connect-behavior.md
  *
@@ -212,8 +212,8 @@ describe('startAutoConnect() decision table', () => {
 
 // ─── Integration: real service  ────────────────────────────────────────────
 
-describe('HiDockDeviceService - auto-connect contract (real service)', () => {
-  let HiDockDeviceService: any
+describe('RecorderDeviceService - auto-connect contract (real service)', () => {
+  let RecorderDeviceService: any
   let mockWindow: any
 
   beforeEach(async () => {
@@ -268,8 +268,8 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
     }
     ;(globalThis as any).window = mockWindow
 
-    const module = await import('../hidock-device')
-    HiDockDeviceService = (module as any).HiDockDeviceService
+    const module = await import('../recorder-device')
+    RecorderDeviceService = (module as any).RecorderDeviceService
   })
 
   afterEach(() => {
@@ -277,7 +277,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
   })
 
   it('disableAutoConnect does NOT call saveAutoConnectConfig (no config write)', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const saveSpy = vi.spyOn(service as any, 'saveAutoConnectConfig')
 
     service.disableAutoConnect()
@@ -286,7 +286,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
   })
 
   it('disableAutoConnect sets userInitiatedDisconnect=true (session state only)', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     service.disableAutoConnect()
@@ -296,7 +296,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
   })
 
   it('disableAutoConnect does NOT change autoConnectConfig.enabled (user preference)', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const serviceAny = service as any
 
     // Wait for config to load (config says autoConnect: true)
@@ -309,7 +309,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
   })
 
   it('enableAutoConnect does NOT call saveAutoConnectConfig', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const saveSpy = vi.spyOn(service as any, 'saveAutoConnectConfig')
 
     service.enableAutoConnect()
@@ -318,7 +318,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
   })
 
   it('setAutoConnectConfig IS the only path that saves config', () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     service.setAutoConnectConfig({ enabled: false, connectOnStartup: false })
 
     expect(mockWindow.electronAPI.config.updateSection).toHaveBeenCalledWith(
@@ -328,7 +328,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
   })
 
   it('after restart: userInitiatedDisconnect=false so auto-connect can fire', async () => {
-    const service = new HiDockDeviceService()
+    const service = new RecorderDeviceService()
     const startSpy = vi.spyOn(service as any, 'startAutoConnect').mockImplementation(() => {})
 
     // Simulate: previous session user disconnected
@@ -336,7 +336,7 @@ describe('HiDockDeviceService - auto-connect contract (real service)', () => {
     expect((service as any).userInitiatedDisconnect).toBe(true)
 
     // Simulate restart: new service instance has userInitiatedDisconnect=false
-    const service2 = new HiDockDeviceService()
+    const service2 = new RecorderDeviceService()
     const startSpy2 = vi.spyOn(service2 as any, 'startAutoConnect').mockImplementation(() => {})
     await service2.initAutoConnect()
 

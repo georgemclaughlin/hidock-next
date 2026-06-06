@@ -22,7 +22,7 @@ function createMockUSBDevice(overrides: Partial<USBDevice> = {}): USBDevice {
   const device: any = {
     vendorId: overrides.vendorId ?? USB_VENDOR_ID,
     productId: overrides.productId ?? USB_PRODUCT_IDS.H1,
-    productName: overrides.productName ?? 'HiDock H1',
+    productName: overrides.productName ?? 'Jensen H1',
     configuration: {
       configurationValue: 1,
       configurationName: 'Default',
@@ -340,7 +340,7 @@ describe('JensenDevice', () => {
       setupNavigatorUSB([mockDevice])
 
       await device.connect()
-      expect(device.getModel()).toBe('hidock-h1')
+      expect(device.getModel()).toBe('recorder-h1')
     })
 
     it('determines correct model for H1E device', async () => {
@@ -350,7 +350,7 @@ describe('JensenDevice', () => {
       setupNavigatorUSB([mockDevice])
 
       await device.connect()
-      expect(device.getModel()).toBe('hidock-h1e')
+      expect(device.getModel()).toBe('recorder-h1e')
     })
 
     it('determines correct model for P1 device', async () => {
@@ -360,7 +360,7 @@ describe('JensenDevice', () => {
       setupNavigatorUSB([mockDevice])
 
       await device.connect()
-      expect(device.getModel()).toBe('hidock-p1')
+      expect(device.getModel()).toBe('recorder-p1')
     })
 
     it('determines correct model for P1 Mini device', async () => {
@@ -370,7 +370,7 @@ describe('JensenDevice', () => {
       setupNavigatorUSB([mockDevice])
 
       await device.connect()
-      expect(device.getModel()).toBe('hidock-p1-mini')
+      expect(device.getModel()).toBe('recorder-p1-mini')
     })
 
     it('determines correct model for P1 Mini alternate ID', async () => {
@@ -380,7 +380,7 @@ describe('JensenDevice', () => {
       setupNavigatorUSB([mockDevice])
 
       await device.connect()
-      expect(device.getModel()).toBe('hidock-p1-mini')
+      expect(device.getModel()).toBe('recorder-p1-mini')
     })
 
     it('sets model to unknown for unrecognized product ID', async () => {
@@ -469,10 +469,10 @@ describe('JensenDevice', () => {
       expect(result).toBe(false)
     })
 
-    it('skips non-HiDock devices', async () => {
+    it('skips unsupported devices', async () => {
       const mockDevice = createMockUSBDevice({
         vendorId: 0x1234,
-        productName: 'Not a HiDock',
+        productName: 'Unsupported Device',
       } as any)
       setupNavigatorUSB([mockDevice])
 
@@ -480,7 +480,7 @@ describe('JensenDevice', () => {
       expect(result).toBe(false)
     })
 
-    it('connects to authorized HiDock device', async () => {
+    it('connects to an authorized supported device', async () => {
       const mockDevice = createMockUSBDevice()
       setupNavigatorUSB([mockDevice])
 
@@ -548,7 +548,7 @@ describe('JensenDevice', () => {
       setupNavigatorUSB([mockDevice])
 
       await device.connect()
-      expect(device.getModel()).toBe('hidock-p1')
+      expect(device.getModel()).toBe('recorder-p1')
 
       await device.disconnect()
       expect(device.isConnected()).toBe(false)
