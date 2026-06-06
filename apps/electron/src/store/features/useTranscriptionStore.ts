@@ -81,6 +81,8 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
         const item = state.queue.get(id)
         if (!item) return state
 
+        const shouldPreserveEta = details === undefined && (stage === undefined || stage === item.stage)
+
         const queue = new Map(state.queue)
         queue.set(id, {
           ...item,
@@ -89,7 +91,7 @@ export const useTranscriptionStore = create<TranscriptionQueueStore>()(
           chunkIndex: details?.chunkIndex ?? item.chunkIndex,
           completedChunks: details?.completedChunks ?? item.completedChunks,
           totalChunks: details?.totalChunks ?? item.totalChunks,
-          etaSeconds: details?.etaSeconds,
+          etaSeconds: details?.etaSeconds ?? (shouldPreserveEta ? item.etaSeconds : undefined),
           status: 'processing',
           startedAt: item.startedAt || new Date(),
           attempts: item.attempts + (item.startedAt ? 0 : 1)

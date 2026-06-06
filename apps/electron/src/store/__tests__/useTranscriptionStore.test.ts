@@ -172,6 +172,42 @@ describe('useTranscriptionStore', () => {
       expect(item!.etaSeconds).toBe(240)
     })
 
+    it('preserves ETA details when a polling update omits them', () => {
+      const { addToQueue, updateProgress } = useTranscriptionStore.getState()
+
+      addToQueue('q-1', 'rec-1', 'meeting.wav')
+      updateProgress('q-1', 42, 'transcribing chunk 3 of 10', {
+        chunkIndex: 3,
+        completedChunks: 3,
+        totalChunks: 10,
+        etaSeconds: 240
+      })
+      updateProgress('q-1', 44)
+
+      const item = useTranscriptionStore.getState().queue.get('q-1')
+      expect(item!.stage).toBe('transcribing chunk 3 of 10')
+      expect(item!.completedChunks).toBe(3)
+      expect(item!.totalChunks).toBe(10)
+      expect(item!.etaSeconds).toBe(240)
+    })
+
+    it('clears ETA details on stage changes without ETA details', () => {
+      const { addToQueue, updateProgress } = useTranscriptionStore.getState()
+
+      addToQueue('q-1', 'rec-1', 'meeting.wav')
+      updateProgress('q-1', 42, 'transcribing chunk 3 of 10', {
+        chunkIndex: 3,
+        completedChunks: 3,
+        totalChunks: 10,
+        etaSeconds: 240
+      })
+      updateProgress('q-1', 85, 'parsing transcript')
+
+      const item = useTranscriptionStore.getState().queue.get('q-1')
+      expect(item!.stage).toBe('parsing transcript')
+      expect(item!.etaSeconds).toBeUndefined()
+    })
+
     it('does nothing for non-existent item', () => {
       const { updateProgress } = useTranscriptionStore.getState()
 
