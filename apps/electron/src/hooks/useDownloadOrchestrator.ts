@@ -28,9 +28,15 @@ interface DownloadQueueItem {
 // DL-14: Module-level abort controller ref so cancelDownloads can be called from outside the hook
 let _downloadAbortControllerRef: AbortController | null = null
 
+export const PROCESS_DOWNLOAD_QUEUE_EVENT = 'recorder:process-download-queue'
+
 let _cancelInProgress = false
 let _cancelEpoch = 0
 let _lastProcessedEpoch = 0
+
+export function requestDownloadQueueProcessing(): void {
+  window.dispatchEvent(new CustomEvent(PROCESS_DOWNLOAD_QUEUE_EVENT))
+}
 
 /**
  * Cancel in-progress downloads by aborting the USB transfer.
@@ -410,12 +416,20 @@ export function useDownloadOrchestrator() {
       }
     })
 
+    const handleProcessQueueRequest = () => {
+      if (!isProcessingDownloads.current) {
+        processDownloadQueueRef.current()
+      }
+    }
+    window.addEventListener(PROCESS_DOWNLOAD_QUEUE_EVENT, handleProcessQueueRequest)
+
     // B-DWN-008: Renderer-side stall detection removed — handled server-side in download-service.ts
 
     return () => {
       downloadAbortControllerRef.current?.abort()
       unsubDownloads()
       unsubDevice()
+      window.removeEventListener(PROCESS_DOWNLOAD_QUEUE_EVENT, handleProcessQueueRequest)
       // SM-002: Do NOT reset orchestratorInitialized.current here.
       // StrictMode does mount -> cleanup -> mount; resetting allows double subscription.
       // When the component truly unmounts and remounts, React creates a NEW ref(false).

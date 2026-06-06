@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { toast } from '@/components/ui/toaster'
 import { useTranscriptionStore } from '@/store/features/useTranscriptionStore'
-import { cancelDownloads, cancelDownloadsComplete } from '@/hooks/useDownloadOrchestrator'
+import { cancelDownloads, cancelDownloadsComplete, requestDownloadQueueProcessing } from '@/hooks/useDownloadOrchestrator'
 import type { UnifiedRecording } from '@/types/unified-recording'
 import { hasLocalPath, isDeviceOnly } from '@/types/unified-recording'
 
@@ -105,11 +105,14 @@ export function useOperations() {
     if (!isDeviceOnly(recording)) return false
 
     try {
-      await window.electronAPI.downloadService.queueDownloads([{
+      const queuedIds = await window.electronAPI.downloadService.queueDownloads([{
         filename: recording.deviceFilename,
         size: recording.size,
         dateCreated: recording.dateRecorded.toISOString()
       }])
+      if (Array.isArray(queuedIds) && queuedIds.length > 0) {
+        requestDownloadQueueProcessing()
+      }
       toast({ title: 'Download started', description: recording.filename })
       return true
     } catch (e) {
@@ -124,13 +127,16 @@ export function useOperations() {
     if (eligible.length === 0) return 0
 
     try {
-      await window.electronAPI.downloadService.queueDownloads(
+      const queuedIds = await window.electronAPI.downloadService.queueDownloads(
         eligible.map((r) => ({
           filename: r.deviceFilename,
           size: r.size,
           dateCreated: r.dateRecorded.toISOString()
         }))
       )
+      if (Array.isArray(queuedIds) && queuedIds.length > 0) {
+        requestDownloadQueueProcessing()
+      }
       toast({ title: `${eligible.length} download${eligible.length > 1 ? 's' : ''} queued` })
       return eligible.length
     } catch (e) {

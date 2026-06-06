@@ -8,9 +8,11 @@ vi.mock('@/components/ui/toaster', () => ({
 }))
 
 // Mock useDownloadOrchestrator
+const mockRequestDownloadQueueProcessing = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks/useDownloadOrchestrator', () => ({
   cancelDownloads: vi.fn(),
-  cancelDownloadsComplete: vi.fn()
+  cancelDownloadsComplete: vi.fn(),
+  requestDownloadQueueProcessing: mockRequestDownloadQueueProcessing
 }))
 
 // Mock transcription store
@@ -39,6 +41,7 @@ import { useTranscriptionStore } from '@/store/features/useTranscriptionStore'
 
 // Mock electronAPI
 const mockUpdateStatus = vi.fn().mockResolvedValue(undefined)
+const mockUpdateTranscriptionStatus = vi.fn().mockResolvedValue(undefined)
 const mockCancelTranscription = vi.fn().mockResolvedValue(undefined)
 const mockCancelAllTranscriptions = vi.fn().mockResolvedValue({ count: 3 })
 const mockQueueDownloads = vi.fn().mockResolvedValue(undefined)
@@ -49,6 +52,7 @@ const mockAddToQueueIPC = vi.fn().mockResolvedValue('queue-item-1')
 global.window.electronAPI = {
   recordings: {
     updateStatus: mockUpdateStatus,
+    updateTranscriptionStatus: mockUpdateTranscriptionStatus,
     addToQueue: mockAddToQueueIPC,
     cancelTranscription: mockCancelTranscription,
     cancelAllTranscriptions: mockCancelAllTranscriptions
@@ -136,7 +140,7 @@ describe('useOperations', () => {
       })
 
       expect(success).toBe(true)
-      expect(mockUpdateStatus).toHaveBeenCalledWith('rec-3', 'pending')
+      expect(mockUpdateTranscriptionStatus).toHaveBeenCalledWith('rec-3', 'pending')
       expect(mockAddToQueueIPC).toHaveBeenCalledWith('rec-3')
       expect(mockAddToQueue).toHaveBeenCalledWith('queue-item-1', 'rec-3', 'eligible.wav')
     })
@@ -168,6 +172,7 @@ describe('useOperations', () => {
     })
 
     it('queues download for device-only recording', async () => {
+      mockQueueDownloads.mockResolvedValueOnce(['REC0005.WAV'])
       const { result } = renderHook(() => useOperations())
 
       const deviceOnly = {
@@ -193,6 +198,7 @@ describe('useOperations', () => {
         size: 2048,
         dateCreated: expect.any(String)
       }])
+      expect(mockRequestDownloadQueueProcessing).toHaveBeenCalled()
     })
   })
 

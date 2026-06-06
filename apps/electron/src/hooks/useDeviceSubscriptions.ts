@@ -11,6 +11,7 @@ import { getRecorderDeviceService } from '@/services/recorder-device'
 import { useAppStore } from '@/store/useAppStore'
 import { shouldLogQa } from '@/services/qa-monitor'
 import { checkAutoSyncAllowed, waitForConfig, waitForDeviceReady } from '@/utils/autoSyncGuard'
+import { requestDownloadQueueProcessing } from '@/hooks/useDownloadOrchestrator'
 
 export function useDeviceSubscriptions() {
   const deviceService = getRecorderDeviceService()
@@ -137,6 +138,7 @@ export function useDeviceSubscriptions() {
                 deviceSyncProgress: { total: toSync.length, current: 0 },
                 deviceFileDownloading: toSync[0]?.filename ?? null
               })
+              requestDownloadQueueProcessing()
             } else {
               deviceService.log('success', 'All files synced', 'No new recordings to download')
             }
@@ -260,6 +262,7 @@ export function useDeviceSubscriptions() {
             deviceSyncProgress: { total: toSync.length, current: 0 },
             deviceFileDownloading: toSync[0]?.filename ?? null
           })
+          requestDownloadQueueProcessing()
         } else {
           deviceService.log('success', 'All files synced', 'No new recordings to download')
         }

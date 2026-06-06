@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/toaster'
 import { useAppStore } from '@/store/useAppStore'
 import { hasDeviceFile, type DeviceOnlyRecording, type BothLocationsRecording } from '@/types/unified-recording'
 import { useUnifiedRecordings } from '@/hooks/useUnifiedRecordings'
-import { cancelDownloads } from '@/hooks/useDownloadOrchestrator'
+import { cancelDownloads, requestDownloadQueueProcessing } from '@/hooks/useDownloadOrchestrator'
 
 import { formatEta, formatBytes } from '@/utils/formatters'
 import { DeviceFileList } from '@/components/DeviceFileList'
@@ -499,6 +499,7 @@ export function Device() {
       if (queuedIds.length > 0) {
         // Refresh synced filenames to update button count
         await refreshSyncedFilenames()
+        requestDownloadQueueProcessing()
 
         toast({
           title: 'Sync started',
