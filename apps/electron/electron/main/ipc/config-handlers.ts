@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { getConfig, getConfigValue, saveConfig, updateConfig, AppConfig } from '../services/config'
 import { success, error as errorResult } from '../types/api'
 import { emitActivityLog } from '../services/activity-log'
+import { resetOllamaService } from '../services/ollama'
 
 export function registerConfigHandlers(): void {
   // Get full config
@@ -22,6 +23,7 @@ export function registerConfigHandlers(): void {
   ipcMain.handle('config:set', async (_, newConfig: Partial<AppConfig>) => {
     try {
       await saveConfig(newConfig)
+      resetOllamaService()
       emitActivityLog('info', 'Settings saved')
       return success(getConfig())
     } catch (err) {
@@ -41,6 +43,7 @@ export function registerConfigHandlers(): void {
     async <K extends keyof AppConfig>(_, section: K, values: Partial<AppConfig[K]>) => {
       try {
         await updateConfig(section, values)
+        resetOllamaService()
         emitActivityLog('info', `Settings updated: ${String(section)}`)
         return success(getConfig())
       } catch (err) {

@@ -140,7 +140,7 @@ export function Settings() {
 
   // Local form state
   const chatProvider = 'ollama' as const
-  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434')
+  const [ollamaUrl, setOllamaUrl] = useState('')
   const [transcriptionEngine, setTranscriptionEngine] = useState<LocalTranscriptionEngine>('parakeet')
   const [transcriptionModel, setTranscriptionModel] = useState('whisper-small')
   const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
@@ -501,7 +501,7 @@ export function Settings() {
     }
 
     // Store previous values for rollback
-    const previousOllamaUrl = config?.embeddings.ollamaBaseUrl || 'http://localhost:11434'
+    const previousOllamaUrl = config?.embeddings.ollamaBaseUrl ?? ''
     const previousContextSize = config?.chat.maxContextChunks || RAG_DEFAULTS.MAX_CONTEXT_CHUNKS
 
     const chatUpdates = {
@@ -510,7 +510,7 @@ export function Settings() {
     }
 
     const embeddingsUpdates = {
-      ollamaBaseUrl: ollamaUrl
+      ollamaBaseUrl: ollamaUrl.trim()
     }
 
     // Validate before save

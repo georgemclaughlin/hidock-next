@@ -7,7 +7,7 @@ import { getConfig } from './config'
 import { canUseOllamaUrl } from './privacy'
 
 // AI-07 FIX: These are now fallback defaults only - actual values come from config
-const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434'
+const DEFAULT_OLLAMA_BASE_URL = ''
 const DEFAULT_EMBEDDING_MODEL = 'nomic-embed-text'
 const DEFAULT_CHAT_MODEL = 'llama3.2'
 
@@ -42,6 +42,8 @@ class OllamaService {
   }
 
   async isAvailable(): Promise<boolean> {
+    if (!this.baseUrl.trim()) return false
+
     try {
       const response = await fetch(`${this.baseUrl}/api/tags`)
       return response.ok
@@ -51,6 +53,8 @@ class OllamaService {
   }
 
   async listModels(): Promise<string[]> {
+    if (!this.baseUrl.trim()) return []
+
     try {
       const response = await fetch(`${this.baseUrl}/api/tags`)
       if (!response.ok) return []
@@ -67,6 +71,8 @@ class OllamaService {
   }
 
   async pullModel(modelName: string): Promise<boolean> {
+    if (!this.baseUrl.trim()) return false
+
     try {
       const response = await fetch(`${this.baseUrl}/api/pull`, {
         method: 'POST',
@@ -107,6 +113,8 @@ class OllamaService {
   }
 
   async generateEmbedding(text: string): Promise<number[] | null> {
+    if (!this.baseUrl.trim()) return null
+
     try {
       const response = await fetch(`${this.baseUrl}/api/embeddings`, {
         method: 'POST',
@@ -148,6 +156,8 @@ class OllamaService {
       signal?: AbortSignal // B-CHAT-005: Support request cancellation
     } = {}
   ): Promise<string | null> {
+    if (!this.baseUrl.trim()) return null
+
     try {
       const fullMessages = [...messages]
       if (options.systemPrompt) {
@@ -200,19 +210,25 @@ class OllamaService {
 // Singleton instance
 let ollamaInstance: OllamaService | null = null
 
+export function resetOllamaService(): void {
+  ollamaInstance = null
+}
+
 export function getOllamaService(): OllamaService {
   if (!ollamaInstance) {
     try {
       const config = getConfig()
 
       // Read from correct config paths (embeddings.ollamaBaseUrl, embeddings.ollamaModel, chat.ollamaModel)
-      const configuredBaseUrl = config.embeddings?.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL
-      const baseUrl = canUseOllamaUrl(configuredBaseUrl, config) ? configuredBaseUrl : DEFAULT_OLLAMA_BASE_URL
+      const configuredBaseUrl = config.embeddings?.ollamaBaseUrl?.trim() ?? DEFAULT_OLLAMA_BASE_URL
+      const baseUrl = configuredBaseUrl && canUseOllamaUrl(configuredBaseUrl, config)
+        ? configuredBaseUrl
+        : DEFAULT_OLLAMA_BASE_URL
       const embeddingModel = config.embeddings?.ollamaModel || DEFAULT_EMBEDDING_MODEL
       const chatModel = config.chat?.ollamaModel || DEFAULT_CHAT_MODEL
 
-      if (baseUrl !== configuredBaseUrl) {
-        console.warn('[Ollama] Remote Ollama URL blocked by local-only mode; using localhost')
+      if (configuredBaseUrl && baseUrl !== configuredBaseUrl) {
+        console.warn('[Ollama] Remote Ollama URL blocked by local-only mode; Ollama is disabled until a loopback URL is configured')
       }
 
       console.log(`[Ollama] Initializing with config: baseUrl=${baseUrl}, embeddingModel=${embeddingModel}, chatModel=${chatModel}`)

@@ -103,7 +103,7 @@ const DEFAULT_CONFIG: AppConfig = {
   embeddings: {
     provider: 'native',
     nativeModel: 'bge-small-en-v1.5-q',
-    ollamaBaseUrl: 'http://localhost:11434',
+    ollamaBaseUrl: '',
     ollamaModel: 'nomic-embed-text',
     chunkSize: 500,
     chunkOverlap: 50
@@ -186,7 +186,7 @@ function isLoopbackHttpUrl(value: string): boolean {
 
 function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
   const allowRemoteOllama = value.privacy?.allowRemoteOllama === true
-  const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl || DEFAULT_CONFIG.embeddings.ollamaBaseUrl
+  const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl?.trim() ?? DEFAULT_CONFIG.embeddings.ollamaBaseUrl
   const parakeetModel = normalizeNativeParakeetModel(value.transcription?.parakeetModel)
   const embeddingProvider = value.embeddings?.provider === 'ollama' ? 'ollama' : 'native'
 
@@ -218,7 +218,7 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
       ollamaModel: value.embeddings?.ollamaModel || DEFAULT_CONFIG.embeddings.ollamaModel,
       chunkSize: value.embeddings?.chunkSize || DEFAULT_CONFIG.embeddings.chunkSize,
       chunkOverlap: value.embeddings?.chunkOverlap || DEFAULT_CONFIG.embeddings.chunkOverlap,
-      ollamaBaseUrl: allowRemoteOllama || isLoopbackHttpUrl(ollamaBaseUrl)
+      ollamaBaseUrl: !ollamaBaseUrl || allowRemoteOllama || isLoopbackHttpUrl(ollamaBaseUrl)
         ? ollamaBaseUrl
         : DEFAULT_CONFIG.embeddings.ollamaBaseUrl
     },

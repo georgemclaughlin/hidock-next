@@ -51,6 +51,38 @@ const defaultEmbeddingModels = [
   }
 ]
 
+function makeMockConfig(ollamaBaseUrl = '') {
+  return {
+    calendar: {
+      icsUrl: '',
+      syncEnabled: false,
+      syncIntervalMinutes: 15,
+      lastSyncAt: null
+    },
+    transcription: {
+      provider: 'local' as const,
+      localEngine: 'parakeet' as const,
+      localCommand: '',
+      localModel: 'whisper-small',
+      parakeetPythonCommand: '',
+      parakeetModel: 'parakeet-v3',
+      autoTranscribe: false,
+      language: 'auto'
+    },
+    chat: { provider: 'ollama' as const, ollamaModel: 'llama3.2', maxContextChunks: 10 },
+    embeddings: {
+      provider: 'native' as const,
+      nativeModel: 'bge-small-en-v1.5-q',
+      ollamaBaseUrl,
+      ollamaModel: 'nomic-embed-text',
+      chunkSize: 500,
+      chunkOverlap: 50
+    }
+  }
+}
+
+let mockConfig = makeMockConfig()
+
 // Mock the stores
 vi.mock('@/store/useAppStore', () => ({
   useAppStore: vi.fn((selector) => {
@@ -67,33 +99,7 @@ vi.mock('@/store/useAppStore', () => ({
 vi.mock('@/store/domain/useConfigStore', () => ({
   useConfigStore: vi.fn((selector?: any) => {
     const state = {
-      config: {
-        calendar: {
-          icsUrl: '',
-          syncEnabled: false,
-          syncIntervalMinutes: 15,
-          lastSyncAt: null
-        },
-        transcription: {
-          provider: 'local' as const,
-          localEngine: 'parakeet' as const,
-          localCommand: '',
-          localModel: 'whisper-small',
-          parakeetPythonCommand: '',
-          parakeetModel: 'parakeet-v3',
-          autoTranscribe: false,
-          language: 'auto'
-        },
-        chat: { provider: 'ollama' as const, ollamaModel: 'llama3.2', maxContextChunks: 10 },
-        embeddings: {
-          provider: 'native' as const,
-          nativeModel: 'bge-small-en-v1.5-q',
-          ollamaBaseUrl: 'http://localhost:11434',
-          ollamaModel: 'nomic-embed-text',
-          chunkSize: 500,
-          chunkOverlap: 50
-        }
-      },
+      config: mockConfig,
       loadConfig: mockLoadConfig,
       updateConfig: mockUpdateConfig,
       configLoading: false
@@ -113,28 +119,7 @@ global.window.electronAPI = {
   config: {
     get: vi.fn().mockResolvedValue({
       success: true,
-      data: {
-        calendar: { icsUrl: '', syncEnabled: false, syncIntervalMinutes: 15 },
-        transcription: {
-          provider: 'local',
-          localEngine: 'parakeet',
-          localCommand: '',
-          localModel: 'whisper-small',
-          parakeetPythonCommand: '',
-          parakeetModel: 'parakeet-v3',
-          autoTranscribe: false,
-          language: 'auto'
-        },
-        chat: { provider: 'ollama', ollamaModel: 'llama3.2', maxContextChunks: 10 },
-        embeddings: {
-          provider: 'native',
-          nativeModel: 'bge-small-en-v1.5-q',
-          ollamaBaseUrl: 'http://localhost:11434',
-          ollamaModel: 'nomic-embed-text',
-          chunkSize: 500,
-          chunkOverlap: 50
-        }
-      }
+      data: mockConfig
     }),
     updateSection: vi.fn().mockResolvedValue({ success: true })
   },
@@ -169,6 +154,7 @@ global.window.electronAPI = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockConfig = makeMockConfig()
   modelDownloadProgressCallback = null
   mockUpdateConfig.mockResolvedValue(undefined)
   mockGetTranscriptionModels.mockResolvedValue(defaultTranscriptionModels)
@@ -299,6 +285,25 @@ describe('Settings Page', () => {
 
     expect(screen.getByLabelText('Ollama base URL')).toBeInTheDocument()
     expect(screen.getByLabelText('RAG context window size')).toBeInTheDocument()
+  })
+
+  it('should start with a blank local assistant URL', async () => {
+    render(<Settings />)
+
+    expect(screen.getByLabelText('Ollama base URL')).toHaveValue('')
+  })
+
+  it('should allow clearing the local assistant URL', async () => {
+    mockConfig = makeMockConfig('http://localhost:11434')
+
+    render(<Settings />)
+
+    fireEvent.change(screen.getByLabelText('Ollama base URL'), { target: { value: '' } })
+    fireEvent.click(screen.getByLabelText('Save chat settings'))
+
+    await waitFor(() => {
+      expect(mockUpdateConfig).toHaveBeenCalledWith('embeddings', { ollamaBaseUrl: '' })
+    })
   })
 
   it('should render local search embedding settings form', async () => {
