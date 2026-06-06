@@ -874,7 +874,8 @@ describe('Database Service', () => {
 
       dbModule.getRecordings()
 
-      const sql = mockDatabase.prepare.mock.calls.at(-1)?.[0] as string
+      const lastPrepareCall = mockDatabase.prepare.mock.calls.at(-1) as [string] | undefined
+      const sql = lastPrepareCall?.[0] ?? ''
       expect(sql).toContain("COALESCE(location, '') != 'deleted'")
       expect(sql).toContain("COALESCE(status, '') != 'deleted'")
     })

@@ -6,7 +6,7 @@
  */
 
 import { create } from 'zustand'
-import type { Person } from '@/types/knowledge'
+import type { Person, PersonType } from '@/types/knowledge'
 
 interface ContactsState {
   // State
@@ -24,7 +24,7 @@ interface ContactsState {
     name?: string
     email?: string | null
     notes?: string
-    type?: string
+    type?: PersonType
     role?: string
     company?: string
     tags?: string[]

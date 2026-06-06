@@ -19,7 +19,7 @@
  * are not tested here. They would require mocking the full electronAPI.
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useAppStore } from '@/store/useAppStore'
 import type { RecorderDeviceState, ConnectionStatus, ActivityLogEntry } from '@/services/recorder-device'
 

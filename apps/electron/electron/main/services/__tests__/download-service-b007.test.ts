@@ -40,14 +40,17 @@ vi.mock('electron', () => {
   }
 })
 
-const mockRun = vi.fn()
-const mockIsFileSynced = vi.fn(() => false)
+const mockRun = vi.fn((..._args: any[]) => undefined)
+const mockIsFileSynced = vi.fn((filename: string) => {
+  void filename
+  return false
+})
 
 // Mock database functions
 vi.mock('../database', () => ({
   markRecordingDownloaded: vi.fn(),
   addSyncedFile: vi.fn(),
-  isFileSynced: (...args: any[]) => mockIsFileSynced(...args),
+  isFileSynced: (filename: string) => mockIsFileSynced(filename),
   getRecordingByFilename: vi.fn(() => null),
   getSyncedFilenames: vi.fn(() => new Set()),
   queryOne: vi.fn(() => null),

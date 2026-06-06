@@ -12,7 +12,8 @@ import {
   deleteContact,
   getMeetingsForContact,
   getContactsForMeeting,
-  Contact
+  Contact,
+  Meeting as DatabaseMeeting
 } from '../services/database'
 import { success, error, Result } from '../types/api'
 import {
@@ -22,7 +23,7 @@ import {
   DeleteContactRequestSchema
 } from '../validation/contacts'
 import type { Person } from '@/types/knowledge'
-import type { Meeting } from '@/types'
+import type { Meeting as RendererMeeting } from '@/types'
 
 export function registerContactsHandlers(): void {
   /**
@@ -56,7 +57,7 @@ export function registerContactsHandlers(): void {
    */
   ipcMain.handle(
     'contacts:getById',
-    async (_, id: unknown): Promise<Result<{ contact: Person; meetings: Meeting[]; totalMeetingTimeMinutes: number }>> => {
+    async (_, id: unknown): Promise<Result<{ contact: Person; meetings: RendererMeeting[]; totalMeetingTimeMinutes: number }>> => {
       try {
         const parsed = GetContactByIdRequestSchema.safeParse({ id })
         if (!parsed.success) {
@@ -80,7 +81,7 @@ export function registerContactsHandlers(): void {
 
         return success({
           contact: mapToPerson(contact),
-          meetings,
+          meetings: meetings.map(mapToRendererMeeting),
           totalMeetingTimeMinutes
         })
       } catch (err) {
@@ -176,6 +177,25 @@ export function registerContactsHandlers(): void {
       }
     }
   )
+}
+
+function mapToRendererMeeting(meeting: DatabaseMeeting): RendererMeeting {
+  return {
+    id: meeting.id,
+    subject: meeting.subject,
+    start_time: meeting.start_time,
+    end_time: meeting.end_time,
+    location: meeting.location ?? null,
+    organizer_name: meeting.organizer_name ?? null,
+    organizer_email: meeting.organizer_email ?? null,
+    attendees: meeting.attendees ?? null,
+    description: meeting.description ?? null,
+    is_recurring: meeting.is_recurring,
+    recurrence_rule: meeting.recurrence_rule ?? null,
+    meeting_url: meeting.meeting_url ?? null,
+    created_at: meeting.created_at,
+    updated_at: meeting.updated_at
+  }
 }
 
 function mapToPerson(contact: Contact): Person {

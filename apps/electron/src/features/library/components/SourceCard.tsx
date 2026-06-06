@@ -8,6 +8,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  FileText,
   Wand2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'

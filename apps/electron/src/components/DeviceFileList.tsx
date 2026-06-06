@@ -292,7 +292,7 @@ export function DeviceFileList({ recordings, syncedFilenames, onRefresh, onRecor
   if (deviceRecordings.length === 0) return null
 
   const recordingToDelete = deviceRecordings.find(r => r.deviceFilename === fileToDelete)
-  const hasLocalCopy = recordingToDelete?.location === 'both' || recordingToDelete?.location === 'local-only'
+  const hasLocalCopy = recordingToDelete?.location === 'both' || (fileToDelete ? isFilenameSynced(fileToDelete, syncedFilenames) : false)
 
   // FL-005: Batch download
   const selectedUndownloaded = sortedRecordings.filter(

@@ -1883,7 +1883,6 @@ describe('RecorderDeviceService - State Copy Immutability', () => {
 
   it('should return a copy of state, not the original', () => {
     const service = new RecorderDeviceService()
-    const serviceAny = service as any
 
     const state1 = service.getState()
     const state2 = service.getState()
@@ -1935,7 +1934,6 @@ describe('RecorderDeviceService - Connection Status Copy Immutability', () => {
 
   it('should not affect internal status when modifying returned status', () => {
     const service = new RecorderDeviceService()
-    const serviceAny = service as any
 
     const status = service.getConnectionStatus()
     status.step = 'ready'
@@ -2206,7 +2204,7 @@ describe('RecorderDeviceService - Refresh Storage Info', () => {
     }
     mockJensen.getCardInfo.mockResolvedValue(mockCardInfo)
 
-    const result = await service.refreshStorageInfo()
+    await service.refreshStorageInfo()
 
     expect(mockJensen.getCardInfo).toHaveBeenCalled()
   })

@@ -1756,7 +1756,13 @@ export function getMeetingById(id: string): Meeting | undefined {
   return queryOne<Meeting>('SELECT * FROM meetings WHERE id = ?', [id])
 }
 
-export function updateMeeting(id: string, updates: Partial<Pick<Meeting, 'subject' | 'start_time' | 'end_time' | 'location' | 'description'>>): void {
+export function updateMeeting(
+  id: string,
+  updates: Partial<Pick<Meeting, 'subject' | 'start_time' | 'end_time'>> & {
+    location?: string | null
+    description?: string | null
+  }
+): void {
   const fields: string[] = []
   const params: unknown[] = []
 
@@ -2783,7 +2789,7 @@ export function createProject(project: Omit<Project, 'created_at'>): Project {
   return { ...project, created_at: new Date().toISOString() }
 }
 
-export function updateProject(id: string, name?: string, description?: string, status?: string): void {
+export function updateProject(id: string, name?: string, description?: string | null, status?: string): void {
   const updates: string[] = []
   const params: unknown[] = []
 

@@ -670,11 +670,6 @@ export function Library() {
     audioControls.stop()
   }, [audioControls])
 
-  const handleClosePlayer = useCallback(() => {
-    audioControls.stop()
-    setSelectedSourceId(null)
-  }, [audioControls, setSelectedSourceId])
-
   const handleNavigateToMeeting = useCallback(
     (meetingId: string) => {
       navigate(`/meeting/${meetingId}`)

@@ -366,6 +366,7 @@ export interface ElectronAPI {
     getStats: () => Promise<{ totalSynced: number; pendingInQueue: number; failedInQueue: number }>
     checkStalled: () => Promise<number>
     cancelActive: (reason?: string) => Promise<number>
+    notifyCompletion: (stats: { completed: number; failed: number; aborted: boolean }) => Promise<void>
     onStateUpdate: (callback: (state: any) => void) => () => void
   }
 

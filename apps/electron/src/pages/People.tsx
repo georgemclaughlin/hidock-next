@@ -64,7 +64,7 @@ export function People() {
       })
       if (result.success) {
         // Server returns already-mapped Person objects from contacts-handlers.ts
-        const contacts: Person[] = result.data.contacts
+        const contacts = result.data.contacts as unknown as Person[]
         setPeople(contacts)
         setTotalCount(result.data.total)
       }

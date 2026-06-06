@@ -160,7 +160,7 @@ export function registerProjectsHandlers(): void {
           return error('NOT_FOUND', `Project with ID ${id} not found`)
         }
 
-        updateProject(id, name, description ?? undefined, status)
+        updateProject(id, name, description, status)
 
         const updatedProject = getProjectById(id)
         return success(mapToProject(updatedProject!))
