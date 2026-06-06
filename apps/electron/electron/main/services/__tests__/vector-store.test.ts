@@ -8,6 +8,7 @@ import { VectorStore } from '../vector-store'
 
 const embeddingMocks = vi.hoisted(() => ({
   generateEmbedding: vi.fn(),
+  generateEmbeddings: vi.fn(),
   getModelMetadata: vi.fn()
 }))
 
@@ -20,6 +21,7 @@ vi.mock('../database', () => ({
 vi.mock('../embeddings', () => ({
   getEmbeddingService: () => ({
     generateEmbedding: embeddingMocks.generateEmbedding,
+    generateEmbeddings: embeddingMocks.generateEmbeddings,
     getModelMetadata: embeddingMocks.getModelMetadata
   })
 }))
@@ -33,6 +35,14 @@ describe('VectorStore embedding metadata', () => {
       provider: 'native-fastembed',
       model: 'bge-small-en-v1.5-q'
     })
+    embeddingMocks.generateEmbeddings.mockImplementation(async (texts: string[]) => (
+      texts.map(() => ({
+        embedding: [1, 0],
+        provider: 'native-fastembed',
+        model: 'bge-small-en-v1.5-q',
+        dimensions: 2
+      }))
+    ))
   })
 
   it('persists provider, model, and dimensions for indexed chunks', async () => {
@@ -85,5 +95,57 @@ describe('VectorStore embedding metadata', () => {
     const results = await store.search('pricing', 5)
 
     expect(results).toEqual([])
+  })
+
+  it('reindexes all persisted transcripts with the current embedding model', async () => {
+    dbInstance.run(`
+      CREATE TABLE transcripts (
+        id TEXT PRIMARY KEY,
+        recording_id TEXT,
+        full_text TEXT NOT NULL
+      )
+    `)
+    dbInstance.run(`
+      CREATE TABLE recordings (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        date_recorded TEXT NOT NULL,
+        meeting_id TEXT
+      )
+    `)
+    dbInstance.run(`
+      CREATE TABLE meetings (
+        id TEXT PRIMARY KEY,
+        subject TEXT NOT NULL
+      )
+    `)
+    dbInstance.run("INSERT INTO meetings (id, subject) VALUES ('meeting-1', 'Roadmap')")
+    dbInstance.run(`
+      INSERT INTO recordings (id, filename, date_recorded, meeting_id)
+      VALUES ('rec-1', 'roadmap.wav', '2026-01-01T12:00:00.000Z', 'meeting-1')
+    `)
+    dbInstance.run(`
+      INSERT INTO transcripts (id, recording_id, full_text)
+      VALUES ('transcript-1', 'rec-1', 'Pricing discussion. Launch plan.')
+    `)
+
+    const store = new VectorStore()
+    await store.initialize()
+    const result = await store.reindexAllTranscripts()
+
+    expect(result).toMatchObject({
+      totalTranscripts: 1,
+      reindexedTranscripts: 1,
+      indexedChunks: 1,
+      skipped: 0,
+      failed: []
+    })
+
+    const rows = dbInstance.exec(`
+      SELECT recording_id, embedding_provider, embedding_model
+      FROM vector_embeddings
+      WHERE recording_id = 'rec-1'
+    `)
+    expect(rows[0].values[0]).toEqual(['rec-1', 'native-fastembed', 'bge-small-en-v1.5-q'])
   })
 })

@@ -28,6 +28,30 @@ interface SearchResult {
   score: number
 }
 
+interface VectorIndexStats {
+  documentCount: number
+  meetingCount: number
+  currentModelDocumentCount: number
+  incompatibleDocumentCount: number
+  embeddingProvider: string
+  embeddingModel: string
+}
+
+interface VectorReindexResult {
+  totalTranscripts: number
+  reindexedTranscripts: number
+  indexedChunks: number
+  skipped: number
+  failed: Array<{ recordingId: string; error: string }>
+}
+
+type TranscriptIndexMetadata = {
+  meetingId?: string
+  recordingId?: string
+  timestamp?: string
+  subject?: string
+}
+
 // Cosine similarity between two vectors
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0
@@ -170,36 +194,26 @@ class VectorStore {
     }
   }
 
-  async addDocument(
+  private insertEmbeddedDocument(
     content: string,
-    metadata: VectorDocument['metadata']
-  ): Promise<string | null> {
-    const embeddingService = getEmbeddingService()
-
-    // Generate embedding
-    const embeddingResult = await embeddingService.generateEmbedding(content, 'document')
-    if (!embeddingResult) {
-      console.error('Failed to generate embedding for document')
-      return null
-    }
-    const { embedding } = embeddingResult
-
-    const id = `${metadata.recordingId || 'doc'}_${metadata.chunkIndex}_${Date.now()}`
+    metadata: VectorDocument['metadata'],
+    embeddingResult: EmbeddingResult,
+    batchTimestamp = Date.now()
+  ): string {
+    const id = `${metadata.recordingId || 'doc'}_${metadata.chunkIndex}_${batchTimestamp}`
 
     const doc: VectorDocument = {
       id,
       content,
-      embedding,
+      embedding: embeddingResult.embedding,
       embeddingProvider: embeddingResult.provider,
       embeddingModel: embeddingResult.model,
       embeddingDimensions: embeddingResult.dimensions,
       metadata
     }
 
-    // Store in memory
     this.documents.set(id, doc)
 
-    // Persist to database
     const db = getDatabase()
     db.run(
       `INSERT OR REPLACE INTO vector_embeddings
@@ -209,7 +223,7 @@ class VectorStore {
       [
         id,
         content,
-        JSON.stringify(embedding),
+        JSON.stringify(embeddingResult.embedding),
         metadata.meetingId || null,
         metadata.recordingId || null,
         metadata.chunkIndex,
@@ -224,18 +238,32 @@ class VectorStore {
     return id
   }
 
+  async addDocument(
+    content: string,
+    metadata: VectorDocument['metadata']
+  ): Promise<string | null> {
+    const embeddingService = getEmbeddingService()
+
+    // Generate embedding
+    const embeddingResult = await embeddingService.generateEmbedding(content, 'document')
+    if (!embeddingResult) {
+      console.error('Failed to generate embedding for document')
+      return null
+    }
+
+    return this.insertEmbeddedDocument(content, metadata, embeddingResult)
+  }
+
   async indexTranscript(
     transcript: string,
-    metadata: {
-      meetingId?: string
-      recordingId?: string
-      timestamp?: string
-      subject?: string
-    }
+    metadata: TranscriptIndexMetadata,
+    options: { force?: boolean } = {}
   ): Promise<number> {
+    let existing: VectorDocument[] = []
+
     // Check if already indexed
     if (metadata.recordingId) {
-      const existing = Array.from(this.documents.values()).filter(
+      existing = Array.from(this.documents.values()).filter(
         (d) => d.metadata.recordingId === metadata.recordingId
       )
       if (existing.length > 0) {
@@ -244,32 +272,113 @@ class VectorStore {
           (doc) => doc.embeddingProvider === embeddingModel.provider && doc.embeddingModel === embeddingModel.model
         )
 
-        if (hasCurrentEmbeddings) {
+        if (hasCurrentEmbeddings && !options.force) {
           console.log(`Transcript ${metadata.recordingId} already indexed`)
           return 0
         }
-
-        console.log(`Transcript ${metadata.recordingId} embeddings use an old model; reindexing`)
-        await this.deleteByRecording(metadata.recordingId)
       }
     }
 
     // Chunk the transcript
     const chunks = chunkText(transcript)
+    if (chunks.length === 0) return 0
+
+    const embeddingResults = await getEmbeddingService().generateEmbeddings(chunks, 'document')
+    const indexedEmbeddings = embeddingResults
+      .map((embeddingResult, index) => ({ embeddingResult, index }))
+      .filter((item): item is { embeddingResult: EmbeddingResult; index: number } => Boolean(item.embeddingResult))
+
+    if (indexedEmbeddings.length === 0) {
+      console.error('Failed to generate embeddings for transcript')
+      return 0
+    }
+
+    if (metadata.recordingId && existing.length > 0) {
+      console.log(`Transcript ${metadata.recordingId} embeddings use an old model or were explicitly reindexed`)
+      await this.deleteByRecording(metadata.recordingId)
+    }
+
     let indexed = 0
+    const batchTimestamp = Date.now()
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]
-      const id = await this.addDocument(chunk, {
+    for (const { embeddingResult, index } of indexedEmbeddings) {
+      this.insertEmbeddedDocument(chunks[index], {
         ...metadata,
-        chunkIndex: i
-      })
-
-      if (id) indexed++
+        chunkIndex: index
+      }, embeddingResult, batchTimestamp)
+      indexed++
     }
 
     console.log(`Indexed ${indexed} chunks for transcript`)
     return indexed
+  }
+
+  async reindexAllTranscripts(): Promise<VectorReindexResult> {
+    await this.initialize()
+
+    const db = getDatabase()
+    const rows = db.exec(`
+      SELECT
+        t.recording_id,
+        t.full_text,
+        r.date_recorded,
+        r.filename,
+        r.meeting_id,
+        m.subject
+      FROM transcripts t
+      LEFT JOIN recordings r ON r.id = t.recording_id
+      LEFT JOIN meetings m ON m.id = r.meeting_id
+      WHERE t.full_text IS NOT NULL AND TRIM(t.full_text) != ''
+      ORDER BY r.date_recorded DESC
+    `)
+
+    const result: VectorReindexResult = {
+      totalTranscripts: rows[0]?.values.length ?? 0,
+      reindexedTranscripts: 0,
+      indexedChunks: 0,
+      skipped: 0,
+      failed: []
+    }
+
+    if (rows.length === 0) return result
+
+    for (const row of rows[0].values) {
+      const [recordingId, fullText, dateRecorded, filename, meetingId, meetingSubject] = row
+      const transcript = typeof fullText === 'string' ? fullText.trim() : ''
+      const recording = typeof recordingId === 'string' ? recordingId : undefined
+
+      if (!recording || !transcript) {
+        result.skipped++
+        continue
+      }
+
+      try {
+        const indexed = await this.indexTranscript(transcript, {
+          recordingId: recording,
+          meetingId: typeof meetingId === 'string' ? meetingId : undefined,
+          timestamp: typeof dateRecorded === 'string' ? dateRecorded : undefined,
+          subject: typeof meetingSubject === 'string'
+            ? meetingSubject
+            : typeof filename === 'string'
+              ? filename
+              : undefined
+        }, { force: true })
+
+        if (indexed > 0) {
+          result.reindexedTranscripts++
+          result.indexedChunks += indexed
+        } else {
+          result.skipped++
+        }
+      } catch (error) {
+        result.failed.push({
+          recordingId: recording,
+          error: error instanceof Error ? error.message : 'Unknown reindexing error'
+        })
+      }
+    }
+
+    return result
   }
 
   async search(query: string, topK = 5): Promise<SearchResult[]> {
@@ -372,6 +481,29 @@ class VectorStore {
   getAllDocuments(): VectorDocument[] {
     return Array.from(this.documents.values())
   }
+
+  getIndexStats(): VectorIndexStats {
+    const currentModel = getEmbeddingService().getModelMetadata()
+    let currentModelDocumentCount = 0
+    let incompatibleDocumentCount = 0
+
+    for (const doc of this.documents.values()) {
+      if (doc.embeddingProvider === currentModel.provider && doc.embeddingModel === currentModel.model) {
+        currentModelDocumentCount++
+      } else {
+        incompatibleDocumentCount++
+      }
+    }
+
+    return {
+      documentCount: this.getDocumentCount(),
+      meetingCount: this.getMeetingCount(),
+      currentModelDocumentCount,
+      incompatibleDocumentCount,
+      embeddingProvider: currentModel.provider,
+      embeddingModel: currentModel.model
+    }
+  }
 }
 
 // Singleton instance
@@ -385,4 +517,4 @@ export function getVectorStore(): VectorStore {
 }
 
 export { VectorStore, chunkText, cosineSimilarity }
-export type { VectorDocument, SearchResult }
+export type { VectorDocument, SearchResult, VectorIndexStats, VectorReindexResult }

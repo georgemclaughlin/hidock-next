@@ -9,6 +9,10 @@ const mockSyncCalendar = vi.fn()
 const mockDownloadTranscriptionModel = vi.fn()
 const mockGetTranscriptionModels = vi.fn()
 const mockOnTranscriptionModelDownloadProgress = vi.fn()
+const mockListEmbeddingModels = vi.fn()
+const mockDownloadEmbeddingModel = vi.fn()
+const mockGetEmbeddingIndexStats = vi.fn()
+const mockReindexTranscripts = vi.fn()
 let modelDownloadProgressCallback: ((data: any) => void) | null = null
 
 const defaultTranscriptionModels = [
@@ -35,6 +39,17 @@ const downloadedTranscriptionModels = defaultTranscriptionModels.map((model) => 
     ? { ...model, is_downloaded: true }
     : model
 ))
+
+const defaultEmbeddingModels = [
+  {
+    id: 'bge-small-en-v1.5-q',
+    name: 'BGE Small EN v1.5',
+    description: 'Fast local English embedding model.',
+    dimensions: 384,
+    provider: 'native-fastembed',
+    is_downloaded: false
+  }
+]
 
 // Mock the stores
 vi.mock('@/store/useAppStore', () => ({
@@ -70,7 +85,14 @@ vi.mock('@/store/domain/useConfigStore', () => ({
           language: 'auto'
         },
         chat: { provider: 'ollama' as const, ollamaModel: 'llama3.2', maxContextChunks: 10 },
-        embeddings: { provider: 'ollama' as const, ollamaBaseUrl: 'http://localhost:11434' }
+        embeddings: {
+          provider: 'native' as const,
+          nativeModel: 'bge-small-en-v1.5-q',
+          ollamaBaseUrl: 'http://localhost:11434',
+          ollamaModel: 'nomic-embed-text',
+          chunkSize: 500,
+          chunkOverlap: 50
+        }
       },
       loadConfig: mockLoadConfig,
       updateConfig: mockUpdateConfig,
@@ -104,7 +126,14 @@ global.window.electronAPI = {
           language: 'auto'
         },
         chat: { provider: 'ollama', ollamaModel: 'llama3.2', maxContextChunks: 10 },
-        embeddings: { provider: 'ollama', ollamaBaseUrl: 'http://localhost:11434' }
+        embeddings: {
+          provider: 'native',
+          nativeModel: 'bge-small-en-v1.5-q',
+          ollamaBaseUrl: 'http://localhost:11434',
+          ollamaModel: 'nomic-embed-text',
+          chunkSize: 500,
+          chunkOverlap: 50
+        }
       }
     }),
     updateSection: vi.fn().mockResolvedValue({ success: true })
@@ -129,6 +158,12 @@ global.window.electronAPI = {
     getTranscriptionModels: mockGetTranscriptionModels,
     downloadTranscriptionModel: mockDownloadTranscriptionModel,
     onTranscriptionModelDownloadProgress: mockOnTranscriptionModelDownloadProgress
+  },
+  embeddings: {
+    listModels: mockListEmbeddingModels,
+    downloadModel: mockDownloadEmbeddingModel,
+    getIndexStats: mockGetEmbeddingIndexStats,
+    reindexTranscripts: mockReindexTranscripts
   }
 } as any
 
@@ -145,6 +180,40 @@ beforeEach(() => {
     model: 'parakeet-v3',
     message: 'Parakeet V3 is downloaded for local transcription.'
   })
+  mockListEmbeddingModels.mockResolvedValue({
+    success: true,
+    data: defaultEmbeddingModels
+  })
+  mockDownloadEmbeddingModel.mockResolvedValue({
+    success: true,
+    data: {
+      success: true,
+      model_id: 'bge-small-en-v1.5-q',
+      provider: 'native-fastembed',
+      dimensions: 384
+    }
+  })
+  mockGetEmbeddingIndexStats.mockResolvedValue({
+    success: true,
+    data: {
+      documentCount: 0,
+      meetingCount: 0,
+      currentModelDocumentCount: 0,
+      incompatibleDocumentCount: 0,
+      embeddingProvider: 'native-fastembed',
+      embeddingModel: 'bge-small-en-v1.5-q'
+    }
+  })
+  mockReindexTranscripts.mockResolvedValue({
+    success: true,
+    data: {
+      totalTranscripts: 0,
+      reindexedTranscripts: 0,
+      indexedChunks: 0,
+      skipped: 0,
+      failed: []
+    }
+  })
 })
 
 describe('Settings Page', () => {
@@ -152,6 +221,7 @@ describe('Settings Page', () => {
     render(<Settings />)
 
     expect(screen.getByText('Local Transcription')).toBeInTheDocument()
+    expect(screen.getByText('Local Search Embeddings')).toBeInTheDocument()
     expect(screen.getByText('Local Assistant')).toBeInTheDocument()
     expect(screen.getByText('Storage')).toBeInTheDocument()
   })
@@ -228,11 +298,20 @@ describe('Settings Page', () => {
     expect(screen.getByLabelText('RAG context window size')).toBeInTheDocument()
   })
 
+  it('should render local search embedding settings form', async () => {
+    render(<Settings />)
+
+    expect(screen.getByLabelText('Embedding provider')).toBeInTheDocument()
+    expect(screen.getByLabelText('Native embedding model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Download embedding model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Rebuild transcript search index')).toBeInTheDocument()
+  })
+
   it('should render save buttons for each section', async () => {
     render(<Settings />)
 
     const saveButtons = screen.getAllByLabelText(/Save.*settings/)
-    expect(saveButtons.length).toBe(2) // Transcription and Chat
+    expect(saveButtons.length).toBe(3) // Transcription, Embeddings, and Chat
   })
 
   it('should render storage section', async () => {

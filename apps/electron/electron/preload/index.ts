@@ -75,6 +75,32 @@ import type {
   Message 
 } from '../../src/types/knowledge'
 
+type EmbeddingModelOption = {
+  id: string
+  name: string
+  description: string
+  dimensions: number
+  provider: 'native-fastembed'
+  is_downloaded: boolean
+}
+
+type EmbeddingIndexStats = {
+  documentCount: number
+  meetingCount: number
+  currentModelDocumentCount: number
+  incompatibleDocumentCount: number
+  embeddingProvider: string
+  embeddingModel: string
+}
+
+type EmbeddingReindexResult = {
+  totalTranscripts: number
+  reindexedTranscripts: number
+  indexedChunks: number
+  skipped: number
+  failed: Array<{ recordingId: string; error: string }>
+}
+
 // Type definitions for the API
 export interface ElectronAPI {
   // App
@@ -323,6 +349,18 @@ export interface ElectronAPI {
       people: any[]
       projects: any[]
     }>>
+  }
+
+  embeddings: {
+    listModels: () => Promise<Result<EmbeddingModelOption[]>>
+    downloadModel: (modelId: string) => Promise<Result<{
+      success: boolean
+      model_id: string
+      provider: 'native-fastembed'
+      dimensions: number
+    }>>
+    getIndexStats: () => Promise<Result<EmbeddingIndexStats>>
+    reindexTranscripts: () => Promise<Result<EmbeddingReindexResult>>
   }
 
   // Download Service - Centralized background download manager
@@ -709,6 +747,13 @@ const electronAPI: ElectronAPI = {
     search: (query, limit) => callIPC('rag:search', { query, limit }),
     getChunks: () => callIPC('rag:get-chunks'),
     globalSearch: (query, limit) => callIPC('rag:globalSearch', { query, limit })
+  },
+
+  embeddings: {
+    listModels: () => callIPC('embeddings:listModels'),
+    downloadModel: (modelId) => callIPC('embeddings:downloadModel', modelId),
+    getIndexStats: () => callIPC('embeddings:getIndexStats'),
+    reindexTranscripts: () => callIPC('embeddings:reindexTranscripts')
   },
 
   downloadService: {

@@ -537,6 +537,55 @@ ${transcript.substring(0, 8000)}`
     return null
   }
 
+  private searchKnowledgeLexical(terms: string[], limit: number): GlobalKnowledgeResult[] {
+    const db = getDatabase()
+    const whereParams: Array<string | number> = []
+    const rankParams: Array<string | number> = []
+    const termClauses: string[] = []
+    const rankParts: string[] = []
+    const columns = [
+      { sql: 'kc.title', weight: 3 },
+      { sql: 'kc.summary', weight: 2 },
+      { sql: 't.full_text', weight: 1 }
+    ]
+
+    for (const term of terms) {
+      const likeVal = `%${escapeLikePattern(term)}%`
+
+      termClauses.push(`(${columns.map((column) => {
+        whereParams.push(likeVal)
+        return `${column.sql} LIKE ? ESCAPE '\'`
+      }).join(' OR ')})`)
+
+      rankParts.push(`MAX(${columns.map((column) => {
+        rankParams.push(likeVal)
+        return `CASE WHEN ${column.sql} LIKE ? ESCAPE '\' THEN ${column.weight} ELSE 0 END`
+      }).join(', ')})`)
+    }
+
+    const rows = db.exec(`
+      SELECT
+        kc.id,
+        kc.title,
+        COALESCE(kc.summary, substr(t.full_text, 1, 240)) AS summary,
+        kc.captured_at,
+        (${rankParts.join(' + ')}) AS match_rank
+      FROM knowledge_captures kc
+      LEFT JOIN transcripts t ON t.recording_id = kc.source_recording_id
+      WHERE ${termClauses.join(' OR ')}
+      GROUP BY kc.id
+      ORDER BY match_rank DESC, kc.captured_at DESC
+      LIMIT ?
+    `, [...rankParams, ...whereParams, limit])
+
+    return rows.length > 0 ? rows[0].values.map(v => ({
+      id: v[0],
+      title: v[1],
+      summary: v[2],
+      capturedAt: v[3]
+    })) : []
+  }
+
   private async semanticKnowledgeSearch(query: string, limit: number): Promise<GlobalKnowledgeResult[]> {
     try {
       const vectorStore = getVectorStore()
@@ -611,18 +660,7 @@ ${transcript.substring(0, 8000)}`
         const escaped = escapeLikePattern(terms[0])
         const likeQuery = `%${escaped}%`
 
-        const knowledgeRows = db.exec(`
-          SELECT id, title, summary, captured_at FROM knowledge_captures
-          WHERE title LIKE ? ESCAPE '\' OR summary LIKE ? ESCAPE '\'
-          LIMIT ?
-        `, [likeQuery, likeQuery, limit])
-
-        const knowledge = knowledgeRows.length > 0 ? knowledgeRows[0].values.map(v => ({
-          id: v[0],
-          title: v[1],
-          summary: v[2],
-          capturedAt: v[3]
-        })) : []
+        const knowledge = this.searchKnowledgeLexical(terms, limit)
         const semanticKnowledge = await this.semanticKnowledgeSearch(query, limit)
         const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge, limit)
 
@@ -661,7 +699,8 @@ ${transcript.substring(0, 8000)}`
         selectCols: string,
         limitVal: number
       ): { sql: string; params: Array<string | number> } => {
-        const params: Array<string | number> = []
+        const whereParams: Array<string | number> = []
+        const rankParams: Array<string | number> = []
         const termClauses: string[] = []
         const matchCountParts: string[] = []
 
@@ -670,13 +709,13 @@ ${transcript.substring(0, 8000)}`
           const likeVal = `%${escaped}%`
 
           const colClauses = columns.map((col) => {
-            params.push(likeVal)
+            whereParams.push(likeVal)
             return `${col} LIKE ? ESCAPE '\'`
           })
           termClauses.push(`(${colClauses.join(' OR ')})`)
 
           const countExpr = columns.map((col) => {
-            params.push(likeVal)
+            rankParams.push(likeVal)
             return `CASE WHEN ${col} LIKE ? ESCAPE '\' THEN 1 ELSE 0 END`
           })
           matchCountParts.push(`MAX(${countExpr.join(', ')})`)
@@ -686,19 +725,11 @@ ${transcript.substring(0, 8000)}`
         const rankExpr = `(${matchCountParts.join(' + ')})`
 
         const sql = `SELECT ${selectCols}, ${rankExpr} AS match_rank FROM ${table} WHERE ${whereClause} ORDER BY match_rank DESC LIMIT ?`
-        params.push(limitVal)
-        return { sql, params }
+        return { sql, params: [...rankParams, ...whereParams, limitVal] }
       }
 
       // 1. Search knowledge captures with explicit columns + multi-term ranking
-      const kq = buildMultiTermQuery('knowledge_captures', ['title', 'summary'], 'id, title, summary, captured_at', limit)
-      const knowledgeRows = db.exec(kq.sql, kq.params)
-      const knowledge = knowledgeRows.length > 0 ? knowledgeRows[0].values.map(v => ({
-        id: v[0],
-        title: v[1],
-        summary: v[2],
-        capturedAt: v[3]
-      })) : []
+      const knowledge = this.searchKnowledgeLexical(terms, limit)
       const semanticKnowledge = await this.semanticKnowledgeSearch(query, limit)
       const mergedKnowledge = this.mergeKnowledgeResults(knowledge, semanticKnowledge, limit)
 

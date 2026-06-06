@@ -35,6 +35,34 @@ type TranscriptionModelOption = {
   engine_type: LocalTranscriptionEngine
 }
 
+type EmbeddingProvider = AppConfig['embeddings']['provider']
+
+type EmbeddingModelOption = {
+  id: string
+  name: string
+  description: string
+  dimensions: number
+  provider: 'native-fastembed'
+  is_downloaded: boolean
+}
+
+type EmbeddingIndexStats = {
+  documentCount: number
+  meetingCount: number
+  currentModelDocumentCount: number
+  incompatibleDocumentCount: number
+  embeddingProvider: string
+  embeddingModel: string
+}
+
+type EmbeddingReindexResult = {
+  totalTranscripts: number
+  reindexedTranscripts: number
+  indexedChunks: number
+  skipped: number
+  failed: Array<{ recordingId: string; error: string }>
+}
+
 type ModelDownloadProgress = {
   model: string
   stage: string
@@ -84,6 +112,14 @@ export function Settings() {
   const [modelDownloading, setModelDownloading] = useState(false)
   const [modelDownloadProgress, setModelDownloadProgress] = useState<ModelDownloadProgress | null>(null)
   const [transcriptionModels, setTranscriptionModels] = useState<TranscriptionModelOption[]>([])
+  const [embeddingProvider, setEmbeddingProvider] = useState<EmbeddingProvider>('native')
+  const [nativeEmbeddingModel, setNativeEmbeddingModel] = useState('bge-small-en-v1.5-q')
+  const [ollamaEmbeddingModel, setOllamaEmbeddingModel] = useState('nomic-embed-text')
+  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelOption[]>([])
+  const [embeddingModelDownloading, setEmbeddingModelDownloading] = useState(false)
+  const [embeddingReindexing, setEmbeddingReindexing] = useState(false)
+  const [embeddingIndexStats, setEmbeddingIndexStats] = useState<EmbeddingIndexStats | null>(null)
+  const [lastEmbeddingReindex, setLastEmbeddingReindex] = useState<EmbeddingReindexResult | null>(null)
   const [storageLoading, setStorageLoading] = useState(false)
   // C-CHAT: RAG context window — default matches config.ts (10)
   const [ragContextSize, setRagContextSize] = useState<number>(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
@@ -108,6 +144,15 @@ export function Settings() {
     }
 
     if (updates.embeddings) {
+      if (updates.embeddings.provider !== undefined && !['native', 'ollama'].includes(updates.embeddings.provider)) {
+        return 'Embedding provider must be native or Ollama'
+      }
+      if (updates.embeddings.nativeModel !== undefined && !updates.embeddings.nativeModel.trim()) {
+        return 'Native embedding model is required'
+      }
+      if (updates.embeddings.ollamaModel !== undefined && !updates.embeddings.ollamaModel.trim()) {
+        return 'Ollama embedding model is required'
+      }
       if (updates.embeddings.ollamaBaseUrl !== undefined) {
         const url = updates.embeddings.ollamaBaseUrl.trim()
         if (url && !url.startsWith('http')) {
@@ -126,6 +171,15 @@ export function Settings() {
       ragContextSize !== config.chat.maxContextChunks
     )
   }, [config, ollamaUrl, ragContextSize])
+
+  const isEmbeddingDirty = useMemo(() => {
+    if (!config) return false
+    return (
+      embeddingProvider !== config.embeddings.provider ||
+      nativeEmbeddingModel !== config.embeddings.nativeModel ||
+      ollamaEmbeddingModel !== config.embeddings.ollamaModel
+    )
+  }, [config, embeddingProvider, nativeEmbeddingModel, ollamaEmbeddingModel])
 
   const isTranscriptionDirty = useMemo(() => {
     if (!config) return false
@@ -209,6 +263,26 @@ export function Settings() {
     : selectedModelDownloaded
       ? 'Model Downloaded'
       : 'Download Model'
+  const embeddingSelectOptions = embeddingModels.length > 0
+    ? embeddingModels
+    : [{
+        id: 'bge-small-en-v1.5-q',
+        name: 'BGE Small EN v1.5',
+        description: 'Fast local English embedding model.',
+        dimensions: 384,
+        provider: 'native-fastembed' as const,
+        is_downloaded: false
+      }]
+  const selectedEmbeddingModel = useMemo(
+    () => embeddingModels.find((model) => model.id === nativeEmbeddingModel),
+    [embeddingModels, nativeEmbeddingModel]
+  )
+  const selectedEmbeddingModelDownloaded = selectedEmbeddingModel?.is_downloaded ?? false
+  const embeddingDownloadButtonLabel = embeddingModelDownloading
+    ? 'Downloading Model'
+    : selectedEmbeddingModelDownloaded
+      ? 'Model Downloaded'
+      : 'Download Model'
 
   // Stable loadConfig with useCallback for dependency array
   const loadConfigStable = useCallback(async () => {
@@ -226,6 +300,8 @@ export function Settings() {
     loadConfigStable()
     loadStorageInfo()
     loadTranscriptionModels()
+    loadEmbeddingModels()
+    loadEmbeddingIndexStats()
   }, [loadConfigStable])
 
   useEffect(() => {
@@ -245,6 +321,9 @@ export function Settings() {
       setTranscriptionModel(config.transcription.localModel)
       setParakeetModel(config.transcription.parakeetModel)
       setTranscriptionLanguage(config.transcription.language)
+      setEmbeddingProvider(config.embeddings.provider)
+      setNativeEmbeddingModel(config.embeddings.nativeModel)
+      setOllamaEmbeddingModel(config.embeddings.ollamaModel)
       // C-CHAT: Load RAG context window size
       setRagContextSize(config.chat.maxContextChunks)
     }
@@ -284,6 +363,32 @@ export function Settings() {
       setTranscriptionModels(models)
     } catch (error) {
       console.error('Failed to load transcription models:', error)
+    }
+  }
+
+  const loadEmbeddingModels = async () => {
+    try {
+      const result = await window.electronAPI.embeddings.listModels()
+      if (result.success) {
+        setEmbeddingModels(result.data)
+      } else {
+        console.error('Failed to load embedding models:', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to load embedding models:', error)
+    }
+  }
+
+  const loadEmbeddingIndexStats = async () => {
+    try {
+      const result = await window.electronAPI.embeddings.getIndexStats()
+      if (result.success) {
+        setEmbeddingIndexStats(result.data)
+      } else {
+        console.error('Failed to load embedding index stats:', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to load embedding index stats:', error)
     }
   }
 
@@ -361,6 +466,57 @@ export function Settings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const saveEmbeddingSettings = async (showToast = true): Promise<boolean> => {
+    if (saving) {
+      toast.warning('Please wait', 'Previous save in progress')
+      return false
+    }
+
+    const previousProvider = config?.embeddings.provider || 'native'
+    const previousNativeModel = config?.embeddings.nativeModel || 'bge-small-en-v1.5-q'
+    const previousOllamaModel = config?.embeddings.ollamaModel || 'nomic-embed-text'
+
+    const embeddingsUpdates: Partial<AppConfig['embeddings']> = {
+      provider: embeddingProvider,
+      nativeModel: nativeEmbeddingModel.trim(),
+      ollamaModel: ollamaEmbeddingModel.trim()
+    }
+
+    const validationError = validateConfig({
+      embeddings: embeddingsUpdates
+    } as Partial<AppConfig>)
+    if (validationError) {
+      toast.error('Validation Error', validationError)
+      return false
+    }
+
+    setSaving(true)
+    try {
+      await updateConfig('embeddings', embeddingsUpdates)
+      await loadEmbeddingIndexStats()
+      if (showToast) {
+        toast.success('Settings Saved', 'Search embedding settings updated')
+      }
+      return true
+    } catch (error) {
+      setEmbeddingProvider(previousProvider)
+      setNativeEmbeddingModel(previousNativeModel)
+      setOllamaEmbeddingModel(previousOllamaModel)
+      try { await loadConfig() } catch { /* best effort reload */ }
+
+      const message = error instanceof Error ? error.message : 'Failed to save embedding settings'
+      toast.error('Save Failed', message)
+      console.error('Failed to save embedding settings:', error)
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveEmbeddings = async () => {
+    await saveEmbeddingSettings()
   }
 
   const handleSaveTranscription = async () => {
@@ -449,6 +605,81 @@ export function Settings() {
       console.error('Failed to download transcription model:', error)
     } finally {
       setModelDownloading(false)
+    }
+  }
+
+  const downloadEmbeddingModel = async (showToast = true): Promise<boolean> => {
+    if (embeddingModelDownloading) return false
+    if (embeddingProvider !== 'native') return true
+    if (!nativeEmbeddingModel.trim()) {
+      toast.error('Validation Error', 'Native embedding model is required')
+      return false
+    }
+    if (selectedEmbeddingModelDownloaded) return true
+
+    setEmbeddingModelDownloading(true)
+    try {
+      const result = await window.electronAPI.embeddings.downloadModel(nativeEmbeddingModel.trim())
+      if (result.success) {
+        setEmbeddingModels((models) => models.map((option) => (
+          option.id === nativeEmbeddingModel ? { ...option, is_downloaded: true } : option
+        )))
+        await loadEmbeddingModels()
+        if (showToast) {
+          toast.success('Model Ready', `${nativeEmbeddingModel} is ready for local search`)
+        }
+        return true
+      }
+
+      toast.error('Model Download Failed', result.error?.message || 'Failed to download embedding model')
+      return false
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to download embedding model'
+      toast.error('Model Download Failed', message)
+      console.error('Failed to download embedding model:', error)
+      return false
+    } finally {
+      setEmbeddingModelDownloading(false)
+    }
+  }
+
+  const handleDownloadEmbeddingModel = async () => {
+    await downloadEmbeddingModel()
+  }
+
+  const handleReindexEmbeddings = async () => {
+    if (embeddingReindexing) return
+
+    setLastEmbeddingReindex(null)
+    setEmbeddingReindexing(true)
+    try {
+      if (isEmbeddingDirty) {
+        const saved = await saveEmbeddingSettings(false)
+        if (!saved) return
+      }
+
+      const downloaded = await downloadEmbeddingModel(false)
+      if (!downloaded) return
+
+      const result = await window.electronAPI.embeddings.reindexTranscripts()
+      if (!result.success) {
+        toast.error('Reindex Failed', result.error?.message || 'Failed to rebuild search index')
+        return
+      }
+
+      setLastEmbeddingReindex(result.data)
+      await loadEmbeddingIndexStats()
+      const failedCount = result.data.failed.length
+      const description = failedCount > 0
+        ? `${result.data.indexedChunks} chunks indexed; ${failedCount} transcript${failedCount === 1 ? '' : 's'} failed`
+        : `${result.data.indexedChunks} chunks indexed from ${result.data.reindexedTranscripts} transcript${result.data.reindexedTranscripts === 1 ? '' : 's'}`
+      toast.success('Search Index Rebuilt', description)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to rebuild search index'
+      toast.error('Reindex Failed', message)
+      console.error('Failed to rebuild search index:', error)
+    } finally {
+      setEmbeddingReindexing(false)
     }
   }
 
@@ -631,6 +862,142 @@ export function Settings() {
                 <Save className="h-4 w-4 mr-2" aria-hidden="true" />
                 {isTranscriptionDirty ? 'Save' : 'Saved'}
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Local Search Embeddings */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Local Search Embeddings</CardTitle>
+              <CardDescription>Configure embeddings for Explore and transcript search</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label htmlFor="embeddingProvider" className="text-sm font-medium">Provider</label>
+                <Select
+                  value={embeddingProvider}
+                  onValueChange={(value) => setEmbeddingProvider(value as EmbeddingProvider)}
+                  disabled={saving || embeddingModelDownloading || embeddingReindexing}
+                >
+                  <SelectTrigger id="embeddingProvider" aria-label="Embedding provider" className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="native">Native Sidecar</SelectItem>
+                    <SelectItem value="ollama">Ollama</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {embeddingProvider === 'native' ? (
+                <div>
+                  <label htmlFor="nativeEmbeddingModel" className="text-sm font-medium">Model</label>
+                  <Select
+                    value={nativeEmbeddingModel}
+                    onValueChange={setNativeEmbeddingModel}
+                    disabled={saving || embeddingModelDownloading || embeddingReindexing}
+                  >
+                    <SelectTrigger id="nativeEmbeddingModel" aria-label="Native embedding model" className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {embeddingSelectOptions.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="ollamaEmbeddingModel" className="text-sm font-medium">Ollama Embedding Model</label>
+                  <Input
+                    id="ollamaEmbeddingModel"
+                    value={ollamaEmbeddingModel}
+                    onChange={(e) => setOllamaEmbeddingModel(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveEmbeddings()}
+                    disabled={saving || embeddingReindexing}
+                    aria-label="Ollama embedding model"
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              {embeddingProvider === 'native' && (
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadEmbeddingModel}
+                  disabled={saving || embeddingModelDownloading || embeddingReindexing || selectedEmbeddingModelDownloaded}
+                  aria-label={selectedEmbeddingModelDownloaded ? 'Embedding model downloaded' : 'Download embedding model'}
+                >
+                  {embeddingModelDownloading ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                  ) : selectedEmbeddingModelDownloaded ? (
+                    <CheckCircle2 className="h-4 w-4 mr-2" aria-hidden="true" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+                  )}
+                  {embeddingDownloadButtonLabel}
+                </Button>
+              )}
+
+              <div className="rounded-md border bg-muted/30 px-3 py-2">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Current Chunks</p>
+                    <p className="font-medium">{embeddingIndexStats?.currentModelDocumentCount ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Other Chunks</p>
+                    <p className="font-medium">{embeddingIndexStats?.incompatibleDocumentCount ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Model</p>
+                    <p className="truncate font-medium" title={embeddingIndexStats?.embeddingModel ?? nativeEmbeddingModel}>
+                      {embeddingIndexStats?.embeddingModel ?? nativeEmbeddingModel}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className="font-medium">
+                      {embeddingProvider === 'native'
+                        ? selectedEmbeddingModelDownloaded
+                          ? 'Downloaded'
+                          : 'Not downloaded'
+                        : 'Ollama'}
+                    </p>
+                  </div>
+                </div>
+                {selectedEmbeddingModel?.description && embeddingProvider === 'native' && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {selectedEmbeddingModel.description} {selectedEmbeddingModel.dimensions} dimensions.
+                  </p>
+                )}
+                {lastEmbeddingReindex && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Last rebuild: {lastEmbeddingReindex.indexedChunks} chunks, {lastEmbeddingReindex.failed.length} failed.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handleSaveEmbeddings}
+                  disabled={saving || embeddingModelDownloading || embeddingReindexing || !isEmbeddingDirty}
+                  aria-label="Save embedding settings"
+                >
+                  <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {isEmbeddingDirty ? 'Save' : 'Saved'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleReindexEmbeddings}
+                  disabled={saving || embeddingModelDownloading || embeddingReindexing}
+                  aria-label="Rebuild transcript search index"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2${embeddingReindexing ? ' animate-spin' : ''}`} aria-hidden="true" />
+                  {embeddingReindexing ? 'Rebuilding Index' : 'Rebuild Index'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

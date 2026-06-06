@@ -164,6 +164,11 @@ function normalizeNativeEmbeddingModel(value?: string): string {
   return model
 }
 
+function shouldMigrateLegacyEmbeddingProvider(savedConfig: Partial<AppConfig>): boolean {
+  const embeddings = savedConfig.embeddings as Partial<AppConfig['embeddings']> | undefined
+  return embeddings?.provider === 'ollama' && embeddings.nativeModel === undefined
+}
+
 function isLoopbackHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
@@ -245,7 +250,11 @@ export async function initializeConfig(): Promise<void> {
         savedConfig.calendar.icsUrl = decryptSensitive(savedConfig.calendar.icsUrl)
       }
       // Merge with defaults to handle new fields
-      config = normalizeLocalOnlyConfig(deepMerge(DEFAULT_CONFIG, savedConfig))
+      const mergedConfig = deepMerge(DEFAULT_CONFIG, savedConfig)
+      if (shouldMigrateLegacyEmbeddingProvider(savedConfig)) {
+        mergedConfig.embeddings.provider = DEFAULT_CONFIG.embeddings.provider
+      }
+      config = normalizeLocalOnlyConfig(mergedConfig)
     } else {
       // Create config file with defaults
       await saveConfig(DEFAULT_CONFIG)
