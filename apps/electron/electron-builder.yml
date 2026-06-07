@@ -29,6 +29,9 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+portable:
+  artifactName: ${name}-${version}-portable.${ext}
+  requestExecutionLevel: user
 mac:
   target:
     - target: dmg

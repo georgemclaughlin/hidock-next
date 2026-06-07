@@ -1,0 +1,73 @@
+name: Windows Portable
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build portable exe
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/electron/package-lock.json
+
+      - name: Use Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/electron/native/transcriber/target
+          key: ${{ runner.os }}-cargo-transcriber-${{ hashFiles('apps/electron/native/transcriber/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-transcriber-
+
+      - name: Install dependencies
+        working-directory: apps/electron
+        run: npm ci
+
+      - name: Build portable exe
+        working-directory: apps/electron
+        run: npm run build:win:portable
+
+      - name: Verify portable artifact
+        shell: pwsh
+        run: |
+          $artifacts = Get-ChildItem -Path apps/electron/dist -Filter '*portable*.exe'
+          if ($artifacts.Count -ne 1) {
+            Get-ChildItem -Path apps/electron/dist -Recurse | Select-Object FullName, Length
+            throw "Expected exactly one portable exe artifact, found $($artifacts.Count)."
+          }
+
+          $artifact = $artifacts[0]
+          if ($artifact.Length -le 0) {
+            throw "Portable exe artifact is empty: $($artifact.FullName)"
+          }
+
+          "Built portable artifact: $($artifact.Name) ($($artifact.Length) bytes)"
+
+      - name: Upload portable exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-recorder-windows-portable
+          path: apps/electron/dist/*portable*.exe
+          if-no-files-found: error
+          retention-days: 14
