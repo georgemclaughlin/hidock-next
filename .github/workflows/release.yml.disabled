@@ -1,3 +1,4 @@
+# Disabled: GitHub Actions only loads .yml/.yaml files from .github/workflows.
 name: Release
 
 on:

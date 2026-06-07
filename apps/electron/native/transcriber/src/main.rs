@@ -418,8 +418,7 @@ fn run_cli() -> Result<()> {
             }
 
             let result = transcribe(&models_dir, &model, &input, &language, !disable_diarization)?;
-            let json = serde_json::to_vec_pretty(&result.transcript)?;
-            fs::write(&output, json).with_context(|| {
+            write_json_file_atomic(&output, &result.transcript).with_context(|| {
                 format!("Failed to write transcript output {}", output.display())
             })?;
             if let Some(checkpoint_dir) = result.checkpoint_dir {
@@ -2473,6 +2472,20 @@ mod tests {
     #[test]
     fn parakeet_chunk_window_stays_under_model_limit() {
         assert!(PARAKEET_MAX_CHUNK_INFERENCE_SECS < PARAKEET_MAX_INFERENCE_SECS);
+    }
+
+    #[test]
+    fn write_json_file_atomic_creates_missing_parent_directory() {
+        let root = unique_test_dir("atomic-missing-parent");
+        let output = root.join("missing-parent").join("native-parakeet.json");
+
+        write_json_file_atomic(&output, &serde_json::json!({ "text": "hello" }))
+            .expect("write output");
+        let saved = read_json_file::<serde_json::Value>(&output).expect("read output");
+
+        assert_eq!(saved["text"], "hello");
+
+        fs::remove_dir_all(&root).expect("remove test root");
     }
 
     #[test]
