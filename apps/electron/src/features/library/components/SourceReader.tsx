@@ -47,6 +47,18 @@ const CATEGORY_OPTIONS = [
 
 type TranscriptView = 'notes' | 'raw' | 'diarized'
 
+const activeNotesGenerations = new Set<string>()
+
+function transcriptHasGeneratedNotes(transcript?: Transcript): boolean {
+  return Boolean(
+    transcript?.summary?.trim() ||
+    parseJsonArray<string>(transcript?.action_items).length ||
+    parseJsonArray<string>(transcript?.key_points).length ||
+    parseJsonArray<string>(transcript?.topics).length ||
+    parseJsonArray<string>(transcript?.question_suggestions).length
+  )
+}
+
 function parseTranscriptSegments(json?: string | null): TranscriptViewerSegmentInput[] {
   return parseJsonArray<TranscriptViewerSegmentInput>(json)
     .filter((segment) => typeof segment.text === 'string' && segment.text.trim().length > 0)
@@ -209,6 +221,45 @@ function MeetingNotesPanel({
   )
 }
 
+interface MeetingNotesCalloutProps {
+  hasNotes: boolean
+  isGenerating: boolean
+  onGenerate: () => void
+}
+
+function MeetingNotesCallout({ hasNotes, isGenerating, onGenerate }: MeetingNotesCalloutProps) {
+  return (
+    <div className="flex flex-col gap-3 rounded-md border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-sm font-medium">Meeting notes</p>
+        <p className="text-xs text-muted-foreground">
+          {isGenerating
+            ? 'Generating polished notes for this transcript.'
+            : hasNotes
+              ? 'Polished notes are available in the Notes tab.'
+              : 'Generate polished notes, action items, topics, and follow-up questions.'}
+        </p>
+      </div>
+      <Button
+        variant={hasNotes ? 'outline' : 'default'}
+        size="sm"
+        onClick={onGenerate}
+        disabled={isGenerating}
+        className="gap-2 self-start sm:self-auto"
+        aria-label={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
+        title={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
+      >
+        {isGenerating ? (
+          <RefreshCw className="h-4 w-4 animate-spin" />
+        ) : (
+          <Wand2 className="h-4 w-4" />
+        )}
+        {isGenerating ? 'Generating' : hasNotes ? 'Regenerate' : 'Generate notes'}
+      </Button>
+    </div>
+  )
+}
+
 interface SourceReaderProps {
   recording: UnifiedRecording | null
   transcript?: Transcript
@@ -271,9 +322,11 @@ export function SourceReader({
   const [showTranscribeWarning, setShowTranscribeWarning] = useState(false)
   const [isCopyingTranscript, setIsCopyingTranscript] = useState(false)
   const [transcriptCopied, setTranscriptCopied] = useState(false)
-  const [transcriptView, setTranscriptView] = useState<TranscriptView>('notes')
-  const [isGeneratingNotes, setIsGeneratingNotes] = useState(false)
-  const [optimisticNotesSummary, setOptimisticNotesSummary] = useState<string | null>(null)
+  const [transcriptView, setTranscriptView] = useState<TranscriptView>(() => (
+    transcriptHasGeneratedNotes(transcript) ? 'notes' : 'raw'
+  ))
+  const [, setNotesGenerationTick] = useState(0)
+  const [optimisticNotesByRecording, setOptimisticNotesByRecording] = useState<Record<string, string | null>>({})
   const [audioPlayerExpanded, setAudioPlayerExpanded] = useState(false)
   const [detailsExpanded, setDetailsExpanded] = useState(false)
 
@@ -293,11 +346,21 @@ export function SourceReader({
       : transcript.full_text
   }, [hasDiarizedTranscript, transcript, transcriptSegments, transcriptView])
 
-  const meetingNotesSummary = optimisticNotesSummary ?? transcript?.summary ?? undefined
+  const isGeneratingNotes = recording ? activeNotesGenerations.has(recording.id) : false
+  const meetingNotesSummary = recording
+    ? optimisticNotesByRecording[recording.id] ?? transcript?.summary ?? undefined
+    : transcript?.summary ?? undefined
   const meetingNoteActionItems = useMemo(() => parseJsonArray<string>(transcript?.action_items), [transcript?.action_items])
   const meetingNoteKeyPoints = useMemo(() => parseJsonArray<string>(transcript?.key_points), [transcript?.key_points])
   const meetingNoteTopics = useMemo(() => parseJsonArray<string>(transcript?.topics), [transcript?.topics])
   const meetingNoteQuestions = useMemo(() => parseJsonArray<string>(transcript?.question_suggestions), [transcript?.question_suggestions])
+  const hasMeetingNotes = Boolean(
+    meetingNotesSummary?.trim() ||
+    meetingNoteActionItems.length ||
+    meetingNoteKeyPoints.length ||
+    meetingNoteTopics.length ||
+    meetingNoteQuestions.length
+  )
 
   // Reset all state when recording changes
   useEffect(() => {
@@ -308,12 +371,10 @@ export function SourceReader({
     setShowTranscribeWarning(false)
     setIsCopyingTranscript(false)
     setTranscriptCopied(false)
-    setTranscriptView('notes')
-    setIsGeneratingNotes(false)
-    setOptimisticNotesSummary(null)
+    setTranscriptView(hasMeetingNotes ? 'notes' : 'raw')
     setAudioPlayerExpanded(false)
     setDetailsExpanded(false)
-  }, [recording?.id])
+  }, [recording?.id, transcript?.id, hasMeetingNotes])
 
   useEffect(() => {
     if (transcriptView === 'diarized' && !hasDiarizedTranscript) {
@@ -322,8 +383,14 @@ export function SourceReader({
   }, [hasDiarizedTranscript, transcriptView])
 
   useEffect(() => {
-    setOptimisticNotesSummary(null)
-  }, [transcript?.id, transcript?.summary])
+    if (!recording?.id || transcript?.summary === undefined) return
+    setOptimisticNotesByRecording((current) => {
+      if (!(recording.id in current)) return current
+      const next = { ...current }
+      delete next[recording.id]
+      return next
+    })
+  }, [recording?.id, transcript?.summary])
 
   const handleCloseAudioPlayer = useCallback(() => {
     setAudioPlayerExpanded(false)
@@ -441,9 +508,11 @@ export function SourceReader({
   const handleGenerateNotes = useCallback(async () => {
     if (!recording || !transcript || isGeneratingNotes) return
 
-    setIsGeneratingNotes(true)
+    const recordingId = recording.id
+    activeNotesGenerations.add(recordingId)
+    setNotesGenerationTick((value) => value + 1)
     try {
-      const result = await window.electronAPI.notes.generateForRecording(recording.id)
+      const result = await window.electronAPI.notes.generateForRecording(recordingId)
       if (!result.success) {
         toast.error('Notes failed', result.error.message || 'Failed to generate meeting notes')
         return
@@ -454,14 +523,19 @@ export function SourceReader({
         return
       }
 
-      setOptimisticNotesSummary(result.data.summary ?? null)
+      setOptimisticNotesByRecording((current) => ({
+        ...current,
+        [recordingId]: result.data.summary ?? null
+      }))
+      setTranscriptView('notes')
       toast.success('Notes generated', result.data.titleSuggestion || 'Meeting notes updated')
       onMetadataEdited?.()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate meeting notes'
       toast.error('Notes failed', message)
     } finally {
-      setIsGeneratingNotes(false)
+      activeNotesGenerations.delete(recordingId)
+      setNotesGenerationTick((value) => value + 1)
     }
   }, [isGeneratingNotes, onMetadataEdited, recording, transcript])
 
@@ -895,6 +969,13 @@ export function SourceReader({
                 {transcriptCopied ? 'Copied' : 'Copy'}
               </Button>
             </div>
+            {(!hasMeetingNotes || isGeneratingNotes) && (
+              <MeetingNotesCallout
+                hasNotes={hasMeetingNotes}
+                isGenerating={isGeneratingNotes}
+                onGenerate={handleGenerateNotes}
+              />
+            )}
             <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
               <TabsList className="w-full">
                 <TabsTrigger value="notes" className="flex-1">

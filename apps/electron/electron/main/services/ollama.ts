@@ -16,8 +16,9 @@ interface OllamaChatMessage {
 
 interface OllamaChatResponse {
   model: string
-  message: OllamaChatMessage
+  message?: Partial<OllamaChatMessage> & { thinking?: string }
   done: boolean
+  error?: string
 }
 
 class OllamaService {
@@ -53,6 +54,7 @@ class OllamaService {
       temperature?: number
       maxTokens?: number
       signal?: AbortSignal
+      timeoutMs?: number
     } = {}
   ): Promise<string | null> {
     if (!this.baseUrl.trim()) return null
@@ -64,34 +66,49 @@ class OllamaService {
       }
       messages.push({ role: 'user', content: prompt })
 
+      const controller = new AbortController()
+      let timeoutId: ReturnType<typeof setTimeout> | undefined
+      const abortFromCaller = (): void => controller.abort()
+
+      if (options.signal) {
+        if (options.signal.aborted) {
+          controller.abort()
+        } else {
+          options.signal.addEventListener('abort', abortFromCaller, { once: true })
+        }
+      }
+
+      timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 45 * 60 * 1000)
+
       const fetchOptions: RequestInit = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: this.notesModel,
           messages,
-          stream: false,
+          stream: true,
           think: this.thinkingEnabled,
           options: {
             temperature: options.temperature ?? 0.2,
             num_predict: options.maxTokens ?? 1600
           }
-        })
+        }),
+        signal: controller.signal
       }
 
-      if (options.signal) {
-        fetchOptions.signal = options.signal
+      try {
+        const response = await fetch(`${this.baseUrl}/api/chat`, fetchOptions)
+
+        if (!response.ok) {
+          console.error('Ollama chat error:', response.statusText)
+          return null
+        }
+
+        return await this.readStreamingChatResponse(response)
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId)
+        options.signal?.removeEventListener('abort', abortFromCaller)
       }
-
-      const response = await fetch(`${this.baseUrl}/api/chat`, fetchOptions)
-
-      if (!response.ok) {
-        console.error('Ollama chat error:', response.statusText)
-        return null
-      }
-
-      const data: OllamaChatResponse = await response.json()
-      return data.message.content
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         console.log('[Ollama] Generation request was cancelled')
@@ -100,6 +117,57 @@ class OllamaService {
       console.error('Failed to generate with Ollama:', error)
       return null
     }
+  }
+
+  private async readStreamingChatResponse(response: Response): Promise<string | null> {
+    if (!response.body) {
+      const data: OllamaChatResponse = await response.json()
+      return data.message?.content ?? null
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let content = ''
+
+    const readLine = (line: string): boolean => {
+      const trimmed = line.trim()
+      if (!trimmed) return false
+
+      const data = JSON.parse(trimmed) as OllamaChatResponse
+      if (data.error) {
+        throw new Error(data.error)
+      }
+
+      if (data.message?.content) {
+        content += data.message.content
+      }
+
+      return data.done === true
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value, { stream: !done })
+
+      const lines = buffer.split(/\r?\n/)
+      buffer = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (readLine(line)) {
+          await reader.cancel()
+          return content || null
+        }
+      }
+
+      if (done) break
+    }
+
+    if (buffer && readLine(buffer)) {
+      return content || null
+    }
+
+    return content || null
   }
 }
 

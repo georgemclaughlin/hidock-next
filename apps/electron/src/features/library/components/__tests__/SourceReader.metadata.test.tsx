@@ -232,6 +232,17 @@ describe('SourceReader — metadata editing', () => {
     expect(screen.getByRole('tab', { name: 'Raw' })).toBeInTheDocument()
   })
 
+  it('defaults to raw transcript and shows generate action when notes are missing', () => {
+    const rec = makeRecording({ transcriptionStatus: 'complete' })
+    const transcript = makeTranscript()
+
+    render(<SourceReader recording={rec} transcript={transcript} />)
+
+    expect(screen.getByRole('tab', { name: 'Raw' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: /generate meeting notes/i })).toBeInTheDocument()
+    expect(screen.queryByText('No meeting notes have been generated for this transcript.')).not.toBeInTheDocument()
+  })
+
   it('generates meeting notes for an existing transcript', async () => {
     const rec = makeRecording({ transcriptionStatus: 'complete' })
     const transcript = makeTranscript()
@@ -248,6 +259,42 @@ describe('SourceReader — metadata editing', () => {
       expect(onMetadataEdited).toHaveBeenCalledOnce()
     })
     expect(await screen.findByRole('heading', { name: 'Generated Meeting Notes' })).toBeInTheDocument()
+  })
+
+  it('keeps showing note generation progress after navigating away and back', async () => {
+    const rec1 = makeRecording({ id: 'rec-1', transcriptionStatus: 'complete' })
+    const rec2 = makeRecording({ id: 'rec-2', filename: 'other-meeting.wav', transcriptionStatus: 'complete' })
+    const transcript1 = makeTranscript({ recording_id: 'rec-1' })
+    const transcript2 = makeTranscript({ id: 'transcript-2', recording_id: 'rec-2', full_text: 'Other transcript.' })
+
+    let resolveGenerate: ((value: any) => void) | undefined
+    mockGenerateNotes.mockReturnValueOnce(new Promise((resolve) => {
+      resolveGenerate = resolve
+    }))
+
+    const { rerender } = render(<SourceReader recording={rec1} transcript={transcript1} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /generate meeting notes/i }))
+    expect(screen.getByRole('button', { name: /generate meeting notes/i })).toHaveTextContent('Generating')
+
+    rerender(<SourceReader recording={rec2} transcript={transcript2} />)
+    expect(screen.getByText('other-meeting.wav')).toBeInTheDocument()
+
+    rerender(<SourceReader recording={rec1} transcript={transcript1} />)
+    expect(screen.getByRole('button', { name: /generate meeting notes/i })).toHaveTextContent('Generating')
+
+    resolveGenerate?.({
+      success: true,
+      data: {
+        generated: true,
+        titleSuggestion: 'Generated Meeting Notes',
+        summary: '# Generated Meeting Notes\n\nA concise generated summary.'
+      }
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /regenerate meeting notes/i })).not.toHaveTextContent('Generating')
+    })
   })
 
   // 2. Pencil icon visible on hover when knowledgeCaptureId present

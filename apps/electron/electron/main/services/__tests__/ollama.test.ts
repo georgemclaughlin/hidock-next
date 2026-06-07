@@ -26,12 +26,28 @@ describe('OllamaService', () => {
   })
 
   it('sends the configured notes model and thinking option to Ollama chat', async () => {
+    const encoder = new TextEncoder()
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        model: 'custom-notes-model',
-        message: { role: 'assistant', content: '{"summary":"done"}' },
-        done: true
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify({
+            model: 'custom-notes-model',
+            message: { role: 'assistant', thinking: 'ignored reasoning' },
+            done: false
+          }) + '\n'))
+          controller.enqueue(encoder.encode(JSON.stringify({
+            model: 'custom-notes-model',
+            message: { role: 'assistant', content: '{"summary":' },
+            done: false
+          }) + '\n'))
+          controller.enqueue(encoder.encode(JSON.stringify({
+            model: 'custom-notes-model',
+            message: { role: 'assistant', content: '"done"}' },
+            done: true
+          }) + '\n'))
+          controller.close()
+        }
       })
     })
 
@@ -52,7 +68,7 @@ describe('OllamaService', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.model).toBe('custom-notes-model')
     expect(body.think).toBe(true)
-    expect(body.stream).toBe(false)
+    expect(body.stream).toBe(true)
     expect(body.messages).toEqual([
       { role: 'system', content: 'Return JSON' },
       { role: 'user', content: 'Summarize this' }
