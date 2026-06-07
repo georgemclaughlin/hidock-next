@@ -228,10 +228,37 @@ export function Library() {
   // Device disconnect handling
   const [wasConnected, setWasConnected] = useState(deviceConnected)
   const [isReconnecting, setIsReconnecting] = useState(false)
+  const [activeDownloadCount, setActiveDownloadCount] = useState(0)
   const showDisconnectBanner = wasConnected && !deviceConnected
+  const hasPausedDownloads = activeDownloadCount > 0 || downloadQueue.size > 0
 
   // Ref to track latest deviceConnected value (avoids stale closure in setTimeout)
   const deviceConnectedRef = useRef(deviceConnected)
+
+  useEffect(() => {
+    const downloadService = window.electronAPI?.downloadService
+    if (!downloadService?.getState || !downloadService?.onStateUpdate) return
+
+    const updateActiveDownloadCount = (state: { queue?: Array<{ status: string }> }) => {
+      const queue = state?.queue ?? []
+      setActiveDownloadCount(queue.filter((item) => (
+        item.status === 'pending' || item.status === 'downloading'
+      )).length)
+    }
+
+    let mounted = true
+    downloadService.getState()
+      .then((state) => {
+        if (mounted) updateActiveDownloadCount(state)
+      })
+      .catch(() => {})
+
+    const unsubscribe = downloadService.onStateUpdate(updateActiveDownloadCount)
+    return () => {
+      mounted = false
+      unsubscribe()
+    }
+  }, [])
 
   // Track device connection changes
   useEffect(() => {
@@ -858,7 +885,8 @@ export function Library() {
       <DeviceDisconnectBanner
         show={showDisconnectBanner}
         isReconnecting={isReconnecting}
-        onNavigateToDevice={() => navigate('/device')}
+        hasPausedDownloads={hasPausedDownloads}
+        onNavigateToDevice={() => navigate('/sync')}
         onRetry={handleRetryConnection}
       />
 
@@ -942,7 +970,7 @@ export function Library() {
           {filteredRecordings.length === 0 ? (
             <EmptyState
               hasRecordings={recordings.length > 0}
-              onNavigateToDevice={() => navigate('/device')}
+              onNavigateToDevice={() => navigate('/sync')}
               onAddRecording={handleAddRecording}
             />
           ) : (

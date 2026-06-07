@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 interface DeviceDisconnectBannerProps {
   show: boolean
   isReconnecting: boolean
+  hasPausedDownloads?: boolean
   onNavigateToDevice: () => void
   onRetry?: () => void
 }
@@ -11,6 +12,7 @@ interface DeviceDisconnectBannerProps {
 export function DeviceDisconnectBanner({
   show,
   isReconnecting,
+  hasPausedDownloads = false,
   onNavigateToDevice,
   onRetry
 }: DeviceDisconnectBannerProps) {
@@ -31,7 +33,9 @@ export function DeviceDisconnectBanner({
           <p className="text-xs text-orange-600 dark:text-orange-400">
             {isReconnecting
               ? 'Please wait while we reconnect to your device.'
-              : 'Downloads have been paused. Reconnect to continue.'}
+              : hasPausedDownloads
+                ? 'Downloads have been paused. Reconnect to continue.'
+                : 'Downloaded recordings remain available. Reconnect to browse the device.'}
           </p>
         </div>
       </div>

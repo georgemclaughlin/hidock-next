@@ -189,8 +189,20 @@ export function useDownloadOrchestrator() {
     const state = await window.electronAPI.downloadService.getState()
     const pendingItems = state.queue.filter((item: DownloadQueueItem) => item.status === 'pending')
 
-    if (pendingItems.length === 0 || !deviceService.isConnected()) {
+    if (pendingItems.length === 0) {
       isProcessingDownloads.current = false
+      const hasActiveDownloads = state.queue.some((item: DownloadQueueItem) => (
+        item.status === 'pending' || item.status === 'downloading'
+      ))
+      if (!hasActiveDownloads) {
+        clearDeviceSyncState()
+      }
+      return
+    }
+
+    if (!deviceService.isConnected()) {
+      isProcessingDownloads.current = false
+      clearDeviceSyncState()
       return
     }
     downloadAbortControllerRef.current = new AbortController()
@@ -357,6 +369,13 @@ export function useDownloadOrchestrator() {
             }
           }
 
+          const hasActiveDownloads = state.queue.some((item: DownloadQueueItem) => (
+            item.status === 'pending' || item.status === 'downloading'
+          ))
+          if (!hasActiveDownloads && !isProcessingDownloads.current && useAppStore.getState().deviceSyncing) {
+            useAppStore.getState().clearDeviceSyncState()
+          }
+
           if (_cancelEpoch > _lastProcessedEpoch) {
             _lastProcessedEpoch = _cancelEpoch
             return
@@ -412,6 +431,8 @@ export function useDownloadOrchestrator() {
         if (isProcessingDownloads.current) {
           if (shouldLogQa()) console.log('[useDownloadOrchestrator] Device disconnected, aborting downloads')
           downloadAbortControllerRef.current?.abort()
+        } else if (useAppStore.getState().deviceSyncing) {
+          useAppStore.getState().clearDeviceSyncState()
         }
       }
     })
