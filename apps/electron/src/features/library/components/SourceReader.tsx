@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { TranscriptViewer, type TranscriptViewerSegmentInput } from './TranscriptViewer'
 import { ProcessingPipelineTracker } from './ProcessingPipelineTracker'
 import { AudioPlayer } from '@/components/AudioPlayer'
@@ -44,7 +45,7 @@ const CATEGORY_OPTIONS = [
   { value: 'other', label: 'Other' },
 ] as const
 
-type TranscriptView = 'raw' | 'diarized'
+type TranscriptView = 'notes' | 'raw' | 'diarized'
 
 function parseTranscriptSegments(json?: string | null): TranscriptViewerSegmentInput[] {
   return parseJsonArray<TranscriptViewerSegmentInput>(json)
@@ -80,6 +81,132 @@ function formatSegmentedTranscript(segments: TranscriptViewerSegmentInput[], fal
       return `[${formatTimestamp(segment.start)}] ${prefix}${segment.text?.trim() ?? ''}`.trim()
     })
     .join('\n\n')
+}
+
+function summaryContainsSection(summary: string | undefined, section: string): boolean {
+  if (!summary) return false
+  return summary.toLowerCase().includes(section.toLowerCase())
+}
+
+interface MeetingNotesPanelProps {
+  summary?: string
+  actionItems: string[]
+  keyPoints: string[]
+  topics: string[]
+  questions: string[]
+  isGenerating: boolean
+  onGenerate: () => void
+}
+
+function MeetingNotesPanel({
+  summary,
+  actionItems,
+  keyPoints,
+  topics,
+  questions,
+  isGenerating,
+  onGenerate
+}: MeetingNotesPanelProps) {
+  const hasNotes = Boolean(summary?.trim() || actionItems.length || keyPoints.length || topics.length || questions.length)
+  const showActionItems = actionItems.length > 0 && !summaryContainsSection(summary, 'Action Items')
+  const showKeyPoints = keyPoints.length > 0 && !summaryContainsSection(summary, 'Key Points')
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold">Meeting Notes</h4>
+        <Button
+          variant={hasNotes ? 'outline' : 'default'}
+          size="sm"
+          onClick={onGenerate}
+          disabled={isGenerating}
+          className="gap-2 shrink-0"
+          aria-label={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
+          title={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
+        >
+          {isGenerating ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <Wand2 className="h-4 w-4" />
+          )}
+          {isGenerating ? 'Generating' : hasNotes ? 'Regenerate' : 'Generate notes'}
+        </Button>
+      </div>
+
+      {hasNotes ? (
+        <div className="space-y-4">
+          {summary && (
+            <div className="rounded-md border bg-background p-4">
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => <h1 className="mb-2 text-lg font-semibold leading-tight">{children}</h1>,
+                  h2: ({ children }) => <h2 className="mb-2 mt-4 text-base font-semibold">{children}</h2>,
+                  h3: ({ children }) => <h3 className="mb-2 mt-3 text-sm font-semibold">{children}</h3>,
+                  p: ({ children }) => <p className="mb-2 text-sm leading-relaxed last:mb-0">{children}</p>,
+                  ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-5 text-sm last:mb-0">{children}</ul>,
+                  ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-5 text-sm last:mb-0">{children}</ol>,
+                  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>
+                }}
+              >
+                {summary}
+              </ReactMarkdown>
+            </div>
+          )}
+
+          {showActionItems && (
+            <section>
+              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Action Items</h5>
+              <ul className="list-disc space-y-2 rounded-md border bg-muted/30 py-3 pl-8 pr-3 text-sm">
+                {actionItems.map((item, i) => (
+                  <li key={i} className="leading-relaxed">{item}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {showKeyPoints && (
+            <section>
+              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Key Points</h5>
+              <ul className="list-disc space-y-2 rounded-md border bg-muted/30 py-3 pl-8 pr-3 text-sm">
+                {keyPoints.map((item, i) => (
+                  <li key={i} className="leading-relaxed">{item}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {topics.length > 0 && (
+            <section>
+              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Topics</h5>
+              <div className="flex flex-wrap gap-1.5">
+                {topics.map((topic, i) => (
+                  <span key={i} className="rounded-full bg-secondary px-2 py-0.5 text-xs">
+                    {topic}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {questions.length > 0 && (
+            <section>
+              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Follow-up Questions</h5>
+              <ul className="list-disc space-y-2 rounded-md border bg-muted/30 py-3 pl-8 pr-3 text-sm">
+                {questions.map((question, i) => (
+                  <li key={i} className="leading-relaxed">{question}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+          No meeting notes have been generated for this transcript.
+        </div>
+      )}
+    </div>
+  )
 }
 
 interface SourceReaderProps {
@@ -144,7 +271,9 @@ export function SourceReader({
   const [showTranscribeWarning, setShowTranscribeWarning] = useState(false)
   const [isCopyingTranscript, setIsCopyingTranscript] = useState(false)
   const [transcriptCopied, setTranscriptCopied] = useState(false)
-  const [transcriptView, setTranscriptView] = useState<TranscriptView>('raw')
+  const [transcriptView, setTranscriptView] = useState<TranscriptView>('notes')
+  const [isGeneratingNotes, setIsGeneratingNotes] = useState(false)
+  const [optimisticNotesSummary, setOptimisticNotesSummary] = useState<string | null>(null)
   const [audioPlayerExpanded, setAudioPlayerExpanded] = useState(false)
   const [detailsExpanded, setDetailsExpanded] = useState(false)
 
@@ -164,6 +293,12 @@ export function SourceReader({
       : transcript.full_text
   }, [hasDiarizedTranscript, transcript, transcriptSegments, transcriptView])
 
+  const meetingNotesSummary = optimisticNotesSummary ?? transcript?.summary ?? undefined
+  const meetingNoteActionItems = useMemo(() => parseJsonArray<string>(transcript?.action_items), [transcript?.action_items])
+  const meetingNoteKeyPoints = useMemo(() => parseJsonArray<string>(transcript?.key_points), [transcript?.key_points])
+  const meetingNoteTopics = useMemo(() => parseJsonArray<string>(transcript?.topics), [transcript?.topics])
+  const meetingNoteQuestions = useMemo(() => parseJsonArray<string>(transcript?.question_suggestions), [transcript?.question_suggestions])
+
   // Reset all state when recording changes
   useEffect(() => {
     setIsEditingTitle(false)
@@ -173,16 +308,22 @@ export function SourceReader({
     setShowTranscribeWarning(false)
     setIsCopyingTranscript(false)
     setTranscriptCopied(false)
-    setTranscriptView('raw')
+    setTranscriptView('notes')
+    setIsGeneratingNotes(false)
+    setOptimisticNotesSummary(null)
     setAudioPlayerExpanded(false)
     setDetailsExpanded(false)
   }, [recording?.id])
 
   useEffect(() => {
     if (transcriptView === 'diarized' && !hasDiarizedTranscript) {
-      setTranscriptView('raw')
+      setTranscriptView('notes')
     }
   }, [hasDiarizedTranscript, transcriptView])
+
+  useEffect(() => {
+    setOptimisticNotesSummary(null)
+  }, [transcript?.id, transcript?.summary])
 
   const handleCloseAudioPlayer = useCallback(() => {
     setAudioPlayerExpanded(false)
@@ -296,6 +437,33 @@ export function SourceReader({
       setIsCopyingTranscript(false)
     }
   }, [copiedTranscriptText])
+
+  const handleGenerateNotes = useCallback(async () => {
+    if (!recording || !transcript || isGeneratingNotes) return
+
+    setIsGeneratingNotes(true)
+    try {
+      const result = await window.electronAPI.notes.generateForRecording(recording.id)
+      if (!result.success) {
+        toast.error('Notes failed', result.error.message || 'Failed to generate meeting notes')
+        return
+      }
+
+      if (!result.data.generated) {
+        toast.warning('Notes not generated', result.data.skippedReason || 'Meeting notes were skipped')
+        return
+      }
+
+      setOptimisticNotesSummary(result.data.summary ?? null)
+      toast.success('Notes generated', result.data.titleSuggestion || 'Meeting notes updated')
+      onMetadataEdited?.()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate meeting notes'
+      toast.error('Notes failed', message)
+    } finally {
+      setIsGeneratingNotes(false)
+    }
+  }, [isGeneratingNotes, onMetadataEdited, recording, transcript])
 
   if (!recording) {
     return (
@@ -727,29 +895,43 @@ export function SourceReader({
                 {transcriptCopied ? 'Copied' : 'Copy'}
               </Button>
             </div>
-            {hasDiarizedTranscript ? (
-              <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
-                <TabsList className="w-full">
-                  <TabsTrigger value="raw" className="flex-1">
-                    Raw
-                  </TabsTrigger>
+            <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
+              <TabsList className="w-full">
+                <TabsTrigger value="notes" className="flex-1">
+                  Notes
+                </TabsTrigger>
+                <TabsTrigger value="raw" className="flex-1">
+                  Raw
+                </TabsTrigger>
+                {hasDiarizedTranscript && (
                   <TabsTrigger value="diarized" className="flex-1" title="Show diarized transcript">
                     Diarized
                   </TabsTrigger>
-                </TabsList>
-                <TabsContent value="raw" className="mt-3">
-                  <TranscriptViewer
-                    transcript={transcript.full_text}
-                    currentTimeMs={currentTimeMs}
-                    onSeek={onSeek || (() => {})}
-                    showSummary={true}
-                    showActionItems={true}
-                    summary={transcript.summary ?? undefined}
-                    actionItems={parseJsonArray<string>(transcript.action_items)}
-                    transcriptLabel="Raw Transcript"
-                    showTranscriptHeader={false}
-                  />
-                </TabsContent>
+                )}
+              </TabsList>
+              <TabsContent value="notes" className="mt-3">
+                <MeetingNotesPanel
+                  summary={meetingNotesSummary}
+                  actionItems={meetingNoteActionItems}
+                  keyPoints={meetingNoteKeyPoints}
+                  topics={meetingNoteTopics}
+                  questions={meetingNoteQuestions}
+                  isGenerating={isGeneratingNotes}
+                  onGenerate={handleGenerateNotes}
+                />
+              </TabsContent>
+              <TabsContent value="raw" className="mt-3">
+                <TranscriptViewer
+                  transcript={transcript.full_text}
+                  currentTimeMs={currentTimeMs}
+                  onSeek={onSeek || (() => {})}
+                  showSummary={false}
+                  showActionItems={false}
+                  transcriptLabel="Raw Transcript"
+                  showTranscriptHeader={false}
+                />
+              </TabsContent>
+              {hasDiarizedTranscript && (
                 <TabsContent value="diarized" className="mt-3">
                   <TranscriptViewer
                     transcript={transcript.full_text}
@@ -762,22 +944,8 @@ export function SourceReader({
                     showTranscriptHeader={false}
                   />
                 </TabsContent>
-              </Tabs>
-            ) : (
-              <div className="mt-3">
-                <TranscriptViewer
-                  transcript={transcript.full_text}
-                  currentTimeMs={currentTimeMs}
-                  onSeek={onSeek || (() => {})}
-                  showSummary={true}
-                  showActionItems={true}
-                  summary={transcript.summary ?? undefined}
-                  actionItems={parseJsonArray<string>(transcript.action_items)}
-                  transcriptLabel="Raw Transcript"
-                  showTranscriptHeader={false}
-                />
-              </div>
-            )}
+              )}
+            </Tabs>
           </div>
         ) : recording.transcriptionStatus === 'complete' ? (
           <div className="text-center text-muted-foreground py-8">

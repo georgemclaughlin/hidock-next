@@ -20,6 +20,14 @@ import type { Meeting, Transcript } from '@/types'
 const mockKnowledgeUpdate = vi.fn().mockResolvedValue({ success: true })
 const mockSelectMeeting = vi.fn().mockResolvedValue({ success: true })
 const mockCopyToClipboard = vi.fn().mockResolvedValue({ success: true })
+const mockGenerateNotes = vi.fn().mockResolvedValue({
+  success: true,
+  data: {
+    generated: true,
+    titleSuggestion: 'Generated Meeting Notes',
+    summary: '# Generated Meeting Notes\n\nA concise generated summary.'
+  }
+})
 
 // Silence @radix-ui portal issues in jsdom
 vi.mock('@radix-ui/react-portal', () => ({
@@ -171,6 +179,9 @@ beforeEach(() => {
       outputs: {
         copyToClipboard: mockCopyToClipboard,
       },
+      notes: {
+        generateForRecording: mockGenerateNotes,
+      },
     },
     writable: true,
     configurable: true,
@@ -201,6 +212,42 @@ describe('SourceReader — metadata editing', () => {
     await waitFor(() => {
       expect(mockCopyToClipboard).toHaveBeenCalledWith('Copy this exact transcript.')
     })
+  })
+
+  it('shows meeting notes as the first transcript tab', () => {
+    const rec = makeRecording({ transcriptionStatus: 'complete' })
+    const transcript = makeTranscript({
+      summary: '# Weekly Planning\n\nThe team reviewed roadmap priorities.',
+      action_items: JSON.stringify(['Alex: Send launch notes']),
+      topics: JSON.stringify(['Roadmap']),
+      question_suggestions: JSON.stringify(['What needs escalation?'])
+    })
+
+    render(<SourceReader recording={rec} transcript={transcript} />)
+
+    expect(screen.getByRole('tab', { name: 'Notes' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('heading', { name: 'Weekly Planning' })).toBeInTheDocument()
+    expect(screen.getByText('Roadmap')).toBeInTheDocument()
+    expect(screen.getByText(/What needs escalation/)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Raw' })).toBeInTheDocument()
+  })
+
+  it('generates meeting notes for an existing transcript', async () => {
+    const rec = makeRecording({ transcriptionStatus: 'complete' })
+    const transcript = makeTranscript()
+    const onMetadataEdited = vi.fn()
+
+    render(<SourceReader recording={rec} transcript={transcript} onMetadataEdited={onMetadataEdited} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /generate meeting notes/i }))
+
+    await waitFor(() => {
+      expect(mockGenerateNotes).toHaveBeenCalledWith('rec-1')
+    })
+    await waitFor(() => {
+      expect(onMetadataEdited).toHaveBeenCalledOnce()
+    })
+    expect(await screen.findByRole('heading', { name: 'Generated Meeting Notes' })).toBeInTheDocument()
   })
 
   // 2. Pencil icon visible on hover when knowledgeCaptureId present
