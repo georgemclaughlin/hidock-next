@@ -21,7 +21,7 @@ import {
 } from './database'
 import { BrowserWindow } from 'electron'
 import { getVectorStore } from './vector-store'
-import { generateMeetingNotesForRecording } from './meeting-notes'
+import { enqueueMeetingNotesForRecording } from './meeting-notes-queue'
 import {
   downloadNativeTranscriptionModel,
   getNativeModelIdForEngine,
@@ -481,15 +481,17 @@ async function transcribeRecording(
       console.warn(`[Transcription] Transcript saved, but local embedding index failed: ${message}`)
     }
 
-    progressCallback?.('generating meeting notes', 96)
+    progressCallback?.('queueing meeting summary', 96)
     try {
-      const notesResult = await generateMeetingNotesForRecording(recordingId)
-      if (!notesResult.generated && notesResult.skippedReason) {
-        console.log(`[Transcription] Meeting notes skipped: ${notesResult.skippedReason}`)
+      if (config.notes?.autoGenerate && config.notes?.ollamaBaseUrl?.trim()) {
+        const notesStatus = enqueueMeetingNotesForRecording(recordingId)
+        console.log(`[Transcription] Meeting summary ${notesStatus.status} for recording ${recordingId}`)
+      } else {
+        console.log('[Transcription] Meeting summary not queued: automatic summaries are disabled or Ollama is not configured.')
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.warn(`[Transcription] Transcript saved, but meeting note generation failed: ${message}`)
+      console.warn(`[Transcription] Transcript saved, but meeting summary queueing failed: ${message}`)
     }
 
     updateRecordingTranscriptionStatus(recordingId, 'complete')

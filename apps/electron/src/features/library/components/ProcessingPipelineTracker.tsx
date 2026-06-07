@@ -26,6 +26,16 @@ type RecordingEmbeddingIndexStats = {
   embeddingModel: string
 }
 
+type MeetingNotesQueueStatus = {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  result?: {
+    generated: boolean
+    skippedReason?: string
+  }
+  error?: string
+}
+
 type PipelineStage = {
   id: 'transcribe' | 'diarize' | 'index' | 'summary'
   label: string
@@ -147,11 +157,7 @@ function hasSpeakerSegments(transcript?: Transcript): boolean {
 }
 
 function hasSummaryOutput(transcript?: Transcript): boolean {
-  return Boolean(
-    transcript?.summary?.trim() ||
-    transcript?.action_items?.trim() ||
-    transcript?.key_points?.trim()
-  )
+  return Boolean(transcript?.summary?.trim())
 }
 
 function buildStages(
@@ -159,6 +165,7 @@ function buildStages(
   transcript: Transcript | undefined,
   item: TranscriptionItem | null,
   indexStats: RecordingEmbeddingIndexStats | null,
+  notesStatus: MeetingNotesQueueStatus | null,
   isSummaryConfigured: boolean,
   diarizationEnabled: boolean,
   onTranscribe?: () => void,
@@ -351,7 +358,7 @@ function buildStages(
         id: 'summary',
         label: 'Summarize',
         status: 'complete',
-        detail: 'Summary or extracted follow-ups are available.'
+        detail: 'Meeting summary is available.'
       }
     }
 
@@ -364,12 +371,57 @@ function buildStages(
       }
     }
 
+    if (notesStatus?.status === 'complete' && notesStatus.result?.generated) {
+      return {
+        id: 'summary',
+        label: 'Summarize',
+        status: 'complete',
+        detail: 'Meeting summary is available.'
+      }
+    }
+
+    if (notesStatus?.status === 'queued') {
+      return {
+        id: 'summary',
+        label: 'Summarize',
+        status: 'queued',
+        detail: 'Meeting summary is queued.'
+      }
+    }
+
+    if (notesStatus?.status === 'generating') {
+      return {
+        id: 'summary',
+        label: 'Summarize',
+        status: 'running',
+        detail: 'Generating meeting summary with local Ollama.'
+      }
+    }
+
+    if (notesStatus?.status === 'failed') {
+      return {
+        id: 'summary',
+        label: 'Summarize',
+        status: 'failed',
+        detail: notesStatus.error || 'Meeting summary generation failed.'
+      }
+    }
+
+    if (notesStatus?.status === 'skipped') {
+      return {
+        id: 'summary',
+        label: 'Summarize',
+        status: 'skipped',
+        detail: notesStatus.result?.skippedReason || 'Meeting summary was skipped.'
+      }
+    }
+
     if (isSummaryConfigured) {
       return {
         id: 'summary',
         label: 'Summarize',
         status: 'ready',
-        detail: 'Local notes are configured for generated summaries when that stage is enabled.'
+        detail: 'Local summary generation is configured.'
       }
     }
 
@@ -377,8 +429,8 @@ function buildStages(
       id: 'summary',
       label: 'Summarize',
       status: 'blocked',
-      detail: 'Automatic meeting summaries need a configured local notes model.',
-      action: onOpenSettings ? { label: 'Open notes settings', onSelect: onOpenSettings } : undefined
+      detail: 'Automatic meeting summaries need a configured local summary model.',
+      action: onOpenSettings ? { label: 'Open summary settings', onSelect: onOpenSettings } : undefined
     }
   })()
 
@@ -519,6 +571,7 @@ export function ProcessingPipelineTracker({
     return null
   })
   const [indexStats, setIndexStats] = useState<RecordingEmbeddingIndexStats | null>(null)
+  const [notesStatus, setNotesStatus] = useState<MeetingNotesQueueStatus | null>(null)
   const isSummaryConfigured = useConfigStore((state) => Boolean(state.config?.notes.ollamaBaseUrl?.trim()))
   const diarizationEnabled = useConfigStore((state) => state.config?.transcription?.diarizationEnabled !== false)
 
@@ -544,9 +597,38 @@ export function ProcessingPipelineTracker({
     }
   }, [recording.id, recording.transcriptionStatus, transcript?.id])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadNotesStatus() {
+      try {
+        const result = await window.electronAPI?.notes?.getStatus?.(recording.id)
+        if (!cancelled && result?.success) {
+          setNotesStatus(result.data)
+        }
+      } catch {
+        if (!cancelled) setNotesStatus(null)
+      }
+    }
+
+    setNotesStatus(null)
+    void loadNotesStatus()
+
+    const unsubscribe = window.electronAPI?.notes?.onStatusChanged?.((status) => {
+      if (status.recordingId === recording.id) {
+        setNotesStatus(status)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [recording.id, transcript?.id])
+
   const stages = useMemo(
-    () => buildStages(recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings),
-    [recording, transcript, transcriptionItem, indexStats, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings]
+    () => buildStages(recording, transcript, transcriptionItem, indexStats, notesStatus, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings),
+    [recording, transcript, transcriptionItem, indexStats, notesStatus, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings]
   )
   const completedStageCount = stages.filter((stage) => stage.status === 'complete').length
 

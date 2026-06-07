@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createServer, type Server } from 'http'
+import type { AddressInfo } from 'net'
 
 vi.mock('../config', () => ({
   getConfig: vi.fn(() => ({
@@ -20,58 +22,76 @@ vi.mock('../privacy', () => ({
 
 import { OllamaService } from '../ollama'
 
+function listen(server: Server): Promise<number> {
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve((server.address() as AddressInfo).port)
+    })
+  })
+}
+
+function close(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error)
+      else resolve()
+    })
+  })
+}
+
 describe('OllamaService', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
   it('sends the configured notes model and thinking option to Ollama chat', async () => {
-    const encoder = new TextEncoder()
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      body: new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(JSON.stringify({
+    let receivedBody = ''
+    const server = createServer((request, response) => {
+      expect(request.url).toBe('/api/chat')
+      expect(request.method).toBe('POST')
+
+      request.on('data', (chunk) => {
+        receivedBody += chunk.toString('utf8')
+      })
+
+      request.on('end', () => {
+        response.writeHead(200, { 'Content-Type': 'application/x-ndjson' })
+        response.write(JSON.stringify({
             model: 'custom-notes-model',
             message: { role: 'assistant', thinking: 'ignored reasoning' },
             done: false
-          }) + '\n'))
-          controller.enqueue(encoder.encode(JSON.stringify({
+          }) + '\n')
+        response.write(JSON.stringify({
             model: 'custom-notes-model',
             message: { role: 'assistant', content: '{"summary":' },
             done: false
-          }) + '\n'))
-          controller.enqueue(encoder.encode(JSON.stringify({
+          }) + '\n')
+        response.end(JSON.stringify({
             model: 'custom-notes-model',
             message: { role: 'assistant', content: '"done"}' },
             done: true
-          }) + '\n'))
-          controller.close()
-        }
+          }) + '\n')
       })
     })
 
-    vi.stubGlobal('fetch', fetchMock)
+    const port = await listen(server)
 
-    const service = new OllamaService('http://localhost:11434', 'custom-notes-model', true)
-    const result = await service.generate('Summarize this', 'Return JSON')
+    try {
+      const service = new OllamaService(`http://127.0.0.1:${port}`, 'custom-notes-model', true)
+      const result = await service.generate('Summarize this', 'Return JSON')
 
-    expect(result).toBe('{"summary":"done"}')
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:11434/api/chat',
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.any(String)
-      })
-    )
+      expect(result).toBe('{"summary":"done"}')
 
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(body.model).toBe('custom-notes-model')
-    expect(body.think).toBe(true)
-    expect(body.stream).toBe(true)
-    expect(body.messages).toEqual([
-      { role: 'system', content: 'Return JSON' },
-      { role: 'user', content: 'Summarize this' }
-    ])
+      const body = JSON.parse(receivedBody)
+      expect(body.model).toBe('custom-notes-model')
+      expect(body.think).toBe(true)
+      expect(body.stream).toBe(true)
+      expect(body.messages).toEqual([
+        { role: 'system', content: 'Return JSON' },
+        { role: 'user', content: 'Summarize this' }
+      ])
+    } finally {
+      await close(server)
+    }
   })
 })

@@ -5,11 +5,14 @@
 
 import { getConfig } from './config'
 import { canUseOllamaUrl } from './privacy'
+import { request as httpRequest } from 'http'
+import { request as httpsRequest } from 'https'
+import type { IncomingMessage } from 'http'
 
 const DEFAULT_OLLAMA_BASE_URL = ''
 const DEFAULT_NOTES_MODEL = 'llama3.2'
 
-interface OllamaChatMessage {
+export interface OllamaChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
@@ -19,6 +22,14 @@ interface OllamaChatResponse {
   message?: Partial<OllamaChatMessage> & { thinking?: string }
   done: boolean
   error?: string
+}
+
+type OllamaGenerationOptions = {
+  temperature?: number
+  maxTokens?: number
+  think?: boolean
+  signal?: AbortSignal
+  timeoutMs?: number
 }
 
 class OllamaService {
@@ -50,67 +61,38 @@ class OllamaService {
   async generate(
     prompt: string,
     systemPrompt?: string,
-    options: {
-      temperature?: number
-      maxTokens?: number
-      signal?: AbortSignal
-      timeoutMs?: number
-    } = {}
+    options: OllamaGenerationOptions = {}
+  ): Promise<string | null> {
+    const messages: OllamaChatMessage[] = []
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt })
+    }
+    messages.push({ role: 'user', content: prompt })
+
+    return this.chat(messages, options)
+  }
+
+  async chat(
+    messages: OllamaChatMessage[],
+    options: OllamaGenerationOptions = {}
   ): Promise<string | null> {
     if (!this.baseUrl.trim()) return null
 
     try {
-      const messages: OllamaChatMessage[] = []
-      if (systemPrompt) {
-        messages.push({ role: 'system', content: systemPrompt })
-      }
-      messages.push({ role: 'user', content: prompt })
-
-      const controller = new AbortController()
-      let timeoutId: ReturnType<typeof setTimeout> | undefined
-      const abortFromCaller = (): void => controller.abort()
-
-      if (options.signal) {
-        if (options.signal.aborted) {
-          controller.abort()
-        } else {
-          options.signal.addEventListener('abort', abortFromCaller, { once: true })
+      const payload = {
+        model: this.notesModel,
+        messages,
+        stream: true,
+        think: options.think ?? this.thinkingEnabled,
+        options: {
+          temperature: options.temperature ?? 0.2,
+          num_predict: options.maxTokens ?? 1600
         }
       }
 
-      timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 45 * 60 * 1000)
-
-      const fetchOptions: RequestInit = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.notesModel,
-          messages,
-          stream: true,
-          think: this.thinkingEnabled,
-          options: {
-            temperature: options.temperature ?? 0.2,
-            num_predict: options.maxTokens ?? 1600
-          }
-        }),
-        signal: controller.signal
-      }
-
-      try {
-        const response = await fetch(`${this.baseUrl}/api/chat`, fetchOptions)
-
-        if (!response.ok) {
-          console.error('Ollama chat error:', response.statusText)
-          return null
-        }
-
-        return await this.readStreamingChatResponse(response)
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId)
-        options.signal?.removeEventListener('abort', abortFromCaller)
-      }
+      return await this.postStreamingChat(payload, options.signal, options.timeoutMs ?? 45 * 60 * 1000)
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         console.log('[Ollama] Generation request was cancelled')
         return null
       }
@@ -119,13 +101,68 @@ class OllamaService {
     }
   }
 
-  private async readStreamingChatResponse(response: Response): Promise<string | null> {
-    if (!response.body) {
-      const data: OllamaChatResponse = await response.json()
-      return data.message?.content ?? null
-    }
+  private async postStreamingChat(
+    payload: unknown,
+    signal: AbortSignal | undefined,
+    timeoutMs: number
+  ): Promise<string | null> {
+    const url = new URL('/api/chat', this.baseUrl)
+    const body = JSON.stringify(payload)
+    const requestFn = url.protocol === 'https:' ? httpsRequest : httpRequest
 
-    const reader = response.body.getReader()
+    return new Promise((resolve, reject) => {
+      let settled = false
+      let abortHandler: (() => void) | undefined
+
+      const finish = (error?: Error, value?: string | null): void => {
+        if (settled) return
+        settled = true
+        if (abortHandler) signal?.removeEventListener('abort', abortHandler)
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve(value ?? null)
+      }
+
+      const request = requestFn(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body)
+          }
+        },
+        (response) => this.readStreamingChatResponse(response, finish)
+      )
+
+      request.setTimeout(timeoutMs, () => {
+        request.destroy(new Error(`Ollama request timed out after ${Math.round(timeoutMs / 1000)} seconds`))
+      })
+      request.on('error', (error) => finish(error instanceof Error ? error : new Error(String(error))))
+
+      abortHandler = () => {
+        const error = new Error('Ollama generation request was cancelled')
+        error.name = 'AbortError'
+        request.destroy(error)
+      }
+
+      if (signal?.aborted) {
+        abortHandler()
+        return
+      }
+
+      signal?.addEventListener('abort', abortHandler, { once: true })
+      request.write(body)
+      request.end()
+    })
+  }
+
+  private readStreamingChatResponse(
+    response: IncomingMessage,
+    finish: (error?: Error, value?: string | null) => void
+  ): void {
     const decoder = new TextDecoder()
     let buffer = ''
     let content = ''
@@ -146,28 +183,53 @@ class OllamaService {
       return data.done === true
     }
 
-    while (true) {
-      const { done, value } = await reader.read()
-      buffer += decoder.decode(value, { stream: !done })
+    if ((response.statusCode ?? 500) >= 400) {
+      const chunks: Buffer[] = []
+      response.on('data', (chunk: Buffer) => chunks.push(chunk))
+      response.on('end', () => {
+        const message = Buffer.concat(chunks).toString('utf8') || response.statusMessage || 'Ollama chat request failed'
+        finish(new Error(`Ollama chat error ${response.statusCode}: ${message}`))
+      })
+      response.on('error', (error) => finish(error instanceof Error ? error : new Error(String(error))))
+      return
+    }
 
+    const processBuffer = (flush: boolean): boolean => {
       const lines = buffer.split(/\r?\n/)
-      buffer = lines.pop() ?? ''
+      buffer = flush ? '' : lines.pop() ?? ''
+      const completeLines = flush ? lines.filter((line) => line.trim()) : lines
 
-      for (const line of lines) {
+      for (const line of completeLines) {
         if (readLine(line)) {
-          await reader.cancel()
-          return content || null
+          finish(undefined, content || null)
+          response.destroy()
+          return true
         }
       }
 
-      if (done) break
+      return false
     }
 
-    if (buffer && readLine(buffer)) {
-      return content || null
-    }
-
-    return content || null
+    response.on('data', (chunk: Buffer) => {
+      try {
+        buffer += decoder.decode(chunk, { stream: true })
+        processBuffer(false)
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error(String(error)))
+        response.destroy()
+      }
+    })
+    response.on('end', () => {
+      try {
+        buffer += decoder.decode()
+        if (!processBuffer(true)) {
+          finish(undefined, content || null)
+        }
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+    response.on('error', (error) => finish(error instanceof Error ? error : new Error(String(error))))
   }
 }
 

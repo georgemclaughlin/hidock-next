@@ -100,6 +100,23 @@ type EmbeddingReindexResult = {
   failed: Array<{ recordingId: string; error: string }>
 }
 
+type MeetingNotesGenerationResult = {
+  generated: boolean
+  skippedReason?: string
+  titleSuggestion?: string
+  summary?: string
+}
+
+type MeetingNotesQueueStatus = {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  queuedAt?: string
+  startedAt?: string
+  completedAt?: string
+  result?: MeetingNotesGenerationResult
+  error?: string
+}
+
 // Type definitions for the API
 export interface ElectronAPI {
   // App
@@ -285,12 +302,10 @@ export interface ElectronAPI {
   }
 
   notes: {
-    generateForRecording: (recordingId: string) => Promise<Result<{
-      generated: boolean
-      skippedReason?: string
-      titleSuggestion?: string
-      summary?: string
-    }>>
+    generateForRecording: (recordingId: string) => Promise<Result<MeetingNotesGenerationResult>>
+    enqueueForRecording: (recordingId: string) => Promise<Result<MeetingNotesQueueStatus>>
+    getStatus: (recordingId: string) => Promise<Result<MeetingNotesQueueStatus | null>>
+    onStatusChanged: (callback: (status: MeetingNotesQueueStatus) => void) => () => void
   }
 
   embeddings: {
@@ -668,7 +683,14 @@ const electronAPI: ElectronAPI = {
   },
 
   notes: {
-    generateForRecording: (recordingId) => callIPC('notes:generateForRecording', recordingId)
+    generateForRecording: (recordingId) => callIPC('notes:generateForRecording', recordingId),
+    enqueueForRecording: (recordingId) => callIPC('notes:enqueueForRecording', recordingId),
+    getStatus: (recordingId) => callIPC('notes:getStatus', recordingId),
+    onStatusChanged: (callback) => {
+      const handler = (_event: any, status: MeetingNotesQueueStatus) => callback(status)
+      ipcRenderer.on('notes:status-changed', handler)
+      return () => ipcRenderer.removeListener('notes:status-changed', handler)
+    }
   },
 
   embeddings: {

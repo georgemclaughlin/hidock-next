@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SourceReader } from '../SourceReader'
 import type { UnifiedRecording } from '@/types/unified-recording'
 import type { Meeting, Transcript } from '@/types'
@@ -20,14 +20,25 @@ import type { Meeting, Transcript } from '@/types'
 const mockKnowledgeUpdate = vi.fn().mockResolvedValue({ success: true })
 const mockSelectMeeting = vi.fn().mockResolvedValue({ success: true })
 const mockCopyToClipboard = vi.fn().mockResolvedValue({ success: true })
-const mockGenerateNotes = vi.fn().mockResolvedValue({
+const mockEnqueueNotes = vi.fn().mockResolvedValue({
   success: true,
   data: {
-    generated: true,
-    titleSuggestion: 'Generated Meeting Notes',
-    summary: '# Generated Meeting Notes\n\nA concise generated summary.'
+    recordingId: 'rec-1',
+    status: 'queued'
   }
 })
+const mockGetNotesStatus = vi.fn().mockResolvedValue({ success: true, data: null })
+const mockOnNotesStatusChanged = vi.fn()
+let notesStatusCallback: ((status: {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  result?: {
+    generated: boolean
+    titleSuggestion?: string
+    summary?: string
+  }
+  error?: string
+}) => void) | undefined
 
 // Silence @radix-ui portal issues in jsdom
 vi.mock('@radix-ui/react-portal', () => ({
@@ -164,6 +175,19 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  notesStatusCallback = undefined
+  mockEnqueueNotes.mockResolvedValue({
+    success: true,
+    data: {
+      recordingId: 'rec-1',
+      status: 'queued'
+    }
+  })
+  mockGetNotesStatus.mockResolvedValue({ success: true, data: null })
+  mockOnNotesStatusChanged.mockImplementation((callback) => {
+    notesStatusCallback = callback
+    return vi.fn()
+  })
 
   // Set up window.electronAPI
   Object.defineProperty(window, 'electronAPI', {
@@ -180,7 +204,9 @@ beforeEach(() => {
         copyToClipboard: mockCopyToClipboard,
       },
       notes: {
-        generateForRecording: mockGenerateNotes,
+        enqueueForRecording: mockEnqueueNotes,
+        getStatus: mockGetNotesStatus,
+        onStatusChanged: mockOnNotesStatusChanged,
       },
     },
     writable: true,
@@ -214,21 +240,18 @@ describe('SourceReader — metadata editing', () => {
     })
   })
 
-  it('shows meeting notes as the first transcript tab', () => {
+  it('shows meeting summary as the first transcript tab', () => {
     const rec = makeRecording({ transcriptionStatus: 'complete' })
     const transcript = makeTranscript({
-      summary: '# Weekly Planning\n\nThe team reviewed roadmap priorities.',
-      action_items: JSON.stringify(['Alex: Send launch notes']),
-      topics: JSON.stringify(['Roadmap']),
-      question_suggestions: JSON.stringify(['What needs escalation?'])
+      summary: '# Weekly Planning\n\n## Summary\n\nThe team reviewed roadmap priorities.\n\n## Follow-ups\n\n- Confirm launch notes.'
     })
 
     render(<SourceReader recording={rec} transcript={transcript} />)
 
-    expect(screen.getByRole('tab', { name: 'Notes' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { name: 'Weekly Planning' })).toBeInTheDocument()
-    expect(screen.getByText('Roadmap')).toBeInTheDocument()
-    expect(screen.getByText(/What needs escalation/)).toBeInTheDocument()
+    expect(screen.getByText(/The team reviewed roadmap priorities/)).toBeInTheDocument()
+    expect(screen.getByText(/Confirm launch notes/)).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Raw' })).toBeInTheDocument()
   })
 
@@ -239,26 +262,39 @@ describe('SourceReader — metadata editing', () => {
     render(<SourceReader recording={rec} transcript={transcript} />)
 
     expect(screen.getByRole('tab', { name: 'Raw' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('button', { name: /generate meeting notes/i })).toBeInTheDocument()
-    expect(screen.queryByText('No meeting notes have been generated for this transcript.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /generate meeting summary/i })).toBeInTheDocument()
+    expect(screen.queryByText('No meeting summary has been generated for this transcript.')).not.toBeInTheDocument()
   })
 
-  it('generates meeting notes for an existing transcript', async () => {
+  it('generates meeting summary for an existing transcript', async () => {
     const rec = makeRecording({ transcriptionStatus: 'complete' })
     const transcript = makeTranscript()
     const onMetadataEdited = vi.fn()
 
     render(<SourceReader recording={rec} transcript={transcript} onMetadataEdited={onMetadataEdited} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /generate meeting notes/i }))
+    fireEvent.click(screen.getByRole('button', { name: /generate meeting summary/i }))
 
     await waitFor(() => {
-      expect(mockGenerateNotes).toHaveBeenCalledWith('rec-1')
+      expect(mockEnqueueNotes).toHaveBeenCalledWith('rec-1')
     })
+
+    act(() => {
+      notesStatusCallback?.({
+        recordingId: 'rec-1',
+        status: 'complete',
+        result: {
+          generated: true,
+          titleSuggestion: 'Generated Meeting Summary',
+          summary: '# Generated Meeting Summary\n\nA concise generated summary.'
+        }
+      })
+    })
+
     await waitFor(() => {
       expect(onMetadataEdited).toHaveBeenCalledOnce()
     })
-    expect(await screen.findByRole('heading', { name: 'Generated Meeting Notes' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Generated Meeting Summary' })).toBeInTheDocument()
   })
 
   it('keeps showing note generation progress after navigating away and back', async () => {
@@ -267,33 +303,31 @@ describe('SourceReader — metadata editing', () => {
     const transcript1 = makeTranscript({ recording_id: 'rec-1' })
     const transcript2 = makeTranscript({ id: 'transcript-2', recording_id: 'rec-2', full_text: 'Other transcript.' })
 
-    let resolveGenerate: ((value: any) => void) | undefined
-    mockGenerateNotes.mockReturnValueOnce(new Promise((resolve) => {
-      resolveGenerate = resolve
-    }))
-
     const { rerender } = render(<SourceReader recording={rec1} transcript={transcript1} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /generate meeting notes/i }))
-    expect(screen.getByRole('button', { name: /generate meeting notes/i })).toHaveTextContent('Generating')
+    fireEvent.click(screen.getByRole('button', { name: /generate meeting summary/i }))
+    expect(screen.getByRole('button', { name: /generate meeting summary/i })).toHaveTextContent('Generating')
 
     rerender(<SourceReader recording={rec2} transcript={transcript2} />)
     expect(screen.getByText('other-meeting.wav')).toBeInTheDocument()
 
     rerender(<SourceReader recording={rec1} transcript={transcript1} />)
-    expect(screen.getByRole('button', { name: /generate meeting notes/i })).toHaveTextContent('Generating')
+    expect(screen.getByRole('button', { name: /generate meeting summary/i })).toHaveTextContent('Generating')
 
-    resolveGenerate?.({
-      success: true,
-      data: {
-        generated: true,
-        titleSuggestion: 'Generated Meeting Notes',
-        summary: '# Generated Meeting Notes\n\nA concise generated summary.'
-      }
+    act(() => {
+      notesStatusCallback?.({
+        recordingId: 'rec-1',
+        status: 'complete',
+        result: {
+          generated: true,
+          titleSuggestion: 'Generated Meeting Summary',
+          summary: '# Generated Meeting Summary\n\nA concise generated summary.'
+        }
+      })
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /regenerate meeting notes/i })).not.toHaveTextContent('Generating')
+      expect(screen.getByRole('button', { name: /regenerate meeting summary/i })).not.toHaveTextContent('Generating')
     })
   })
 

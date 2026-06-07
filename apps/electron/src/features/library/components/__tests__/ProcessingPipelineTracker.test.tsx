@@ -5,6 +5,9 @@ import { useConfigStore } from '@/store/domain/useConfigStore'
 import type { AppConfig, Transcript } from '@/types'
 import type { UnifiedRecording } from '@/types/unified-recording'
 
+const mockGetNotesStatus = vi.fn().mockResolvedValue({ success: true, data: null })
+const mockOnNotesStatusChanged = vi.fn(() => vi.fn())
+
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     version: '1.0.0',
@@ -117,6 +120,10 @@ beforeEach(() => {
             embeddingModel: 'bge-small-en-v1.5-q'
           }
         })
+      },
+      notes: {
+        getStatus: mockGetNotesStatus,
+        onStatusChanged: mockOnNotesStatusChanged
       }
     },
     writable: true,
@@ -150,6 +157,22 @@ describe('ProcessingPipelineTracker', () => {
     const summaryStage = screen.getByText('Summarize').closest('.group')
     expect(summaryStage).not.toBeNull()
     expect(within(summaryStage as HTMLElement).getByText('Configure')).toBeInTheDocument()
+  })
+
+  it('shows summarize as running while notes are generating', async () => {
+    mockGetNotesStatus.mockResolvedValueOnce({
+      success: true,
+      data: {
+        recordingId: 'rec-1',
+        status: 'generating'
+      }
+    })
+
+    render(<ProcessingPipelineTracker recording={makeRecording()} transcript={makeTranscript()} />)
+
+    const summaryStage = screen.getByText('Summarize').closest('.group')
+    expect(summaryStage).not.toBeNull()
+    expect(await within(summaryStage as HTMLElement).findByText('Running')).toBeInTheDocument()
   })
 
   it('shows diarization as skipped when disabled', () => {

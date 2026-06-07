@@ -1,5 +1,5 @@
 import { getConfig } from './config'
-import { getOllamaService } from './ollama'
+import { getOllamaService, type OllamaChatMessage } from './ollama'
 import {
   getMeetingById,
   getRecordingById,
@@ -8,23 +8,6 @@ import {
   updateTranscriptAnalysis
 } from './database'
 
-type GeneratedMeetingNotes = {
-  title_suggestion?: string
-  meeting_type?: string
-  summary?: string
-  key_points?: string[]
-  action_items?: Array<string | {
-    owner?: string
-    assignee?: string
-    task?: string
-    description?: string
-    due_date?: string
-    dueDate?: string
-  }>
-  topics?: string[]
-  question_suggestions?: string[]
-}
-
 export type MeetingNotesGenerationResult = {
   generated: boolean
   skippedReason?: string
@@ -32,8 +15,8 @@ export type MeetingNotesGenerationResult = {
   summary?: string
 }
 
-const SYSTEM_PROMPT = `You write concise, useful meeting notes from recorder transcripts.
-Return strict JSON only. Do not wrap the JSON in Markdown.`
+const SYSTEM_PROMPT = `You write concise, useful meeting summaries from recorder transcripts.
+Use only facts supported by the transcript. Do not invent attendees, decisions, dates, or follow-ups.`
 
 function truncateTranscript(text: string, maxChars = 50000): string {
   const trimmed = text.trim()
@@ -41,96 +24,42 @@ function truncateTranscript(text: string, maxChars = 50000): string {
   return trimmed.slice(0, maxChars).trim()
 }
 
-function extractJsonObject(text: string): unknown {
-  const trimmed = text.trim()
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  const candidate = fenced?.[1]?.trim() || trimmed
+function cleanPlainTextResponse(text: string, fallback?: string): string | undefined {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:\w+)?\s*/i, '')
+    .replace(/```$/i, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)[0]
+    ?.replace(/^title:\s*/i, '')
+    .replace(/^["']|["']$/g, '')
+    .trim()
 
-  try {
-    return JSON.parse(candidate)
-  } catch {
-    const start = candidate.indexOf('{')
-    const end = candidate.lastIndexOf('}')
-    if (start >= 0 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1))
-    }
-    throw new Error('Ollama response did not contain valid JSON')
-  }
+  return cleaned || fallback
 }
 
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+function cleanMarkdownResponse(text: string, title: string): string | undefined {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:markdown|md)?\s*/i, '')
+    .replace(/```$/i, '')
+    .trim()
+
+  if (!cleaned) return undefined
+  return cleaned.startsWith('#') ? cleaned : `# ${title}\n\n${cleaned}`
 }
 
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .map((item) => (typeof item === 'string' ? item.trim() : ''))
-    .filter(Boolean)
-}
-
-function formatActionItems(value: GeneratedMeetingNotes['action_items']): string[] {
-  if (!Array.isArray(value)) return []
-
-  return value
-    .map((item) => {
-      if (typeof item === 'string') return item.trim()
-      if (!item || typeof item !== 'object') return ''
-
-      const task = asString(item.task) || asString(item.description)
-      if (!task) return ''
-
-      const owner = asString(item.owner) || asString(item.assignee)
-      const dueDate = asString(item.due_date) || asString(item.dueDate)
-      return [
-        owner ? `${owner}: ${task}` : task,
-        dueDate ? `(due ${dueDate})` : ''
-      ].filter(Boolean).join(' ')
-    })
-    .filter(Boolean)
-}
-
-function buildSummaryMarkdown(notes: GeneratedMeetingNotes): string | undefined {
-  const sections: string[] = []
-  const title = asString(notes.title_suggestion)
-  const meetingType = asString(notes.meeting_type)
-  const summary = asString(notes.summary)
-  const keyPoints = asStringArray(notes.key_points)
-  const actionItems = formatActionItems(notes.action_items)
-
-  if (title) sections.push(`# ${title}`)
-  if (meetingType) sections.push(`Type: ${meetingType}`)
-  if (summary) sections.push(summary)
-  if (keyPoints.length > 0) {
-    sections.push(`Key Points\n${keyPoints.map((point) => `- ${point}`).join('\n')}`)
-  }
-  if (actionItems.length > 0) {
-    sections.push(`Action Items\n${actionItems.map((item) => `- ${item}`).join('\n')}`)
-  }
-
-  return sections.length > 0 ? sections.join('\n\n') : undefined
-}
-
-function buildPrompt(options: {
+function buildTitlePrompt(options: {
   transcript: string
   recordingFilename: string
   meetingSubject?: string
   meetingDate?: string
 }): string {
-  return `Create polished meeting notes for this transcript.
+  return `Create a clear meeting title from this transcript.
 
-Return this exact JSON shape:
-{
-  "title_suggestion": "3-8 word clear meeting title",
-  "meeting_type": "one concise type such as status update, planning, decision review, customer call, interview, one-on-one, incident review, training, or general",
-  "summary": "short executive summary in plain text",
-  "key_points": ["important discussion point"],
-  "action_items": [{"owner": "name if stated", "task": "specific task", "due_date": "date if stated"}],
-  "topics": ["topic"],
-  "question_suggestions": ["useful follow-up question"]
-}
-
-Use only facts supported by the transcript. If an owner or due date is not stated, omit that field.
+Return only the title. Do not return JSON, Markdown, quotes, labels, or explanation.
+Keep it 3-8 words. If the transcript is too thin, use the calendar subject or recording file name as context.
 
 Recording file: ${options.recordingFilename}
 ${options.meetingSubject ? `Calendar subject: ${options.meetingSubject}` : ''}
@@ -138,6 +67,39 @@ ${options.meetingDate ? `Meeting date: ${options.meetingDate}` : ''}
 
 Transcript:
 ${truncateTranscript(options.transcript)}`
+}
+
+function buildSummaryPrompt(options: {
+  title: string
+  recordingFilename: string
+  meetingSubject?: string
+  meetingDate?: string
+}): string {
+  return `Write the meeting summary as polished Markdown.
+
+Return only Markdown. Do not return JSON.
+Use this style as a template, but omit sections that are not supported by the transcript:
+
+# ${options.title}
+
+Type: <one concise type, such as status update, planning, decision review, customer call, interview, one-on-one, incident review, training, or general>
+
+## Summary
+<one concise paragraph describing the meeting>
+
+## Discussion
+- <important topic, decision, detail, or context>
+- <another important topic, decision, detail, or context>
+
+## Follow-ups
+- <follow-up, open question, or next step if stated or clearly implied>
+
+Keep everything in the Markdown summary. Do not create separate action-item, key-point, topic, or question fields.
+Use only facts supported by the transcript.
+
+Recording file: ${options.recordingFilename}
+${options.meetingSubject ? `Calendar subject: ${options.meetingSubject}` : ''}
+${options.meetingDate ? `Meeting date: ${options.meetingDate}` : ''}`
 }
 
 export async function generateMeetingNotesForRecording(
@@ -164,7 +126,7 @@ export async function generateMeetingNotesForRecording(
   }
 
   if (!options.force && transcript.summary?.trim()) {
-    return { generated: false, skippedReason: 'Transcript already has generated notes.' }
+    return { generated: false, skippedReason: 'Transcript already has a generated summary.' }
   }
 
   const meeting = recording.meeting_id ? getMeetingById(recording.meeting_id) : undefined
@@ -174,36 +136,55 @@ export async function generateMeetingNotesForRecording(
     return { generated: false, skippedReason: 'Ollama is not available.' }
   }
 
-  const response = await ollama.generate(
-    buildPrompt({
-      transcript: transcript.full_text,
-      recordingFilename: recording.filename,
-      meetingSubject: meeting?.subject,
-      meetingDate: recording.date_recorded
-    }),
-    SYSTEM_PROMPT,
-    { temperature: 0.2, maxTokens: 1800 }
-  )
+  const systemMessage: OllamaChatMessage = { role: 'system', content: SYSTEM_PROMPT }
+  const titlePrompt = buildTitlePrompt({
+    transcript: transcript.full_text,
+    recordingFilename: recording.filename,
+    meetingSubject: meeting?.subject,
+    meetingDate: recording.date_recorded
+  })
+  const titleMessages: OllamaChatMessage[] = [
+    systemMessage,
+    { role: 'user', content: titlePrompt }
+  ]
 
-  if (!response) {
-    return { generated: false, skippedReason: 'Ollama did not return notes.' }
+  const titleResponse = await ollama.chat(titleMessages, { temperature: 0.2, maxTokens: 128, think: true })
+  const titleSuggestion = titleResponse
+    ? cleanPlainTextResponse(titleResponse, meeting?.subject || recording.filename)
+    : undefined
+
+  if (!titleSuggestion) {
+    return { generated: false, skippedReason: 'Ollama did not return a meeting title.' }
   }
 
-  const parsed = extractJsonObject(response) as GeneratedMeetingNotes
-  const titleSuggestion = asString(parsed.title_suggestion)
-  const summary = buildSummaryMarkdown(parsed)
-  const topics = asStringArray(parsed.topics)
-  const keyPoints = asStringArray(parsed.key_points)
-  const actionItems = formatActionItems(parsed.action_items)
-  const questions = asStringArray(parsed.question_suggestions)
+  const summaryMessages: OllamaChatMessage[] = [
+    ...titleMessages,
+    { role: 'assistant', content: titleSuggestion },
+    {
+      role: 'user',
+      content: buildSummaryPrompt({
+        title: titleSuggestion,
+        recordingFilename: recording.filename,
+        meetingSubject: meeting?.subject,
+        meetingDate: recording.date_recorded
+      })
+    }
+  ]
+
+  const response = await ollama.chat(summaryMessages, { temperature: 0.2, maxTokens: 4096, think: true })
+  const summary = response ? cleanMarkdownResponse(response, titleSuggestion) : undefined
+
+  if (!summary) {
+    return { generated: false, skippedReason: 'Ollama did not return a summary.' }
+  }
 
   updateTranscriptAnalysis(recordingId, {
-    summary: summary ?? asString(parsed.summary) ?? null,
-    action_items: actionItems.length > 0 ? JSON.stringify(actionItems) : null,
-    topics: topics.length > 0 ? JSON.stringify(topics) : null,
-    key_points: keyPoints.length > 0 ? JSON.stringify(keyPoints) : null,
+    summary,
+    action_items: null,
+    topics: null,
+    key_points: null,
     title_suggestion: titleSuggestion ?? null,
-    question_suggestions: questions.length > 0 ? JSON.stringify(questions) : null
+    question_suggestions: null
   })
 
   if (titleSuggestion) {
@@ -213,6 +194,6 @@ export async function generateMeetingNotesForRecording(
   return {
     generated: true,
     titleSuggestion,
-    summary: summary ?? asString(parsed.summary)
+    summary
   }
 }

@@ -46,17 +46,23 @@ const CATEGORY_OPTIONS = [
 ] as const
 
 type TranscriptView = 'notes' | 'raw' | 'diarized'
+type MeetingNotesQueueStatus = {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  result?: {
+    generated: boolean
+    skippedReason?: string
+    titleSuggestion?: string
+    summary?: string
+  }
+  error?: string
+}
 
 const activeNotesGenerations = new Set<string>()
+const manualNotesGenerations = new Set<string>()
 
 function transcriptHasGeneratedNotes(transcript?: Transcript): boolean {
-  return Boolean(
-    transcript?.summary?.trim() ||
-    parseJsonArray<string>(transcript?.action_items).length ||
-    parseJsonArray<string>(transcript?.key_points).length ||
-    parseJsonArray<string>(transcript?.topics).length ||
-    parseJsonArray<string>(transcript?.question_suggestions).length
-  )
+  return Boolean(transcript?.summary?.trim())
 }
 
 function parseTranscriptSegments(json?: string | null): TranscriptViewerSegmentInput[] {
@@ -95,53 +101,38 @@ function formatSegmentedTranscript(segments: TranscriptViewerSegmentInput[], fal
     .join('\n\n')
 }
 
-function summaryContainsSection(summary: string | undefined, section: string): boolean {
-  if (!summary) return false
-  return summary.toLowerCase().includes(section.toLowerCase())
-}
-
 interface MeetingNotesPanelProps {
   summary?: string
-  actionItems: string[]
-  keyPoints: string[]
-  topics: string[]
-  questions: string[]
   isGenerating: boolean
   onGenerate: () => void
 }
 
 function MeetingNotesPanel({
   summary,
-  actionItems,
-  keyPoints,
-  topics,
-  questions,
   isGenerating,
   onGenerate
 }: MeetingNotesPanelProps) {
-  const hasNotes = Boolean(summary?.trim() || actionItems.length || keyPoints.length || topics.length || questions.length)
-  const showActionItems = actionItems.length > 0 && !summaryContainsSection(summary, 'Action Items')
-  const showKeyPoints = keyPoints.length > 0 && !summaryContainsSection(summary, 'Key Points')
+  const hasNotes = Boolean(summary?.trim())
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold">Meeting Notes</h4>
+        <h4 className="text-sm font-semibold">Meeting Summary</h4>
         <Button
           variant={hasNotes ? 'outline' : 'default'}
           size="sm"
           onClick={onGenerate}
           disabled={isGenerating}
           className="gap-2 shrink-0"
-          aria-label={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
-          title={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
+          aria-label={hasNotes ? 'Regenerate meeting summary' : 'Generate meeting summary'}
+          title={hasNotes ? 'Regenerate meeting summary' : 'Generate meeting summary'}
         >
           {isGenerating ? (
             <RefreshCw className="h-4 w-4 animate-spin" />
           ) : (
             <Wand2 className="h-4 w-4" />
           )}
-          {isGenerating ? 'Generating' : hasNotes ? 'Regenerate' : 'Generate notes'}
+          {isGenerating ? 'Generating' : hasNotes ? 'Regenerate' : 'Generate summary'}
         </Button>
       </div>
 
@@ -165,56 +156,10 @@ function MeetingNotesPanel({
               </ReactMarkdown>
             </div>
           )}
-
-          {showActionItems && (
-            <section>
-              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Action Items</h5>
-              <ul className="list-disc space-y-2 rounded-md border bg-muted/30 py-3 pl-8 pr-3 text-sm">
-                {actionItems.map((item, i) => (
-                  <li key={i} className="leading-relaxed">{item}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {showKeyPoints && (
-            <section>
-              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Key Points</h5>
-              <ul className="list-disc space-y-2 rounded-md border bg-muted/30 py-3 pl-8 pr-3 text-sm">
-                {keyPoints.map((item, i) => (
-                  <li key={i} className="leading-relaxed">{item}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {topics.length > 0 && (
-            <section>
-              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Topics</h5>
-              <div className="flex flex-wrap gap-1.5">
-                {topics.map((topic, i) => (
-                  <span key={i} className="rounded-full bg-secondary px-2 py-0.5 text-xs">
-                    {topic}
-                  </span>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {questions.length > 0 && (
-            <section>
-              <h5 className="mb-2 text-xs font-medium text-muted-foreground">Follow-up Questions</h5>
-              <ul className="list-disc space-y-2 rounded-md border bg-muted/30 py-3 pl-8 pr-3 text-sm">
-                {questions.map((question, i) => (
-                  <li key={i} className="leading-relaxed">{question}</li>
-                ))}
-              </ul>
-            </section>
-          )}
         </div>
       ) : (
         <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-          No meeting notes have been generated for this transcript.
+          No meeting summary has been generated for this transcript.
         </div>
       )}
     </div>
@@ -231,13 +176,13 @@ function MeetingNotesCallout({ hasNotes, isGenerating, onGenerate }: MeetingNote
   return (
     <div className="flex flex-col gap-3 rounded-md border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm font-medium">Meeting notes</p>
+        <p className="text-sm font-medium">Meeting summary</p>
         <p className="text-xs text-muted-foreground">
           {isGenerating
-            ? 'Generating polished notes for this transcript.'
+            ? 'Generating a polished summary for this transcript.'
             : hasNotes
-              ? 'Polished notes are available in the Notes tab.'
-              : 'Generate polished notes, action items, topics, and follow-up questions.'}
+              ? 'A polished summary is available in the Summary tab.'
+              : 'Generate a polished Markdown summary for this transcript.'}
         </p>
       </div>
       <Button
@@ -246,15 +191,15 @@ function MeetingNotesCallout({ hasNotes, isGenerating, onGenerate }: MeetingNote
         onClick={onGenerate}
         disabled={isGenerating}
         className="gap-2 self-start sm:self-auto"
-        aria-label={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
-        title={hasNotes ? 'Regenerate meeting notes' : 'Generate meeting notes'}
+        aria-label={hasNotes ? 'Regenerate meeting summary' : 'Generate meeting summary'}
+        title={hasNotes ? 'Regenerate meeting summary' : 'Generate meeting summary'}
       >
         {isGenerating ? (
           <RefreshCw className="h-4 w-4 animate-spin" />
         ) : (
           <Wand2 className="h-4 w-4" />
         )}
-        {isGenerating ? 'Generating' : hasNotes ? 'Regenerate' : 'Generate notes'}
+        {isGenerating ? 'Generating' : hasNotes ? 'Regenerate' : 'Generate summary'}
       </Button>
     </div>
   )
@@ -350,17 +295,7 @@ export function SourceReader({
   const meetingNotesSummary = recording
     ? optimisticNotesByRecording[recording.id] ?? transcript?.summary ?? undefined
     : transcript?.summary ?? undefined
-  const meetingNoteActionItems = useMemo(() => parseJsonArray<string>(transcript?.action_items), [transcript?.action_items])
-  const meetingNoteKeyPoints = useMemo(() => parseJsonArray<string>(transcript?.key_points), [transcript?.key_points])
-  const meetingNoteTopics = useMemo(() => parseJsonArray<string>(transcript?.topics), [transcript?.topics])
-  const meetingNoteQuestions = useMemo(() => parseJsonArray<string>(transcript?.question_suggestions), [transcript?.question_suggestions])
-  const hasMeetingNotes = Boolean(
-    meetingNotesSummary?.trim() ||
-    meetingNoteActionItems.length ||
-    meetingNoteKeyPoints.length ||
-    meetingNoteTopics.length ||
-    meetingNoteQuestions.length
-  )
+  const hasMeetingNotes = Boolean(meetingNotesSummary?.trim())
 
   // Reset all state when recording changes
   useEffect(() => {
@@ -375,6 +310,72 @@ export function SourceReader({
     setAudioPlayerExpanded(false)
     setDetailsExpanded(false)
   }, [recording?.id, transcript?.id, hasMeetingNotes])
+
+  const applyNotesQueueStatus = useCallback((status: MeetingNotesQueueStatus) => {
+    const isActive = status.status === 'queued' || status.status === 'generating'
+    const isCurrentRecording = status.recordingId === recording?.id
+    const wasManual = manualNotesGenerations.has(status.recordingId)
+
+    if (isActive) {
+      activeNotesGenerations.add(status.recordingId)
+    } else {
+      activeNotesGenerations.delete(status.recordingId)
+    }
+
+    if (status.status === 'complete' && status.result?.generated) {
+      setOptimisticNotesByRecording((current) => ({
+        ...current,
+        [status.recordingId]: status.result?.summary ?? null
+      }))
+      if (isCurrentRecording) {
+        setTranscriptView('notes')
+      }
+      if (wasManual && isCurrentRecording) {
+        toast.success('Summary generated', status.result.titleSuggestion || 'Meeting summary updated')
+      }
+      onMetadataEdited?.()
+    }
+
+    if (status.status === 'skipped' && wasManual && isCurrentRecording) {
+      toast.warning('Summary not generated', status.result?.skippedReason || 'Meeting summary was skipped')
+    }
+
+    if (status.status === 'failed' && wasManual && isCurrentRecording) {
+      toast.error('Summary failed', status.error || 'Failed to generate meeting summary')
+    }
+
+    if (!isActive) {
+      manualNotesGenerations.delete(status.recordingId)
+    }
+
+    setNotesGenerationTick((value) => value + 1)
+  }, [onMetadataEdited, recording?.id])
+
+  useEffect(() => {
+    if (!recording?.id) return
+    const recordingId = recording.id
+    let cancelled = false
+
+    async function loadNotesStatus() {
+      try {
+        const result = await window.electronAPI.notes?.getStatus?.(recordingId)
+        if (!cancelled && result?.success && result.data) {
+          applyNotesQueueStatus(result.data)
+        }
+      } catch {
+        // Status is only used for progress display; ignore transient preload gaps.
+      }
+    }
+
+    void loadNotesStatus()
+    return () => {
+      cancelled = true
+    }
+  }, [applyNotesQueueStatus, recording?.id])
+
+  useEffect(() => {
+    return window.electronAPI.notes?.onStatusChanged?.(applyNotesQueueStatus)
+  }, [applyNotesQueueStatus])
 
   useEffect(() => {
     if (transcriptView === 'diarized' && !hasDiarizedTranscript) {
@@ -510,34 +511,27 @@ export function SourceReader({
 
     const recordingId = recording.id
     activeNotesGenerations.add(recordingId)
+    manualNotesGenerations.add(recordingId)
     setNotesGenerationTick((value) => value + 1)
     try {
-      const result = await window.electronAPI.notes.generateForRecording(recordingId)
+      const result = await window.electronAPI.notes.enqueueForRecording(recordingId)
       if (!result.success) {
-        toast.error('Notes failed', result.error.message || 'Failed to generate meeting notes')
+        activeNotesGenerations.delete(recordingId)
+        manualNotesGenerations.delete(recordingId)
+        setNotesGenerationTick((value) => value + 1)
+        toast.error('Summary failed', result.error.message || 'Failed to generate meeting summary')
         return
       }
 
-      if (!result.data.generated) {
-        toast.warning('Notes not generated', result.data.skippedReason || 'Meeting notes were skipped')
-        return
-      }
-
-      setOptimisticNotesByRecording((current) => ({
-        ...current,
-        [recordingId]: result.data.summary ?? null
-      }))
-      setTranscriptView('notes')
-      toast.success('Notes generated', result.data.titleSuggestion || 'Meeting notes updated')
-      onMetadataEdited?.()
+      applyNotesQueueStatus(result.data)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate meeting notes'
-      toast.error('Notes failed', message)
-    } finally {
+      const message = error instanceof Error ? error.message : 'Failed to generate meeting summary'
       activeNotesGenerations.delete(recordingId)
+      manualNotesGenerations.delete(recordingId)
       setNotesGenerationTick((value) => value + 1)
+      toast.error('Summary failed', message)
     }
-  }, [isGeneratingNotes, onMetadataEdited, recording, transcript])
+  }, [applyNotesQueueStatus, isGeneratingNotes, recording, transcript])
 
   if (!recording) {
     return (
@@ -979,7 +973,7 @@ export function SourceReader({
             <Tabs value={transcriptView} onValueChange={(value) => setTranscriptView(value as TranscriptView)}>
               <TabsList className="w-full">
                 <TabsTrigger value="notes" className="flex-1">
-                  Notes
+                  Summary
                 </TabsTrigger>
                 <TabsTrigger value="raw" className="flex-1">
                   Raw
@@ -993,10 +987,6 @@ export function SourceReader({
               <TabsContent value="notes" className="mt-3">
                 <MeetingNotesPanel
                   summary={meetingNotesSummary}
-                  actionItems={meetingNoteActionItems}
-                  keyPoints={meetingNoteKeyPoints}
-                  topics={meetingNoteTopics}
-                  questions={meetingNoteQuestions}
                   isGenerating={isGeneratingNotes}
                   onGenerate={handleGenerateNotes}
                 />
