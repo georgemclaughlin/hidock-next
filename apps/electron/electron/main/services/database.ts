@@ -2320,6 +2320,15 @@ export interface QueueItem {
 }
 
 export function addToQueue(recordingId: string): string {
+  const existingActiveItem = queryOne<QueueItem>(
+    "SELECT * FROM transcription_queue WHERE recording_id = ? AND status IN ('pending', 'processing') ORDER BY created_at ASC LIMIT 1",
+    [recordingId]
+  )
+
+  if (existingActiveItem) {
+    return existingActiveItem.id
+  }
+
   const id = crypto.randomUUID()
   run('INSERT INTO transcription_queue (id, recording_id) VALUES (?, ?)', [id, recordingId])
   return id

@@ -605,8 +605,15 @@ export function registerRecordingHandlers(): void {
   // Add a recording to the transcription queue
   ipcMain.handle('recordings:addToQueue', async (_, recordingId: string) => {
     try {
+      const recording = getRecordingById(recordingId)
+      if (recording?.transcription_status === 'complete') {
+        return false
+      }
+
       const queueItemId = addToQueue(recordingId)
-      updateRecordingTranscriptionStatus(recordingId, 'pending')
+      if (recording?.transcription_status !== 'processing') {
+        updateRecordingTranscriptionStatus(recordingId, 'pending')
+      }
       processQueueManually().catch((error) => {
         console.error('Failed to process transcription queue:', error)
       })

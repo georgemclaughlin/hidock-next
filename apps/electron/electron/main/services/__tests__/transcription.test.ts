@@ -16,8 +16,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Track calls to updateRecordingStatus
 const mockUpdateRecordingStatus = vi.fn()
 const mockUpdateQueueItem = vi.fn()
+const mockUpdateQueueProgress = vi.fn()
 const mockGetQueueItems = vi.fn()
 const mockGetRecordingById = vi.fn()
+const mockGetTranscriptByRecordingId = vi.fn()
+const mockInsertTranscript = vi.fn()
 const mockTranscribeWithNativeModel = vi.fn()
 const mockGetNativeModelIdForEngine = vi.fn((engine: string, _configuredModel?: string) => engine === 'parakeet' ? 'parakeet-v3' : 'whisper-small')
 
@@ -26,10 +29,11 @@ vi.mock('../database', () => ({
   getRecordingById: (...args: any[]) => mockGetRecordingById(...args),
   updateRecordingStatus: (...args: any[]) => mockUpdateRecordingStatus(...args),
   updateRecordingTranscriptionStatus: (...args: any[]) => mockUpdateRecordingStatus(...args),
-  insertTranscript: vi.fn(),
+  insertTranscript: (...args: any[]) => mockInsertTranscript(...args),
+  getTranscriptByRecordingId: (...args: any[]) => mockGetTranscriptByRecordingId(...args),
   getQueueItems: (...args: any[]) => mockGetQueueItems(...args),
   updateQueueItem: (...args: any[]) => mockUpdateQueueItem(...args),
-  updateQueueProgress: vi.fn(),
+  updateQueueProgress: (...args: any[]) => mockUpdateQueueProgress(...args),
   getMeetingById: vi.fn(),
   findCandidateMeetingsForRecording: vi.fn(() => []),
   addRecordingMeetingCandidate: vi.fn(),
@@ -105,6 +109,7 @@ vi.mock('../vector-store', () => ({
 describe('Transcription Service', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetTranscriptByRecordingId.mockReturnValue(undefined)
     mockTranscribeWithNativeModel.mockRejectedValue(new Error('Native transcription sidecar is required but was not found.'))
   })
 
@@ -187,6 +192,151 @@ describe('Transcription Service', () => {
         true
       )
       expect(failureCall?.[2]).toContain('Native transcription sidecar is required')
+    })
+
+    it('should complete transcription when audio has no speech', async () => {
+      const mockQueueItem = {
+        id: 'queue-1',
+        recording_id: 'rec-123',
+        filename: 'silent.wav',
+        status: 'pending',
+        attempts: 0,
+        retry_count: 0
+      }
+      mockGetQueueItems.mockImplementation((status?: string) => {
+        if (status === 'failed') return []
+        if (status === 'pending') return [mockQueueItem]
+        return []
+      })
+      mockGetRecordingById.mockReturnValue({
+        id: 'rec-123',
+        filename: 'silent.wav',
+        file_path: '/recordings/silent.wav',
+        date_recorded: '2026-01-01T00:00:00.000Z',
+        status: 'complete',
+        transcription_status: 'pending'
+      })
+      mockTranscribeWithNativeModel.mockResolvedValue({
+        output: {
+          text: '',
+          language: 'unknown',
+          segments: []
+        },
+        provider: 'local-parakeet',
+        model: 'parakeet-v3'
+      })
+
+      const { processQueueManually } = await import('../transcription')
+
+      await processQueueManually()
+
+      expect(mockInsertTranscript).toHaveBeenCalledWith(expect.objectContaining({
+        recording_id: 'rec-123',
+        full_text: '',
+        word_count: 0,
+        speakers: undefined,
+        transcription_provider: 'local-parakeet',
+        transcription_model: 'parakeet-v3'
+      }))
+      expect(mockUpdateQueueItem).toHaveBeenCalledWith('queue-1', 'completed')
+      expect(mockUpdateRecordingStatus).toHaveBeenCalledWith('rec-123', 'complete')
+      expect(mockUpdateQueueItem).not.toHaveBeenCalledWith('queue-1', 'failed', expect.anything())
+    })
+
+    it('should not auto-retry failed queue rows for recordings that already have a transcript', async () => {
+      const failedQueueItem = {
+        id: 'queue-failed',
+        recording_id: 'rec-123',
+        filename: 'test.wav',
+        status: 'failed',
+        attempts: 1,
+        retry_count: 0,
+        completed_at: new Date(Date.now() - 60_000).toISOString()
+      }
+      mockGetQueueItems.mockImplementation((status?: string) => {
+        if (status === 'failed') return [failedQueueItem]
+        if (status === 'pending') return []
+        return []
+      })
+      mockGetRecordingById.mockReturnValue({
+        id: 'rec-123',
+        filename: 'test.wav',
+        file_path: '/recordings/test.wav',
+        transcription_status: 'complete'
+      })
+      mockGetTranscriptByRecordingId.mockReturnValue({ full_text: 'Already transcribed' })
+
+      const { processQueueManually } = await import('../transcription')
+
+      await processQueueManually()
+
+      expect(mockUpdateQueueItem).not.toHaveBeenCalledWith('queue-failed', 'pending')
+      expect(mockUpdateRecordingStatus).not.toHaveBeenCalledWith('rec-123', 'pending')
+      expect(mockTranscribeWithNativeModel).not.toHaveBeenCalled()
+    })
+
+    it('should not auto-retry permanent audio format failures', async () => {
+      const failedQueueItem = {
+        id: 'queue-failed',
+        recording_id: 'rec-123',
+        filename: 'test.mp3',
+        status: 'failed',
+        attempts: 1,
+        retry_count: 0,
+        error_message: 'Error: Failed to detect audio format for test.mp3\nCaused by:\n    unsupported feature: core (probe): no suitable format reader found',
+        completed_at: new Date(Date.now() - 60_000).toISOString()
+      }
+      mockGetQueueItems.mockImplementation((status?: string) => {
+        if (status === 'failed') return [failedQueueItem]
+        if (status === 'pending') return []
+        return []
+      })
+      mockGetRecordingById.mockReturnValue({
+        id: 'rec-123',
+        filename: 'test.mp3',
+        file_path: '/recordings/test.mp3',
+        transcription_status: 'error'
+      })
+
+      const { processQueueManually } = await import('../transcription')
+
+      await processQueueManually()
+
+      expect(mockUpdateQueueItem).not.toHaveBeenCalledWith('queue-failed', 'pending')
+      expect(mockUpdateRecordingStatus).not.toHaveBeenCalledWith('rec-123', 'pending')
+      expect(mockTranscribeWithNativeModel).not.toHaveBeenCalled()
+    })
+
+    it('should complete stale pending queue rows for recordings that already have a transcript', async () => {
+      const pendingQueueItem = {
+        id: 'queue-pending',
+        recording_id: 'rec-123',
+        filename: 'test.wav',
+        status: 'pending',
+        attempts: 1,
+        retry_count: 0
+      }
+      mockGetQueueItems.mockImplementation((status?: string) => {
+        if (status === 'failed') return []
+        if (status === 'pending') return [pendingQueueItem]
+        return []
+      })
+      mockGetRecordingById.mockReturnValue({
+        id: 'rec-123',
+        filename: 'test.wav',
+        file_path: '/recordings/test.wav',
+        transcription_status: 'pending'
+      })
+      mockGetTranscriptByRecordingId.mockReturnValue({ full_text: 'Already transcribed' })
+
+      const { processQueueManually } = await import('../transcription')
+
+      await processQueueManually()
+
+      expect(mockUpdateQueueProgress).toHaveBeenCalledWith('queue-pending', 100)
+      expect(mockUpdateQueueItem).toHaveBeenCalledWith('queue-pending', 'completed')
+      expect(mockUpdateRecordingStatus).toHaveBeenCalledWith('rec-123', 'complete')
+      expect(mockTranscribeWithNativeModel).not.toHaveBeenCalled()
     })
   })
 })

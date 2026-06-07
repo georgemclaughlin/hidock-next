@@ -389,7 +389,43 @@ describe('Database Service', () => {
   })
 
   // =========================================================================
-  // 4. getQueueItems
+  // 4. addToQueue
+  // =========================================================================
+  describe('addToQueue()', () => {
+    it('should insert a new queue item when no active item exists for the recording', async () => {
+      const dbModule = await initTestDatabase()
+      mockDatabase.run.mockClear()
+      setQueryResults([])
+
+      const id = dbModule.addToQueue('rec-123')
+
+      expect(id).toEqual(expect.any(String))
+      const insertCall = mockDatabase.run.mock.calls.find((call: any[]) =>
+        typeof call[0] === 'string' && call[0].includes('INSERT INTO transcription_queue')
+      )
+      expect(insertCall).toBeDefined()
+      expect(insertCall?.[1]).toEqual([id, 'rec-123'])
+    })
+
+    it('should return an existing active queue item instead of inserting a duplicate', async () => {
+      const dbModule = await initTestDatabase()
+      mockDatabase.run.mockClear()
+      setQueryResults([
+        { id: 'q-active', recording_id: 'rec-123', status: 'pending', attempts: 0, created_at: '2026-01-01' }
+      ])
+
+      const id = dbModule.addToQueue('rec-123')
+
+      expect(id).toBe('q-active')
+      const insertCall = mockDatabase.run.mock.calls.find((call: any[]) =>
+        typeof call[0] === 'string' && call[0].includes('INSERT INTO transcription_queue')
+      )
+      expect(insertCall).toBeUndefined()
+    })
+  })
+
+  // =========================================================================
+  // 5. getQueueItems
   // =========================================================================
   describe('getQueueItems()', () => {
     it('should return all queue items with recording filename when no status filter', async () => {
@@ -446,7 +482,7 @@ describe('Database Service', () => {
   })
 
   // =========================================================================
-  // 5. updateQueueItem - status transitions
+  // 6. updateQueueItem - status transitions
   // =========================================================================
   describe('updateQueueItem()', () => {
     let dbModule: Awaited<ReturnType<typeof initTestDatabase>>

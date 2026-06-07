@@ -6,6 +6,7 @@ import { getConfig } from './config'
 import {
   getMeetingById,
   getRecordingById,
+  getTranscriptByRecordingId,
   insertTranscript,
   updateRecordingTranscriptionStatus,
   getQueueItems,
@@ -51,6 +52,14 @@ type ChunkEtaState = {
 }
 
 const MIN_COMPLETED_CHUNKS_FOR_ETA = 3
+
+function hasCompletedTranscription(recordingId: string): boolean {
+  const recording = getRecordingById(recordingId)
+  if (recording?.transcription_status === 'complete') return true
+
+  const transcript = getTranscriptByRecordingId(recordingId)
+  return Boolean(transcript)
+}
 
 function progressTickerLimit(stage: string): number | null {
   const normalizedStage = stage.toLowerCase()
@@ -139,13 +148,18 @@ async function processQueue(): Promise<void> {
       'Local transcription provider is disabled',
       'Local transcription command is not configured',
       'Native transcription sidecar is required',
-      'No speech detected',
+      'Failed to detect audio format',
+      'no suitable format reader found',
       'Audio file did not contain decodable samples',
       'no local file'
     ]
     const failedItems = getQueueItems('failed')
     const now = Date.now()
     for (const item of failedItems) {
+      if (hasCompletedTranscription(item.recording_id)) {
+        continue
+      }
+
       // B-TXN-003: Use typed property access instead of `as any` cast
       const retryCount = item.retry_count ?? 0
 
@@ -187,6 +201,13 @@ async function processQueue(): Promise<void> {
       if (cancelRequested) {
         console.log('Transcription cancelled by user')
         break
+      }
+
+      if (hasCompletedTranscription(item.recording_id)) {
+        updateQueueProgress(item.id, 100)
+        updateQueueItem(item.id, 'completed')
+        updateRecordingTranscriptionStatus(item.recording_id, 'complete')
+        continue
       }
 
       try {
@@ -375,7 +396,7 @@ function normalizeTranscriptText(output: NativeTranscriptOutput): string {
   }
   if (text) return text
   if (segmentText) return segmentText
-  throw new Error('No speech detected in local transcription output')
+  return ''
 }
 
 function countWords(text: string): number {

@@ -916,7 +916,8 @@ describe('Recording IPC Handlers', () => {
 
   describe('recordings:addToQueue', () => {
     it('should add recording to queue and update transcription status', async () => {
-      const { addToQueue, updateRecordingTranscriptionStatus } = await import('../../services/database')
+      const { addToQueue, getRecordingById, updateRecordingTranscriptionStatus } = await import('../../services/database')
+      vi.mocked(getRecordingById).mockReturnValue(undefined)
       vi.mocked(addToQueue).mockReturnValue('queue-item-id')
 
       const result = await handlers['recordings:addToQueue'](null, 'rec-1')
@@ -926,8 +927,32 @@ describe('Recording IPC Handlers', () => {
       expect(result).toBe('queue-item-id')
     })
 
+    it('should not add completed recordings to the queue', async () => {
+      const { addToQueue, getRecordingById, updateRecordingTranscriptionStatus } = await import('../../services/database')
+      vi.mocked(getRecordingById).mockReturnValue({ id: 'rec-1', transcription_status: 'complete' } as any)
+
+      const result = await handlers['recordings:addToQueue'](null, 'rec-1')
+
+      expect(result).toBe(false)
+      expect(addToQueue).not.toHaveBeenCalled()
+      expect(updateRecordingTranscriptionStatus).not.toHaveBeenCalled()
+    })
+
+    it('should not downgrade already processing recordings to pending', async () => {
+      const { addToQueue, getRecordingById, updateRecordingTranscriptionStatus } = await import('../../services/database')
+      vi.mocked(getRecordingById).mockReturnValue({ id: 'rec-1', transcription_status: 'processing' } as any)
+      vi.mocked(addToQueue).mockReturnValue('queue-item-id')
+
+      const result = await handlers['recordings:addToQueue'](null, 'rec-1')
+
+      expect(result).toBe('queue-item-id')
+      expect(addToQueue).toHaveBeenCalledWith('rec-1')
+      expect(updateRecordingTranscriptionStatus).not.toHaveBeenCalled()
+    })
+
     it('should return false on error', async () => {
-      const { addToQueue } = await import('../../services/database')
+      const { addToQueue, getRecordingById } = await import('../../services/database')
+      vi.mocked(getRecordingById).mockReturnValue(undefined)
       vi.mocked(addToQueue).mockImplementation(() => {
         throw new Error('Queue full')
       })

@@ -119,6 +119,31 @@ describe('useOperations', () => {
       expect(success).toBe(false)
     })
 
+    it('returns false for already pending recordings', async () => {
+      const { result } = renderHook(() => useOperations())
+
+      const pending = {
+        id: 'rec-pending',
+        filename: 'pending.wav',
+        location: 'local-only' as const,
+        localPath: '/path/pending.wav',
+        syncStatus: 'synced' as const,
+        transcriptionStatus: 'pending' as const,
+        size: 1024,
+        duration: 60,
+        dateRecorded: new Date()
+      }
+
+      let success: boolean | undefined
+      await act(async () => {
+        success = await result.current.queueTranscription(pending as any)
+      })
+
+      expect(success).toBe(false)
+      expect(mockUpdateTranscriptionStatus).not.toHaveBeenCalled()
+      expect(mockAddToQueueIPC).not.toHaveBeenCalled()
+    })
+
     it('queues transcription for eligible local recording', async () => {
       const { result } = renderHook(() => useOperations())
 
@@ -143,6 +168,46 @@ describe('useOperations', () => {
       expect(mockUpdateTranscriptionStatus).toHaveBeenCalledWith('rec-3', 'pending')
       expect(mockAddToQueueIPC).toHaveBeenCalledWith('rec-3')
       expect(mockAddToQueue).toHaveBeenCalledWith('queue-item-1', 'rec-3', 'eligible.wav')
+    })
+
+    it('does not bulk queue recordings that are already pending', async () => {
+      const { result } = renderHook(() => useOperations())
+
+      const recordings = [
+        {
+          id: 'rec-pending',
+          filename: 'pending.wav',
+          location: 'local-only' as const,
+          localPath: '/path/pending.wav',
+          syncStatus: 'synced' as const,
+          transcriptionStatus: 'pending' as const,
+          size: 1024,
+          duration: 60,
+          dateRecorded: new Date()
+        },
+        {
+          id: 'rec-ready',
+          filename: 'ready.wav',
+          location: 'local-only' as const,
+          localPath: '/path/ready.wav',
+          syncStatus: 'synced' as const,
+          transcriptionStatus: 'none' as const,
+          size: 1024,
+          duration: 60,
+          dateRecorded: new Date()
+        }
+      ]
+
+      let queued: number | undefined
+      await act(async () => {
+        queued = await result.current.queueBulkTranscriptions(recordings as any)
+      })
+
+      expect(queued).toBe(1)
+      expect(mockUpdateTranscriptionStatus).toHaveBeenCalledTimes(1)
+      expect(mockUpdateTranscriptionStatus).toHaveBeenCalledWith('rec-ready', 'pending')
+      expect(mockAddToQueueIPC).toHaveBeenCalledTimes(1)
+      expect(mockAddToQueueIPC).toHaveBeenCalledWith('rec-ready')
     })
   })
 

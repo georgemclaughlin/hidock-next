@@ -25,7 +25,11 @@ export function useOperations() {
       toast({ title: 'Cannot transcribe', description: 'File not available locally. Download first.', variant: 'error' })
       return false
     }
-    if (recording.transcriptionStatus === 'processing' || recording.transcriptionStatus === 'complete') {
+    if (
+      recording.transcriptionStatus === 'pending' ||
+      recording.transcriptionStatus === 'processing' ||
+      recording.transcriptionStatus === 'complete'
+    ) {
       return false
     }
 
@@ -48,7 +52,10 @@ export function useOperations() {
 
   const queueBulkTranscriptions = useCallback(async (recordings: UnifiedRecording[]) => {
     const eligible = recordings.filter(
-      (r) => hasLocalPath(r) && r.transcriptionStatus !== 'processing' && r.transcriptionStatus !== 'complete'
+      (r) => hasLocalPath(r) &&
+        r.transcriptionStatus !== 'pending' &&
+        r.transcriptionStatus !== 'processing' &&
+        r.transcriptionStatus !== 'complete'
     )
     if (eligible.length === 0) {
       toast({ title: 'No recordings to transcribe', description: 'All selected recordings are already transcribed or in progress.' })
