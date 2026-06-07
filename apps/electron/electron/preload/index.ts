@@ -52,9 +52,6 @@ const callIPC = async (channel: string, ...args: any[]) => {
 // Import types from api.ts for proper typing
 import type {
   Result,
-  RAGChatRequest,
-  RAGChatResponse,
-  RAGStatus,
   GetContactsRequest,
   GetContactsResponse,
   UpdateContactRequest,
@@ -62,18 +59,11 @@ import type {
   GetProjectsResponse,
   CreateProjectRequest,
   UpdateProjectRequest,
-  TagMeetingRequest,
-  OutputTemplate,
-  GenerateOutputRequest,
-  GenerateOutputResponse
+  TagMeetingRequest
 } from '../main/types/api'
 import type { Contact, ContactWithMeetings, Project, ProjectWithMeetings } from '../main/types/database'
 import type { MigrationAPI } from './migration-types'
-import type { 
-  KnowledgeCapture, 
-  Conversation, 
-  Message 
-} from '../../src/types/knowledge'
+import type { KnowledgeCapture } from '../../src/types/knowledge'
 
 type EmbeddingModelOption = {
   id: string
@@ -233,26 +223,6 @@ export interface ElectronAPI {
     update: (id: string, updates: Partial<KnowledgeCapture>) => Promise<{ success: boolean; error?: string }>
   }
 
-  // Assistant
-  assistant: {
-    getConversations: () => Promise<Conversation[]>
-    createConversation: (title?: string) => Promise<Conversation>
-    deleteConversation: (id: string) => Promise<{ success: boolean; error?: string }>
-    getMessages: (conversationId: string) => Promise<Message[]>
-    addMessage: (conversationId: string, role: 'user' | 'assistant', content: string, sources?: string) => Promise<Message>
-    updateConversationTitle: (conversationId: string, title: string) => Promise<{ success: boolean; error?: string }>
-    addContext: (conversationId: string, knowledgeCaptureId: string) => Promise<{ success: boolean; error?: string }>
-    removeContext: (conversationId: string, knowledgeCaptureId: string) => Promise<{ success: boolean; error?: string }>
-    getContext: (conversationId: string) => Promise<string[]>
-  }
-
-  // Chat
-  chat: {
-    getHistory: (limit?: number) => Promise<any[]>
-    addMessage: (role: 'user' | 'assistant', content: string, sources?: string) => Promise<any>
-    clearHistory: () => Promise<boolean>
-  }
-
   // Calendar
   calendar: {
     sync: () => Promise<any>
@@ -301,64 +271,25 @@ export interface ElectronAPI {
 
   // Outputs - document generation
   outputs: {
-    getTemplates: () => Promise<Result<OutputTemplate[]>>
-    generate: (request: GenerateOutputRequest) => Promise<Result<GenerateOutputResponse>>
     copyToClipboard: (content: string) => Promise<Result<void>>
     saveToFile: (content: string, suggestedName?: string) => Promise<Result<string>>
   }
 
-  // RAG Chatbot (extended with Result pattern)
-  rag: {
-    status: () => Promise<Result<RAGStatus>>
-    chat: (request: RAGChatRequest) => Promise<Result<RAGChatResponse>>
-    chatLegacy: (sessionId: string, message: string, meetingFilter?: string) => Promise<{
-      answer: string
-      sources: Array<{
-        content: string
-        meetingId?: string
-        subject?: string
-        timestamp?: string
-        score: number
-      }>
-      error?: string
-    }>
-    summarizeMeeting: (meetingId: string) => Promise<Result<string>>
-    findActionItems: (meetingId?: string) => Promise<Result<string>>
-    cancel: (sessionId: string) => Promise<Result<boolean>> // B-CHAT-005
-    removeLastMessages: (sessionId: string, count: number) => Promise<Result<number>>
-    clearSession: (sessionId: string) => Promise<Result<void>>
-    stats: () => Promise<{
-      documentCount: number
-      meetingCount: number
-      sessionCount: number
-    }>
-    indexTranscript: (transcript: string, metadata: {
-      meetingId?: string
-      recordingId?: string
-      timestamp?: string
-      subject?: string
-    }) => Promise<{ indexed: number }>
-    search: (query: string, limit?: number) => Promise<Array<{
-      content: string
-      meetingId?: string
-      subject?: string
-      score: number
-    }>>
-    getChunks: () => Promise<Array<{
-      id: string
-      content: string
-      meetingId?: string
-      recordingId?: string
-      chunkIndex: number
-      subject?: string
-      timestamp?: string
-      embeddingDimensions: number
-    }>>
-    globalSearch: (query: string, limit?: number) => Promise<Result<{
+  search: {
+    global: (query: string, limit?: number) => Promise<Result<{
       knowledge: any[]
       people: any[]
       projects: any[]
       warnings?: string[]
+    }>>
+  }
+
+  notes: {
+    generateForRecording: (recordingId: string) => Promise<Result<{
+      generated: boolean
+      skippedReason?: string
+      titleSuggestion?: string
+      summary?: string
     }>>
   }
 
@@ -676,24 +607,6 @@ const electronAPI: ElectronAPI = {
     update: (id, updates) => callIPC('knowledge:update', id, updates)
   },
 
-  assistant: {
-    getConversations: () => callIPC('assistant:getConversations'),
-    createConversation: (title) => callIPC('assistant:createConversation', title),
-    deleteConversation: (id) => callIPC('assistant:deleteConversation', id),
-    getMessages: (conversationId) => callIPC('assistant:getMessages', conversationId),
-    addMessage: (conversationId, role, content, sources) => callIPC('assistant:addMessage', conversationId, role, content, sources),
-    updateConversationTitle: (conversationId, title) => callIPC('assistant:updateConversationTitle', conversationId, title),
-    addContext: (conversationId, knowledgeCaptureId) => callIPC('assistant:addContext', conversationId, knowledgeCaptureId),
-    removeContext: (conversationId, knowledgeCaptureId) => callIPC('assistant:removeContext', conversationId, knowledgeCaptureId),
-    getContext: (conversationId) => callIPC('assistant:getContext', conversationId)
-  },
-
-  chat: {
-    getHistory: (limit) => callIPC('db:get-chat-history', limit),
-    addMessage: (role, content, sources) => callIPC('db:add-chat-message', role, content, sources),
-    clearHistory: () => callIPC('db:clear-chat-history')
-  },
-
   calendar: {
     sync: () => callIPC('calendar:sync'),
     clearAndSync: () => callIPC('calendar:clear-and-sync'),
@@ -746,28 +659,16 @@ const electronAPI: ElectronAPI = {
   },
 
   outputs: {
-    getTemplates: () => callIPC('outputs:getTemplates'),
-    generate: (request) => callIPC('outputs:generate', request),
     copyToClipboard: (content) => callIPC('outputs:copyToClipboard', content),
     saveToFile: (content, suggestedName) => callIPC('outputs:saveToFile', content, suggestedName)
   },
 
-  rag: {
-    status: () => callIPC('rag:status'),
-    chat: (request) => callIPC('rag:chat', request),
-    chatLegacy: (sessionId, message, meetingFilter) =>
-      callIPC('rag:chat-legacy', { sessionId, message, meetingFilter }),
-    summarizeMeeting: (meetingId) => callIPC('rag:summarize-meeting', meetingId),
-    findActionItems: (meetingId) => callIPC('rag:find-action-items', meetingId),
-    cancel: (sessionId) => callIPC('rag:cancel', sessionId), // B-CHAT-005
-    removeLastMessages: (sessionId, count) => callIPC('rag:removeLastMessages', sessionId, count),
-    clearSession: (sessionId) => callIPC('rag:clear-session', sessionId),
-    stats: () => callIPC('rag:stats'),
-    indexTranscript: (transcript, metadata) =>
-      callIPC('rag:index-transcript', { transcript, metadata }),
-    search: (query, limit) => callIPC('rag:search', { query, limit }),
-    getChunks: () => callIPC('rag:get-chunks'),
-    globalSearch: (query, limit) => callIPC('rag:globalSearch', { query, limit })
+  search: {
+    global: (query, limit) => callIPC('search:global', { query, limit })
+  },
+
+  notes: {
+    generateForRecording: (recordingId) => callIPC('notes:generateForRecording', recordingId)
   },
 
   embeddings: {

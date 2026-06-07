@@ -65,61 +65,6 @@ export const SearchPaginationSchema = PaginationSchema.extend({
 })
 
 // =============================================================================
-// RAG Filter Schema
-// =============================================================================
-
-/**
- * RAG filter discriminated union
- */
-export const RAGFilterSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('none') }),
-  z.object({ type: z.literal('meeting'), meetingId: UUIDSchema }),
-  z.object({ type: z.literal('contact'), contactId: UUIDSchema }),
-  z.object({ type: z.literal('project'), projectId: UUIDSchema }),
-  z.object({
-    type: z.literal('dateRange'),
-    startDate: DateTimeSchema,
-    endDate: DateTimeSchema
-  })
-])
-
-/**
- * RAG chat request
- */
-export const RAGChatRequestSchema = z.object({
-  sessionId: z.string().min(1).max(100),
-  message: z.string().min(1).max(10000),
-  filter: RAGFilterSchema.optional()
-})
-
-// =============================================================================
-// Output Template Schemas
-// =============================================================================
-
-/**
- * Output template identifier
- */
-export const OutputTemplateIdSchema = z.enum([
-  'meeting_minutes',
-  'interview_feedback',
-  'project_status',
-  'action_items'
-])
-
-/**
- * Generate output request
- */
-export const GenerateOutputRequestSchema = z.object({
-  templateId: OutputTemplateIdSchema,
-  meetingId: UUIDSchema.optional(),
-  projectId: UUIDSchema.optional(),
-  contactId: UUIDSchema.optional()
-}).refine(
-  (data) => data.meetingId || data.projectId || data.contactId,
-  { message: 'At least one of meetingId, projectId, or contactId must be provided' }
-)
-
-// =============================================================================
 // Meeting Filter Schema
 // =============================================================================
 
@@ -148,9 +93,5 @@ export const GetMeetingsRequestSchema = z.object({
 
 export type Pagination = z.infer<typeof PaginationSchema>
 export type SearchPagination = z.infer<typeof SearchPaginationSchema>
-export type RAGFilter = z.infer<typeof RAGFilterSchema>
-export type RAGChatRequest = z.infer<typeof RAGChatRequestSchema>
-export type OutputTemplateId = z.infer<typeof OutputTemplateIdSchema>
-export type GenerateOutputRequest = z.infer<typeof GenerateOutputRequestSchema>
 export type MeetingStatus = z.infer<typeof MeetingStatusSchema>
 export type GetMeetingsRequest = z.infer<typeof GetMeetingsRequestSchema>

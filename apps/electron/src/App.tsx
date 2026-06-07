@@ -13,7 +13,6 @@ import { lazyWithRetry } from '@/lib/lazyWithRetry'
 // Each page becomes a separate chunk, reducing initial bundle size
 const Calendar = lazyWithRetry(() => import('@/pages/Calendar'))
 const MeetingDetail = lazyWithRetry(() => import('@/pages/MeetingDetail'))
-const Chat = lazyWithRetry(() => import('@/pages/Chat'))
 const Explore = lazyWithRetry(() => import('@/pages/Explore'))
 const Device = lazyWithRetry(() => import('@/pages/Device'))
 const Library = lazyWithRetry(() => import('@/pages/Library'))
@@ -92,16 +91,6 @@ function App(): React.ReactElement {
               <ErrorBoundary>
                 <Suspense fallback={<LoadingSpinner message="Loading meeting..." />}>
                   <MeetingDetail />
-                </Suspense>
-              </ErrorBoundary>
-            }
-          />
-          <Route
-            path="/assistant"
-            element={
-              <ErrorBoundary>
-                <Suspense fallback={<LoadingSpinner message="Loading assistant..." />}>
-                  <Chat />
                 </Suspense>
               </ErrorBoundary>
             }

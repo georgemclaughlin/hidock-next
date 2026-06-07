@@ -17,7 +17,8 @@ The Electron app is designed around these constraints:
 - Recordings are downloaded over USB from the device.
 - Recordings, transcripts, indexes, and app data are stored on the local computer.
 - Speech-to-text is local through the required Rust sidecar: Parakeet by default, Whisper as an alternate engine.
-- Transcript chat/search uses local Ollama by default.
+- Transcript search uses a native local embedding model.
+- Meeting notes and title suggestions can be generated with local Ollama.
 - External calendar sync is disabled.
 - Hosted transcription and hosted LLM providers are not included in the supported path.
 
@@ -29,7 +30,7 @@ Manual export is still possible. If a user copies a transcript into ChatGPT, Mic
 - npm
 - Rust and CMake for building the local transcription sidecar
 - A compatible USB recorder
-- Optional: Ollama for local transcript chat/search
+- Optional: Ollama for local meeting notes and title suggestions
 
 Linux/WSL packaging may also need libudev development headers for the existing USB native module, for example `sudo apt install libudev-dev`. If the `usb` native rebuild fails with C++ language feature errors, run packaging with `CXXFLAGS="-std=c++17"`.
 
@@ -93,11 +94,10 @@ Whisper uses the local sidecar model catalog too. The app stores native model ID
 
 ## Local Ollama
 
-For transcript chat and semantic search:
+For generated meeting notes and title suggestions:
 
 ```bash
 ollama serve
-ollama pull nomic-embed-text
 ollama pull llama3.2
 ```
 
@@ -107,7 +107,9 @@ The default Ollama URL is:
 http://localhost:11434
 ```
 
-Remote Ollama URLs are blocked by local-only mode unless explicitly allowed in settings.
+The Ollama model name and thinking mode are configurable in `Settings -> Local Notes`.
+
+Public remote Ollama URLs are blocked by local-only mode. Loopback and private-LAN Ollama URLs are allowed.
 
 ## Development
 

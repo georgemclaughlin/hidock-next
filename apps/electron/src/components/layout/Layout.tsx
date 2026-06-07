@@ -7,7 +7,6 @@ import {
   Calendar,
   CloudDownload,
   BookOpen,
-  Bot,
   Compass,
   Settings,
   ChevronLeft,
@@ -53,7 +52,6 @@ const navigationSections: NavigationSection[] = [
     title: 'KNOWLEDGE',
     items: [
       { name: 'Library', href: '/library', icon: BookOpen },
-      { name: 'Assistant', href: '/assistant', icon: Bot },
       { name: 'Explore', href: '/explore', icon: Compass }
     ]
   },

@@ -243,7 +243,7 @@ describe('useUIStore', () => {
 
     it('setSidebarContent accepts all valid content types', () => {
       const { setSidebarContent } = useUIStore.getState()
-      const contentTypes = ['calendar', 'contact', 'project', 'chat', 'none'] as const
+      const contentTypes = ['calendar', 'contact', 'project', 'none'] as const
 
       contentTypes.forEach((content) => {
         setSidebarContent(content)
@@ -509,7 +509,7 @@ describe('useUIStore', () => {
     it('playback changes do not affect sidebar', () => {
       const store = useUIStore.getState()
 
-      store.setSidebarContent('chat')
+      store.setSidebarContent('contact')
       store.setSidebarOpen(true)
 
       store.setCurrentlyPlaying('rec-1', '/path')
@@ -517,7 +517,7 @@ describe('useUIStore', () => {
       store.setPlaybackProgress(50, 100)
 
       const state = useUIStore.getState()
-      expect(state.sidebarContent).toBe('chat')
+      expect(state.sidebarContent).toBe('contact')
       expect(state.sidebarOpen).toBe(true)
     })
 

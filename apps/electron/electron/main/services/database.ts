@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
     FOREIGN KEY (recording_id) REFERENCES recordings(id)
 );
 
--- Embeddings for RAG
+-- Embeddings for local transcript search
 CREATE TABLE IF NOT EXISTS embeddings (
     id TEXT PRIMARY KEY,
     transcript_id TEXT NOT NULL,
@@ -2257,6 +2257,45 @@ export function insertTranscript(transcript: Omit<Transcript, 'created_at'>): vo
       transcript.question_suggestions ?? null
     ]
   )
+}
+
+export type TranscriptAnalysisUpdate = {
+  summary: string | null
+  action_items: string | null
+  topics: string | null
+  key_points: string | null
+  sentiment: string | null
+  title_suggestion: string | null
+  question_suggestions: string | null
+}
+
+export function updateTranscriptAnalysis(
+  recordingId: string,
+  updates: Partial<TranscriptAnalysisUpdate>
+): void {
+  const allowedColumns: Array<keyof TranscriptAnalysisUpdate> = [
+    'summary',
+    'action_items',
+    'topics',
+    'key_points',
+    'sentiment',
+    'title_suggestion',
+    'question_suggestions'
+  ]
+  const fields: string[] = []
+  const params: any[] = []
+
+  for (const column of allowedColumns) {
+    if (updates[column] !== undefined) {
+      fields.push(`${column} = ?`)
+      params.push(updates[column])
+    }
+  }
+
+  if (fields.length === 0) return
+
+  params.push(recordingId)
+  run(`UPDATE transcripts SET ${fields.join(', ')} WHERE recording_id = ?`, params)
 }
 
 /**

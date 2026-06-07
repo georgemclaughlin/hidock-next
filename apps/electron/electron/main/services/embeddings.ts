@@ -1,13 +1,12 @@
-import { getConfig } from './config'
-import { getOllamaService } from './ollama'
 import {
   generateNativeEmbeddings,
   getNativeEmbeddingModelId,
   NativeEmbeddingInputType
 } from './native-transcriber'
+import { getConfig } from './config'
 
 export type EmbeddingInputType = NativeEmbeddingInputType
-export type EmbeddingRuntimeProvider = 'native-fastembed' | 'ollama'
+export type EmbeddingRuntimeProvider = 'native-fastembed'
 
 export interface EmbeddingResult {
   embedding: number[]
@@ -22,46 +21,13 @@ export interface EmbeddingModelMetadata {
   dimensions?: number
 }
 
-const DEFAULT_OLLAMA_EMBEDDING_MODEL = 'nomic-embed-text'
-
-function getConfiguredEmbeddingProvider(): 'native' | 'ollama' {
-  const config = getConfig()
-  return config.embeddings?.provider === 'ollama' ? 'ollama' : 'native'
-}
-
 function getConfiguredNativeModel(): string {
   const config = getConfig()
   return getNativeEmbeddingModelId(config.embeddings?.nativeModel)
 }
 
-function getConfiguredOllamaModel(): string {
-  const config = getConfig()
-  return config.embeddings?.ollamaModel || DEFAULT_OLLAMA_EMBEDDING_MODEL
-}
-
-function prepareOllamaEmbeddingText(
-  text: string,
-  inputType: EmbeddingInputType,
-  model: string
-): string {
-  const trimmed = text.trim()
-  if (!model.toLowerCase().includes('nomic')) {
-    return trimmed
-  }
-
-  const prefix = inputType === 'query' ? 'search_query: ' : 'search_document: '
-  return trimmed.startsWith(prefix) ? trimmed : `${prefix}${trimmed}`
-}
-
 class EmbeddingService {
   getModelMetadata(): EmbeddingModelMetadata {
-    if (getConfiguredEmbeddingProvider() === 'ollama') {
-      return {
-        provider: 'ollama',
-        model: getConfiguredOllamaModel()
-      }
-    }
-
     return {
       provider: 'native-fastembed',
       model: getConfiguredNativeModel()
@@ -81,10 +47,6 @@ class EmbeddingService {
     inputType: EmbeddingInputType = 'document'
   ): Promise<(EmbeddingResult | null)[]> {
     if (texts.length === 0) return []
-
-    if (getConfiguredEmbeddingProvider() === 'ollama') {
-      return this.generateOllamaEmbeddings(texts, inputType)
-    }
 
     return this.generateNativeFastEmbeddings(texts, inputType)
   }
@@ -112,26 +74,6 @@ class EmbeddingService {
       console.error('[Embeddings] Native embedding generation failed:', error)
       return texts.map(() => null)
     }
-  }
-
-  private async generateOllamaEmbeddings(
-    texts: string[],
-    inputType: EmbeddingInputType
-  ): Promise<(EmbeddingResult | null)[]> {
-    const model = getConfiguredOllamaModel()
-    const preparedTexts = texts.map((text) => prepareOllamaEmbeddingText(text, inputType, model))
-    const embeddings = await getOllamaService().generateEmbeddings(preparedTexts)
-
-    return embeddings.map((embedding) => {
-      if (!embedding) return null
-
-      return {
-        embedding,
-        provider: 'ollama',
-        model,
-        dimensions: embedding.length
-      }
-    })
   }
 }
 

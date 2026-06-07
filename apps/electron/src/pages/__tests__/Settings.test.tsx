@@ -70,14 +70,17 @@ function makeMockConfig(ollamaBaseUrl = '') {
       autoTranscribe: false,
       language: 'auto'
     },
-    chat: { provider: 'ollama' as const, ollamaModel: 'llama3.2', maxContextChunks: 10 },
     embeddings: {
-      provider: 'native' as const,
       nativeModel: 'bge-small-en-v1.5-q',
-      ollamaBaseUrl,
-      ollamaModel: 'nomic-embed-text',
       chunkSize: 500,
       chunkOverlap: 50
+    },
+    notes: {
+      provider: 'ollama' as const,
+      ollamaBaseUrl,
+      ollamaModel: 'llama3.2',
+      thinkingEnabled: true,
+      autoGenerate: true
     }
   }
 }
@@ -211,7 +214,7 @@ describe('Settings Page', () => {
     expect(screen.getByText('Processing Pipeline')).toBeInTheDocument()
     expect(screen.getByText('Local Transcription')).toBeInTheDocument()
     expect(screen.getByText('Local Search Embeddings')).toBeInTheDocument()
-    expect(screen.getByText('Local Assistant')).toBeInTheDocument()
+    expect(screen.getByText('Local Notes')).toBeInTheDocument()
     expect(screen.getByText('Storage')).toBeInTheDocument()
   })
 
@@ -295,36 +298,43 @@ describe('Settings Page', () => {
     expect(screen.getByText('Model Downloaded')).toBeInTheDocument()
   })
 
-  it('should render local assistant settings form', async () => {
+  it('should render local notes settings form', async () => {
     render(<Settings />)
 
     expect(screen.getByLabelText('Ollama base URL')).toBeInTheDocument()
-    expect(screen.getByLabelText('RAG context window size')).toBeInTheDocument()
+    expect(screen.getByLabelText('Ollama notes model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Enable model thinking')).toBeInTheDocument()
+    expect(screen.getByLabelText('Auto-generate meeting notes')).toBeInTheDocument()
   })
 
-  it('should start with a blank local assistant URL', async () => {
+  it('should start with a blank local notes URL', async () => {
     render(<Settings />)
 
     expect(screen.getByLabelText('Ollama base URL')).toHaveValue('')
   })
 
-  it('should allow clearing the local assistant URL', async () => {
+  it('should allow clearing the local notes URL', async () => {
     mockConfig = makeMockConfig('http://localhost:11434')
 
     render(<Settings />)
 
     fireEvent.change(screen.getByLabelText('Ollama base URL'), { target: { value: '' } })
-    fireEvent.click(screen.getByLabelText('Save chat settings'))
+    fireEvent.click(screen.getByLabelText('Save notes settings'))
 
     await waitFor(() => {
-      expect(mockUpdateConfig).toHaveBeenCalledWith('embeddings', { ollamaBaseUrl: '' })
+      expect(mockUpdateConfig).toHaveBeenCalledWith('notes', {
+        provider: 'ollama',
+        ollamaBaseUrl: '',
+        ollamaModel: 'llama3.2',
+        thinkingEnabled: true,
+        autoGenerate: true
+      })
     })
   })
 
   it('should render local search embedding settings form', async () => {
     render(<Settings />)
 
-    expect(screen.getByLabelText('Embedding provider')).toBeInTheDocument()
     expect(screen.getByLabelText('Native embedding model')).toBeInTheDocument()
     expect(screen.getByLabelText('Download embedding model')).toBeInTheDocument()
     expect(screen.getByLabelText('Rebuild transcript search index')).toBeInTheDocument()

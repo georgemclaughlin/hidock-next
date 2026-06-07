@@ -143,7 +143,7 @@ export class CircuitBreaker {
 /**
  * IPC categories for organizing circuit breakers
  */
-export type IPCCategory = 'database' | 'transcription' | 'device' | 'calendar' | 'storage' | 'rag'
+export type IPCCategory = 'database' | 'transcription' | 'device' | 'calendar' | 'storage' | 'search'
 
 /**
  * Resilient IPC Client with circuit breaker protection
@@ -158,7 +158,7 @@ export class ResilientIPCClient {
     this.breakers = new Map()
 
     // Initialize circuit breakers for each category
-    const categories: IPCCategory[] = ['database', 'transcription', 'device', 'calendar', 'storage', 'rag']
+    const categories: IPCCategory[] = ['database', 'transcription', 'device', 'calendar', 'storage', 'search']
 
     for (const category of categories) {
       this.breakers.set(

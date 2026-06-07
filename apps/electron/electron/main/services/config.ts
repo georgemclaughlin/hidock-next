@@ -49,17 +49,16 @@ export interface AppConfig {
     diarizationEnabled: boolean
   }
   embeddings: {
-    provider: 'native' | 'ollama'
     nativeModel: string
-    ollamaBaseUrl: string
-    ollamaModel: string
     chunkSize: number
     chunkOverlap: number
   }
-  chat: {
+  notes: {
     provider: 'ollama'
+    ollamaBaseUrl: string
     ollamaModel: string
-    maxContextChunks: number
+    thinkingEnabled: boolean
+    autoGenerate: boolean
   }
   device: {
     autoConnect: boolean
@@ -103,17 +102,16 @@ const DEFAULT_CONFIG: AppConfig = {
     diarizationEnabled: true
   },
   embeddings: {
-    provider: 'native',
     nativeModel: 'bge-small-en-v1.5-q',
-    ollamaBaseUrl: '',
-    ollamaModel: 'nomic-embed-text',
     chunkSize: 500,
     chunkOverlap: 50
   },
-  chat: {
+  notes: {
     provider: 'ollama',
+    ollamaBaseUrl: '',
     ollamaModel: 'llama3.2',
-    maxContextChunks: 10
+    thinkingEnabled: true,
+    autoGenerate: true
   },
   device: {
     autoConnect: true,
@@ -167,11 +165,26 @@ function normalizeNativeEmbeddingModel(value?: string): string {
 }
 
 function shouldMigrateLegacyEmbeddingProvider(savedConfig: Partial<AppConfig>): boolean {
-  const embeddings = savedConfig.embeddings as Partial<AppConfig['embeddings']> | undefined
+  const embeddings = savedConfig.embeddings as (Partial<AppConfig['embeddings']> & { provider?: string }) | undefined
   return embeddings?.provider === 'ollama' && embeddings.nativeModel === undefined
 }
 
-function isLoopbackHttpUrl(value: string): boolean {
+function isPrivateIPv4(hostname: string): boolean {
+  const parts = hostname.split('.').map((part) => Number(part))
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false
+  }
+
+  const [a, b] = parts
+  return (
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  )
+}
+
+function isLocalNetworkHttpUrl(value: string): boolean {
   try {
     const parsed = new URL(value)
     const hostname = parsed.hostname.toLowerCase()
@@ -179,7 +192,9 @@ function isLoopbackHttpUrl(value: string): boolean {
       hostname === 'localhost' ||
       hostname === '127.0.0.1' ||
       hostname === '::1' ||
-      hostname === '[::1]'
+      hostname === '[::1]' ||
+      isPrivateIPv4(hostname) ||
+      hostname.endsWith('.local')
     )
   } catch {
     return false
@@ -188,9 +203,21 @@ function isLoopbackHttpUrl(value: string): boolean {
 
 function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
   const allowRemoteOllama = value.privacy?.allowRemoteOllama === true
-  const ollamaBaseUrl = value.embeddings?.ollamaBaseUrl?.trim() ?? DEFAULT_CONFIG.embeddings.ollamaBaseUrl
+  const legacyValue = value as AppConfig & {
+    chat?: { ollamaModel?: string }
+    embeddings?: Partial<AppConfig['embeddings']> & {
+      provider?: string
+      ollamaBaseUrl?: string
+      ollamaModel?: string
+    }
+    notes?: Partial<AppConfig['notes']>
+  }
+  const ollamaBaseUrl = (
+    legacyValue.notes?.ollamaBaseUrl ||
+    legacyValue.embeddings?.ollamaBaseUrl ||
+    DEFAULT_CONFIG.notes.ollamaBaseUrl
+  ).trim()
   const parakeetModel = normalizeNativeParakeetModel(value.transcription?.parakeetModel)
-  const embeddingProvider = value.embeddings?.provider === 'ollama' ? 'ollama' : 'native'
 
   return {
     ...value,
@@ -215,20 +242,21 @@ function normalizeLocalOnlyConfig(value: AppConfig): AppConfig {
       diarizationEnabled: value.transcription?.diarizationEnabled !== false
     },
     embeddings: {
-      ...value.embeddings,
-      provider: embeddingProvider,
       nativeModel: normalizeNativeEmbeddingModel(value.embeddings?.nativeModel),
-      ollamaModel: value.embeddings?.ollamaModel || DEFAULT_CONFIG.embeddings.ollamaModel,
       chunkSize: value.embeddings?.chunkSize || DEFAULT_CONFIG.embeddings.chunkSize,
-      chunkOverlap: value.embeddings?.chunkOverlap || DEFAULT_CONFIG.embeddings.chunkOverlap,
-      ollamaBaseUrl: !ollamaBaseUrl || allowRemoteOllama || isLoopbackHttpUrl(ollamaBaseUrl)
-        ? ollamaBaseUrl
-        : DEFAULT_CONFIG.embeddings.ollamaBaseUrl
+      chunkOverlap: value.embeddings?.chunkOverlap || DEFAULT_CONFIG.embeddings.chunkOverlap
     },
-    chat: {
+    notes: {
       provider: 'ollama',
-      ollamaModel: value.chat?.ollamaModel || DEFAULT_CONFIG.chat.ollamaModel,
-      maxContextChunks: value.chat?.maxContextChunks || DEFAULT_CONFIG.chat.maxContextChunks
+      ollamaBaseUrl: !ollamaBaseUrl || allowRemoteOllama || isLocalNetworkHttpUrl(ollamaBaseUrl)
+        ? ollamaBaseUrl
+        : DEFAULT_CONFIG.notes.ollamaBaseUrl,
+      ollamaModel:
+        legacyValue.notes?.ollamaModel ||
+        legacyValue.chat?.ollamaModel ||
+        DEFAULT_CONFIG.notes.ollamaModel,
+      thinkingEnabled: legacyValue.notes?.thinkingEnabled !== false,
+      autoGenerate: legacyValue.notes?.autoGenerate !== false
     }
   }
 }
@@ -255,7 +283,7 @@ export async function initializeConfig(): Promise<void> {
       // Merge with defaults to handle new fields
       const mergedConfig = deepMerge(DEFAULT_CONFIG, savedConfig)
       if (shouldMigrateLegacyEmbeddingProvider(savedConfig)) {
-        mergedConfig.embeddings.provider = DEFAULT_CONFIG.embeddings.provider
+        mergedConfig.embeddings.nativeModel = DEFAULT_CONFIG.embeddings.nativeModel
       }
       config = normalizeLocalOnlyConfig(mergedConfig)
     } else {

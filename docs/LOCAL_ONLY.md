@@ -11,12 +11,14 @@ This fork is scoped to local device management and local transcript processing.
 - Local Whisper transcription through the Rust sidecar
 - Local SQLite storage
 - Local transcript indexing
-- Local Ollama chat/search
+- Local transcript search with native embeddings
+- Local Ollama meeting-note generation
 
 ## Out Of Scope
 
 - Hosted speech-to-text providers
 - Hosted chat/LLM providers
+- Chat/RAG assistant workflows
 - External calendar sync
 - Auto-upload of recordings
 - Automatic transcript sharing
@@ -37,14 +39,16 @@ The app is expected to work without sending recordings or transcripts to a third
 
 Expected local network use:
 
-- `http://localhost:11434` for Ollama
+- `http://localhost:11434` or a private-LAN address for Ollama
 - USB device communication
+
+The Ollama notes model and thinking mode are user-configurable in settings.
 
 Expected user-initiated external network use:
 
 - Model downloads when the user clicks `Settings -> Local Transcription -> Download Model`
 
-Remote Ollama URLs are blocked in local-only mode unless the user explicitly allows them.
+Public remote Ollama URLs are blocked in local-only mode unless the user explicitly allows them. Loopback and private-LAN Ollama URLs are treated as local network endpoints.
 
 ## User-Initiated Export
 

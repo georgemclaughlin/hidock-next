@@ -18,13 +18,6 @@ import { HealthCheck } from '@/components/HealthCheck'
 import { toast } from '@/components/ui/toaster'
 import type { StorageInfo, AppConfig } from '@/types'
 
-// RAG configuration constants — MAX_CONTEXT_CHUNKS must match config.ts default (10)
-const RAG_DEFAULTS = {
-  MAX_CONTEXT_CHUNKS: 10,
-  MIN_CONTEXT_CHUNKS: 1,
-  MAX_CONTEXT_CHUNKS_LIMIT: 20
-} as const
-
 type LocalTranscriptionEngine = AppConfig['transcription']['localEngine']
 
 type TranscriptionModelOption = {
@@ -35,8 +28,6 @@ type TranscriptionModelOption = {
   is_downloaded: boolean
   engine_type: LocalTranscriptionEngine
 }
-
-type EmbeddingProvider = AppConfig['embeddings']['provider']
 
 type EmbeddingModelOption = {
   id: string
@@ -138,9 +129,10 @@ export function Settings() {
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Local form state
-  const chatProvider = 'ollama' as const
   const [ollamaUrl, setOllamaUrl] = useState('')
+  const [notesModel, setNotesModel] = useState('llama3.2')
+  const [notesThinkingEnabled, setNotesThinkingEnabled] = useState(true)
+  const [notesAutoGenerate, setNotesAutoGenerate] = useState(true)
   const [transcriptionEngine, setTranscriptionEngine] = useState<LocalTranscriptionEngine>('parakeet')
   const [transcriptionModel, setTranscriptionModel] = useState('whisper-small')
   const [parakeetModel, setParakeetModel] = useState('parakeet-v3')
@@ -150,17 +142,13 @@ export function Settings() {
   const [modelDownloading, setModelDownloading] = useState(false)
   const [modelDownloadProgress, setModelDownloadProgress] = useState<ModelDownloadProgress | null>(null)
   const [transcriptionModels, setTranscriptionModels] = useState<TranscriptionModelOption[]>([])
-  const [embeddingProvider, setEmbeddingProvider] = useState<EmbeddingProvider>('native')
   const [nativeEmbeddingModel, setNativeEmbeddingModel] = useState('bge-small-en-v1.5-q')
-  const [ollamaEmbeddingModel, setOllamaEmbeddingModel] = useState('nomic-embed-text')
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelOption[]>([])
   const [embeddingModelDownloading, setEmbeddingModelDownloading] = useState(false)
   const [embeddingReindexing, setEmbeddingReindexing] = useState(false)
   const [embeddingIndexStats, setEmbeddingIndexStats] = useState<EmbeddingIndexStats | null>(null)
   const [lastEmbeddingReindex, setLastEmbeddingReindex] = useState<EmbeddingReindexResult | null>(null)
   const [storageLoading, setStorageLoading] = useState(false)
-  // C-CHAT: RAG context window — default matches config.ts (10)
-  const [ragContextSize, setRagContextSize] = useState<number>(RAG_DEFAULTS.MAX_CONTEXT_CHUNKS)
 
   // Validation function for config values
   const validateConfig = useCallback((updates: Partial<AppConfig>): string | null => {
@@ -182,17 +170,17 @@ export function Settings() {
     }
 
     if (updates.embeddings) {
-      if (updates.embeddings.provider !== undefined && !['native', 'ollama'].includes(updates.embeddings.provider)) {
-        return 'Embedding provider must be native or Ollama'
-      }
       if (updates.embeddings.nativeModel !== undefined && !updates.embeddings.nativeModel.trim()) {
         return 'Native embedding model is required'
       }
-      if (updates.embeddings.ollamaModel !== undefined && !updates.embeddings.ollamaModel.trim()) {
-        return 'Ollama embedding model is required'
+    }
+
+    if (updates.notes) {
+      if (updates.notes.ollamaModel !== undefined && !updates.notes.ollamaModel.trim()) {
+        return 'Ollama notes model is required'
       }
-      if (updates.embeddings.ollamaBaseUrl !== undefined) {
-        const url = updates.embeddings.ollamaBaseUrl.trim()
+      if (updates.notes.ollamaBaseUrl !== undefined) {
+        const url = updates.notes.ollamaBaseUrl.trim()
         if (url && !url.startsWith('http')) {
           return 'Ollama URL must start with http:// or https://'
         }
@@ -202,22 +190,20 @@ export function Settings() {
     return null // Valid
   }, [])
 
-  const isChatDirty = useMemo(() => {
+  const isNotesDirty = useMemo(() => {
     if (!config) return false
     return (
-      ollamaUrl !== config.embeddings.ollamaBaseUrl ||
-      ragContextSize !== config.chat.maxContextChunks
+      ollamaUrl !== config.notes.ollamaBaseUrl ||
+      notesModel !== config.notes.ollamaModel ||
+      notesThinkingEnabled !== config.notes.thinkingEnabled ||
+      notesAutoGenerate !== config.notes.autoGenerate
     )
-  }, [config, ollamaUrl, ragContextSize])
+  }, [config, notesAutoGenerate, notesModel, notesThinkingEnabled, ollamaUrl])
 
   const isEmbeddingDirty = useMemo(() => {
     if (!config) return false
-    return (
-      embeddingProvider !== config.embeddings.provider ||
-      nativeEmbeddingModel !== config.embeddings.nativeModel ||
-      ollamaEmbeddingModel !== config.embeddings.ollamaModel
-    )
-  }, [config, embeddingProvider, nativeEmbeddingModel, ollamaEmbeddingModel])
+    return nativeEmbeddingModel !== config.embeddings.nativeModel
+  }, [config, nativeEmbeddingModel])
 
   const isTranscriptionDirty = useMemo(() => {
     if (!config) return false
@@ -342,11 +328,7 @@ export function Settings() {
     },
     {
       label: 'Index',
-      status: embeddingProvider === 'native'
-        ? selectedEmbeddingModelDownloaded
-          ? 'Ready'
-          : 'Model required'
-        : 'Configured',
+      status: selectedEmbeddingModelDownloaded ? 'Ready' : 'Model required',
       description: `${embeddingIndexStats?.currentModelDocumentCount ?? 0} current chunks indexed for Explore search.`,
       sectionId: 'settings-stage-index'
     },
@@ -354,7 +336,7 @@ export function Settings() {
       label: 'Summarize',
       status: ollamaUrl.trim() ? 'Ready' : 'URL required',
       description: ollamaUrl.trim()
-        ? 'Local assistant is configured for generated summaries when that stage is enabled.'
+        ? 'Local notes are configured for generated summaries when that stage is enabled.'
         : 'Set an Ollama URL before generated summaries can run.',
       sectionId: 'settings-stage-summary'
     }
@@ -362,7 +344,6 @@ export function Settings() {
     autoTranscribe,
     diarizationEnabled,
     embeddingIndexStats?.currentModelDocumentCount,
-    embeddingProvider,
     ollamaUrl,
     selectedEmbeddingModelDownloaded,
     selectedModelDownloaded
@@ -400,18 +381,17 @@ export function Settings() {
 
   useEffect(() => {
     if (config) {
-      setOllamaUrl(config.embeddings.ollamaBaseUrl)
+      setOllamaUrl(config.notes.ollamaBaseUrl)
+      setNotesModel(config.notes.ollamaModel)
+      setNotesThinkingEnabled(config.notes.thinkingEnabled)
+      setNotesAutoGenerate(config.notes.autoGenerate)
       setTranscriptionEngine(config.transcription.localEngine)
       setTranscriptionModel(config.transcription.localModel)
       setParakeetModel(config.transcription.parakeetModel)
       setTranscriptionLanguage(config.transcription.language)
       setAutoTranscribe(config.transcription.autoTranscribe)
       setDiarizationEnabled(config.transcription.diarizationEnabled !== false)
-      setEmbeddingProvider(config.embeddings.provider)
       setNativeEmbeddingModel(config.embeddings.nativeModel)
-      setOllamaEmbeddingModel(config.embeddings.ollamaModel)
-      // C-CHAT: Load RAG context window size
-      setRagContextSize(config.chat.maxContextChunks)
     }
   }, [config])
 
@@ -501,29 +481,27 @@ export function Settings() {
     }
   }
 
-  const handleSaveChat = async () => {
+  const handleSaveNotes = async () => {
     if (saving) {
       toast.warning('Please wait', 'Previous save in progress')
       return
     }
 
-    // Store previous values for rollback
-    const previousOllamaUrl = config?.embeddings.ollamaBaseUrl ?? ''
-    const previousContextSize = config?.chat.maxContextChunks || RAG_DEFAULTS.MAX_CONTEXT_CHUNKS
+    const previousOllamaUrl = config?.notes.ollamaBaseUrl ?? ''
+    const previousNotesModel = config?.notes.ollamaModel ?? 'llama3.2'
+    const previousThinkingEnabled = config?.notes.thinkingEnabled ?? true
+    const previousAutoGenerate = config?.notes.autoGenerate ?? true
 
-    const chatUpdates = {
-      provider: chatProvider,
-      maxContextChunks: ragContextSize
+    const notesUpdates: Partial<AppConfig['notes']> = {
+      provider: 'ollama',
+      ollamaBaseUrl: ollamaUrl.trim(),
+      ollamaModel: notesModel.trim(),
+      thinkingEnabled: notesThinkingEnabled,
+      autoGenerate: notesAutoGenerate
     }
 
-    const embeddingsUpdates = {
-      ollamaBaseUrl: ollamaUrl.trim()
-    }
-
-    // Validate before save
     const validationError = validateConfig({
-      chat: chatUpdates,
-      embeddings: embeddingsUpdates
+      notes: notesUpdates
     } as Partial<AppConfig>)
     if (validationError) {
       toast.error('Validation Error', validationError)
@@ -532,23 +510,18 @@ export function Settings() {
 
     setSaving(true)
     try {
-      // Save both sections atomically using Promise.all to prevent partial state
-      await Promise.all([
-        updateConfig('chat', chatUpdates),
-        updateConfig('embeddings', embeddingsUpdates)
-      ])
-
-      toast.success('Settings Saved', 'Local assistant settings updated')
+      await updateConfig('notes', notesUpdates)
+      toast.success('Settings Saved', 'Local notes settings updated')
     } catch (error) {
-      // Rollback on error - both sections revert
       setOllamaUrl(previousOllamaUrl)
-      setRagContextSize(previousContextSize)
-      // Reload config from backend to ensure consistency after partial failure
+      setNotesModel(previousNotesModel)
+      setNotesThinkingEnabled(previousThinkingEnabled)
+      setNotesAutoGenerate(previousAutoGenerate)
       try { await loadConfig() } catch { /* best effort reload */ }
 
-      const message = error instanceof Error ? error.message : 'Failed to save chat settings'
+      const message = error instanceof Error ? error.message : 'Failed to save notes settings'
       toast.error('Save Failed', message)
-      console.error('Failed to save chat settings:', error)
+      console.error('Failed to save notes settings:', error)
     } finally {
       setSaving(false)
     }
@@ -560,14 +533,10 @@ export function Settings() {
       return false
     }
 
-    const previousProvider = config?.embeddings.provider || 'native'
     const previousNativeModel = config?.embeddings.nativeModel || 'bge-small-en-v1.5-q'
-    const previousOllamaModel = config?.embeddings.ollamaModel || 'nomic-embed-text'
 
     const embeddingsUpdates: Partial<AppConfig['embeddings']> = {
-      provider: embeddingProvider,
-      nativeModel: nativeEmbeddingModel.trim(),
-      ollamaModel: ollamaEmbeddingModel.trim()
+      nativeModel: nativeEmbeddingModel.trim()
     }
 
     const validationError = validateConfig({
@@ -587,9 +556,7 @@ export function Settings() {
       }
       return true
     } catch (error) {
-      setEmbeddingProvider(previousProvider)
       setNativeEmbeddingModel(previousNativeModel)
-      setOllamaEmbeddingModel(previousOllamaModel)
       try { await loadConfig() } catch { /* best effort reload */ }
 
       const message = error instanceof Error ? error.message : 'Failed to save embedding settings'
@@ -702,7 +669,6 @@ export function Settings() {
 
   const downloadEmbeddingModel = async (showToast = true): Promise<boolean> => {
     if (embeddingModelDownloading) return false
-    if (embeddingProvider !== 'native') return true
     if (!nativeEmbeddingModel.trim()) {
       toast.error('Validation Error', 'Native embedding model is required')
       return false
@@ -1014,76 +980,42 @@ export function Settings() {
           <Card id="settings-stage-index">
             <CardHeader>
               <CardTitle>Local Search Embeddings</CardTitle>
-              <CardDescription>Configure embeddings for Explore and transcript search</CardDescription>
+              <CardDescription>Configure the native local model used for Explore and transcript search</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label htmlFor="embeddingProvider" className="text-sm font-medium">Provider</label>
+                <label htmlFor="nativeEmbeddingModel" className="text-sm font-medium">Model</label>
                 <Select
-                  value={embeddingProvider}
-                  onValueChange={(value) => setEmbeddingProvider(value as EmbeddingProvider)}
+                  value={nativeEmbeddingModel}
+                  onValueChange={setNativeEmbeddingModel}
                   disabled={saving || embeddingModelDownloading || embeddingReindexing}
                 >
-                  <SelectTrigger id="embeddingProvider" aria-label="Embedding provider" className="mt-1">
+                  <SelectTrigger id="nativeEmbeddingModel" aria-label="Native embedding model" className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="native">Native Sidecar</SelectItem>
-                    <SelectItem value="ollama">Ollama</SelectItem>
+                    {embeddingSelectOptions.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {embeddingProvider === 'native' ? (
-                <div>
-                  <label htmlFor="nativeEmbeddingModel" className="text-sm font-medium">Model</label>
-                  <Select
-                    value={nativeEmbeddingModel}
-                    onValueChange={setNativeEmbeddingModel}
-                    disabled={saving || embeddingModelDownloading || embeddingReindexing}
-                  >
-                    <SelectTrigger id="nativeEmbeddingModel" aria-label="Native embedding model" className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {embeddingSelectOptions.map((model) => (
-                        <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <div>
-                  <label htmlFor="ollamaEmbeddingModel" className="text-sm font-medium">Ollama Embedding Model</label>
-                  <Input
-                    id="ollamaEmbeddingModel"
-                    value={ollamaEmbeddingModel}
-                    onChange={(e) => setOllamaEmbeddingModel(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveEmbeddings()}
-                    disabled={saving || embeddingReindexing}
-                    aria-label="Ollama embedding model"
-                    className="mt-1"
-                  />
-                </div>
-              )}
-
-              {embeddingProvider === 'native' && (
-                <Button
-                  variant="outline"
-                  onClick={handleDownloadEmbeddingModel}
-                  disabled={saving || embeddingModelDownloading || embeddingReindexing || selectedEmbeddingModelDownloaded}
-                  aria-label={selectedEmbeddingModelDownloaded ? 'Embedding model downloaded' : 'Download embedding model'}
-                >
-                  {embeddingModelDownloading ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
-                  ) : selectedEmbeddingModelDownloaded ? (
-                    <CheckCircle2 className="h-4 w-4 mr-2" aria-hidden="true" />
-                  ) : (
-                    <Download className="h-4 w-4 mr-2" aria-hidden="true" />
-                  )}
-                  {embeddingDownloadButtonLabel}
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                onClick={handleDownloadEmbeddingModel}
+                disabled={saving || embeddingModelDownloading || embeddingReindexing || selectedEmbeddingModelDownloaded}
+                aria-label={selectedEmbeddingModelDownloaded ? 'Embedding model downloaded' : 'Download embedding model'}
+              >
+                {embeddingModelDownloading ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                ) : selectedEmbeddingModelDownloaded ? (
+                  <CheckCircle2 className="h-4 w-4 mr-2" aria-hidden="true" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+                )}
+                {embeddingDownloadButtonLabel}
+              </Button>
 
               <div className="rounded-md border bg-muted/30 px-3 py-2">
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1103,16 +1035,10 @@ export function Settings() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Status</p>
-                    <p className="font-medium">
-                      {embeddingProvider === 'native'
-                        ? selectedEmbeddingModelDownloaded
-                          ? 'Downloaded'
-                          : 'Not downloaded'
-                        : 'Ollama'}
-                    </p>
+                    <p className="font-medium">{selectedEmbeddingModelDownloaded ? 'Downloaded' : 'Not downloaded'}</p>
                   </div>
                 </div>
-                {selectedEmbeddingModel?.description && embeddingProvider === 'native' && (
+                {selectedEmbeddingModel?.description && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     {selectedEmbeddingModel.description} {selectedEmbeddingModel.dimensions} dimensions.
                   </p>
@@ -1149,8 +1075,8 @@ export function Settings() {
           {/* Chat Settings */}
           <Card id="settings-stage-summary">
             <CardHeader>
-              <CardTitle>Local Assistant</CardTitle>
-              <CardDescription>Configure local Ollama for querying local transcripts</CardDescription>
+              <CardTitle>Local Notes</CardTitle>
+              <CardDescription>Configure local Ollama for generated meeting notes and titles</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -1161,52 +1087,67 @@ export function Settings() {
                   placeholder="http://localhost:11434"
                   value={ollamaUrl}
                   onChange={(e) => setOllamaUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveChat()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveNotes()}
                   disabled={saving}
                   aria-label="Ollama base URL"
                   aria-describedby="ollamaUrl-description"
                   className="mt-1"
                 />
                 <p id="ollamaUrl-description" className="text-xs text-muted-foreground mt-1">
-                  URL of your local Ollama server
+                  URL of your local or private-LAN Ollama server
                 </p>
               </div>
 
-              {/* C-CHAT: RAG Context Window Size */}
               <div>
-                <label htmlFor="ragContextSize" className="text-sm font-medium">
-                  RAG Context Window
-                </label>
+                <label htmlFor="notesModel" className="text-sm font-medium">Notes Model</label>
                 <Input
-                  id="ragContextSize"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={ragContextSize}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10)
-                    if (!isNaN(val)) {
-                      setRagContextSize(Math.min(20, Math.max(1, val)))
-                    }
-                  }}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveChat()}
+                  id="notesModel"
+                  value={notesModel}
+                  onChange={(e) => setNotesModel(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveNotes()}
                   disabled={saving}
-                  aria-label="RAG context window size"
-                  aria-describedby="ragContextSize-description"
+                  aria-label="Ollama notes model"
+                  aria-describedby="notesModel-description"
                   className="mt-1"
                 />
-                <p id="ragContextSize-description" className="text-xs text-muted-foreground mt-1">
-                  Number of knowledge chunks to retrieve for context (1-20). Default: 10
+                <p id="notesModel-description" className="text-xs text-muted-foreground mt-1">
+                  Model used only for transcript notes, summaries, and title suggestions
                 </p>
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">Model thinking</p>
+                  <p className="text-xs text-muted-foreground">Send Ollama requests with thinking enabled.</p>
+                </div>
+                <Switch
+                  checked={notesThinkingEnabled}
+                  onCheckedChange={setNotesThinkingEnabled}
+                  disabled={saving}
+                  aria-label="Enable model thinking"
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">Auto-generate notes</p>
+                  <p className="text-xs text-muted-foreground">Generate notes after local transcription completes.</p>
+                </div>
+                <Switch
+                  checked={notesAutoGenerate}
+                  onCheckedChange={setNotesAutoGenerate}
+                  disabled={saving}
+                  aria-label="Auto-generate meeting notes"
+                />
               </div>
 
               <Button
-                onClick={handleSaveChat}
-                disabled={saving || !isChatDirty}
-                aria-label="Save chat settings"
+                onClick={handleSaveNotes}
+                disabled={saving || !isNotesDirty}
+                aria-label="Save notes settings"
               >
                 <Save className="h-4 w-4 mr-2" aria-hidden="true" />
-                {isChatDirty ? 'Save' : 'Saved'}
+                {isNotesDirty ? 'Save' : 'Saved'}
               </Button>
             </CardContent>
           </Card>

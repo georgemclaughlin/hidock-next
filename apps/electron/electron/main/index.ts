@@ -28,7 +28,6 @@ import {
   setMainWindow as setWatcherMainWindow
 } from './services/recording-watcher'
 import { getVectorStore } from './services/vector-store'
-import { getRAGService } from './services/rag'
 import { setMainWindowForEventBus } from './services/event-bus'
 import { getStoragePolicyService } from './services/storage-policy'
 import { setMainWindowForMigration } from './ipc/migration-handlers'
@@ -156,11 +155,6 @@ async function initializeServices(): Promise<void> {
   const vectorStore = getVectorStore()
   await vectorStore.initialize()
   console.log('Vector store initialized')
-
-  updateSplashStatus('Starting AI services...', 75)
-  const rag = getRAGService()
-  await rag.initialize()
-  console.log('RAG service initialized')
 
   updateSplashStatus('Finalizing setup...', 90)
   getStoragePolicyService()

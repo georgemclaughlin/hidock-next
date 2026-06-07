@@ -17,8 +17,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Mock Electron API
   global.window.electronAPI = {
-    rag: {
-      globalSearch: mockGlobalSearch
+    search: {
+      global: mockGlobalSearch
     }
   } as any
 })

@@ -88,7 +88,7 @@ export interface Transcript {
 }
 
 /**
- * Vector embedding chunk for RAG
+ * Vector embedding chunk for local transcript search
  */
 export interface Embedding {
   id: string
@@ -116,7 +116,7 @@ export interface QueueItem {
 export type QueueStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 /**
- * Chat message in RAG conversation
+ * Legacy chat message row retained for older database compatibility.
  */
 export interface ChatMessage {
   id: string

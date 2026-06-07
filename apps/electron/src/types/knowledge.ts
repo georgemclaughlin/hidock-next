@@ -105,82 +105,6 @@ export interface ActionItem {
 
 
 
-export interface Conversation {
-
-  id: string
-
-  title: string | null
-
-  contextIds: string[]
-
-  createdAt: string
-
-  updatedAt: string
-
-}
-
-
-
-export interface Message {
-
-
-
-  id: string
-
-
-
-  conversationId: string | null
-
-
-
-  role: 'user' | 'assistant'
-
-
-
-  content: string
-
-
-
-  sources: string | null // JSON string of source info
-
-
-
-  createdAt: string
-
-
-
-  
-
-
-
-  // New fields from spec
-
-
-
-  editedAt: string | null
-
-
-
-  originalContent: string | null
-
-
-
-  createdOutputId: string | null
-
-
-
-  savedAsInsightId: string | null
-
-
-
-}
-
-
-
-
-
-
-
 /**
  * Person types for UI-level contact representation.
  *
@@ -825,7 +749,6 @@ export interface Actionable {
 
 
 }
-
 
 
 

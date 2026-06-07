@@ -71,7 +71,7 @@ describe('FIX-014: Config interface completeness', () => {
     expect(config.transcription.diarizationEnabled).toBe(true)
   })
 
-  it('local assistant URL should default to blank', async () => {
+  it('local notes URL should default to blank', async () => {
     vi.doMock('electron', () => ({
       app: {
         getPath: vi.fn((name: string) => {
@@ -85,6 +85,7 @@ describe('FIX-014: Config interface completeness', () => {
     const configModule = await import('../config')
     const config = configModule.getConfig()
 
-    expect(config.embeddings.ollamaBaseUrl).toBe('')
+    expect(config.notes.ollamaBaseUrl).toBe('')
+    expect(config.notes.thinkingEnabled).toBe(true)
   })
 })

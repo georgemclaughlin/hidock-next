@@ -21,6 +21,7 @@ import {
 } from './database'
 import { BrowserWindow } from 'electron'
 import { getVectorStore } from './vector-store'
+import { generateMeetingNotesForRecording } from './meeting-notes'
 import {
   downloadNativeTranscriptionModel,
   getNativeModelIdForEngine,
@@ -478,6 +479,17 @@ async function transcribeRecording(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.warn(`[Transcription] Transcript saved, but local embedding index failed: ${message}`)
+    }
+
+    progressCallback?.('generating meeting notes', 96)
+    try {
+      const notesResult = await generateMeetingNotesForRecording(recordingId)
+      if (!notesResult.generated && notesResult.skippedReason) {
+        console.log(`[Transcription] Meeting notes skipped: ${notesResult.skippedReason}`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`[Transcription] Transcript saved, but meeting note generation failed: ${message}`)
     }
 
     updateRecordingTranscriptionStatus(recordingId, 'complete')

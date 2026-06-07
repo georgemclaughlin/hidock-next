@@ -369,7 +369,7 @@ function buildStages(
         id: 'summary',
         label: 'Summarize',
         status: 'ready',
-        detail: 'Local assistant is configured for generated summaries when that stage is enabled.'
+        detail: 'Local notes are configured for generated summaries when that stage is enabled.'
       }
     }
 
@@ -377,8 +377,8 @@ function buildStages(
       id: 'summary',
       label: 'Summarize',
       status: 'blocked',
-      detail: 'Automatic meeting summaries need a configured local assistant model.',
-      action: onOpenSettings ? { label: 'Open assistant settings', onSelect: onOpenSettings } : undefined
+      detail: 'Automatic meeting summaries need a configured local notes model.',
+      action: onOpenSettings ? { label: 'Open notes settings', onSelect: onOpenSettings } : undefined
     }
   })()
 
@@ -519,7 +519,7 @@ export function ProcessingPipelineTracker({
     return null
   })
   const [indexStats, setIndexStats] = useState<RecordingEmbeddingIndexStats | null>(null)
-  const isSummaryConfigured = useConfigStore((state) => Boolean(state.config?.embeddings.ollamaBaseUrl?.trim()))
+  const isSummaryConfigured = useConfigStore((state) => Boolean(state.config?.notes.ollamaBaseUrl?.trim()))
   const diarizationEnabled = useConfigStore((state) => state.config?.transcription?.diarizationEnabled !== false)
 
   useEffect(() => {

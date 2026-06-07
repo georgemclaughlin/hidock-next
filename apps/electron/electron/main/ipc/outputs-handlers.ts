@@ -1,113 +1,14 @@
 /**
  * Outputs IPC Handlers
  *
- * Handles output generation IPC communication using the Result pattern.
- * Includes server-side rate limiting.
+ * Handles simple text output utilities using the Result pattern.
  */
 
 import { ipcMain, clipboard, dialog, BrowserWindow } from 'electron'
 import { writeFileSync } from 'fs'
-import { getOutputGeneratorService } from '../services/output-generator'
 import { success, error, Result } from '../types/api'
-import { GenerateOutputRequestSchema } from '../validation/outputs'
-import type { OutputTemplate, GenerateOutputResponse } from '../types/api'
-
-// Server-side rate limiting — sliding window per knowledge capture/context
-const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 5
-const generationTimestamps: Map<string, number[]> = new Map()
-
-/**
- * Check and enforce rate limit for a given key.
- * Returns true if the request is allowed, false if rate-limited.
- */
-function checkRateLimit(key: string): boolean {
-  const now = Date.now()
-  const timestamps = generationTimestamps.get(key) || []
-
-  // Remove timestamps outside the sliding window
-  const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS)
-
-  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    // Update the map with pruned timestamps
-    generationTimestamps.set(key, recent)
-    return false
-  }
-
-  // Record new timestamp
-  recent.push(now)
-  generationTimestamps.set(key, recent)
-  return true
-}
 
 export function registerOutputsHandlers(): void {
-  const generator = getOutputGeneratorService()
-
-  /**
-   * Get all available output templates
-   */
-  ipcMain.handle(
-    'outputs:getTemplates',
-    async (): Promise<Result<OutputTemplate[]>> => {
-      try {
-        const templates = generator.getTemplates()
-        return success(templates)
-      } catch (err) {
-        console.error('outputs:getTemplates error:', err)
-        return error('INTERNAL_ERROR', 'Failed to get templates', err)
-      }
-    }
-  )
-
-  /**
-   * Generate output using a template (with server-side rate limiting)
-   */
-  ipcMain.handle(
-    'outputs:generate',
-    async (_, request: unknown): Promise<Result<GenerateOutputResponse>> => {
-      try {
-        // Validate request
-        const parsed = GenerateOutputRequestSchema.safeParse(request)
-        if (!parsed.success) {
-          return error('VALIDATION_ERROR', 'Invalid generate request', parsed.error.format())
-        }
-
-        const rateLimitKey = parsed.data.knowledgeCaptureId || parsed.data.meetingId || parsed.data.projectId || parsed.data.contactId || 'global'
-        if (!checkRateLimit(rateLimitKey)) {
-          return error(
-            'RATE_LIMITED',
-            'Rate limit exceeded. Maximum 5 generations per minute. Please wait before trying again.'
-          )
-        }
-
-        const result = await generator.generate(parsed.data)
-
-        return success({
-          content: result.content,
-          templateId: result.templateId,
-          generatedAt: result.generatedAt
-        })
-      } catch (err) {
-        console.error('outputs:generate error:', err)
-
-        // Check for specific error types
-        if (err instanceof Error) {
-          if (err.message.includes('not available')) {
-            return error('OLLAMA_UNAVAILABLE', err.message)
-          }
-          if (err.message.includes('not found')) {
-            return error('NOT_FOUND', err.message)
-          }
-          if (err.message.includes('No transcripts')) {
-            return error('NOT_FOUND', err.message)
-          }
-        }
-
-        return error('INTERNAL_ERROR', 'Failed to generate output', err)
-      }
-    }
-  )
-
   /**
    * Copy content to clipboard
    */

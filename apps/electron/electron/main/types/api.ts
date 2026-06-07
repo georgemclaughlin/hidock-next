@@ -88,48 +88,6 @@ export type ErrorCode =
   | 'RATE_LIMITED'
 
 // =============================================================================
-// RAG Filter Types
-// =============================================================================
-
-/**
- * Discriminated union for RAG query filtering
- */
-export type RAGFilter =
-  | { type: 'none' }
-  | { type: 'meeting'; meetingId: string }
-  | { type: 'contact'; contactId: string }
-  | { type: 'project'; projectId: string }
-  | { type: 'dateRange'; startDate: string; endDate: string }
-
-/**
- * RAG chat request parameters
- */
-export interface RAGChatRequest {
-  sessionId: string
-  message: string
-  filter?: RAGFilter
-}
-
-/**
- * RAG chat response with sources
- */
-export interface RAGChatResponse {
-  answer: string
-  sources: RAGSource[]
-}
-
-/**
- * Source reference from RAG search
- */
-export interface RAGSource {
-  content: string
-  meetingId?: string
-  subject?: string
-  timestamp?: string
-  score: number
-}
-
-// =============================================================================
 // Contacts API Types
 // =============================================================================
 
@@ -228,45 +186,6 @@ export interface TagMeetingRequest {
 }
 
 // =============================================================================
-// Output Generation API Types
-// =============================================================================
-
-/**
- * Available output template identifiers
- */
-export type OutputTemplateId = 'meeting_minutes' | 'interview_feedback' | 'project_status' | 'action_items'
-
-/**
- * Output template definition
- */
-export interface OutputTemplate {
-  id: OutputTemplateId
-  name: string
-  description: string
-  prompt: string
-}
-
-/**
- * Request to generate output
- */
-export interface GenerateOutputRequest {
-  templateId: OutputTemplateId
-  meetingId?: string
-  projectId?: string
-  contactId?: string
-  knowledgeCaptureId?: string
-}
-
-/**
- * Generated output response
- */
-export interface GenerateOutputResponse {
-  content: string
-  templateId: OutputTemplateId
-  generatedAt: string
-}
-
-// =============================================================================
 // Meetings API Types (Extended)
 // =============================================================================
 
@@ -316,33 +235,4 @@ export interface ProjectsAPI {
   delete: (id: string) => Promise<Result<void>>
   tagMeeting: (request: TagMeetingRequest) => Promise<Result<void>>
   untagMeeting: (request: TagMeetingRequest) => Promise<Result<void>>
-}
-
-/**
- * Outputs namespace for electronAPI
- */
-export interface OutputsAPI {
-  getTemplates: () => Promise<Result<OutputTemplate[]>>
-  generate: (request: GenerateOutputRequest) => Promise<Result<GenerateOutputResponse>>
-}
-
-/**
- * Extended RAG namespace for electronAPI
- */
-export interface ExtendedRAGAPI {
-  status: () => Promise<Result<RAGStatus>>
-  chat: (request: RAGChatRequest) => Promise<Result<RAGChatResponse>>
-  summarizeMeeting: (meetingId: string) => Promise<Result<string>>
-  findActionItems: (meetingId?: string) => Promise<Result<string>>
-  clearSession: (sessionId: string) => Promise<Result<void>>
-}
-
-/**
- * RAG service status
- */
-export interface RAGStatus {
-  ollamaAvailable: boolean
-  documentCount: number
-  meetingCount: number
-  ready: boolean
 }

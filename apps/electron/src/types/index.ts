@@ -103,14 +103,6 @@ export interface MeetingDetails {
   recordings: RecordingWithTranscript[]
 }
 
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  sources: string | null // JSON string of source references
-  created_at: string
-}
-
 export interface QueueItem {
   id: string
   recording_id: string
@@ -173,17 +165,16 @@ export interface AppConfig {
     diarizationEnabled: boolean
   }
   embeddings: {
-    provider: 'native' | 'ollama'
     nativeModel: string
-    ollamaBaseUrl: string
-    ollamaModel: string
     chunkSize: number
     chunkOverlap: number
   }
-  chat: {
+  notes: {
     provider: 'ollama'
+    ollamaBaseUrl: string
     ollamaModel: string
-    maxContextChunks: number
+    thinkingEnabled: boolean
+    autoGenerate: boolean
   }
   device: {
     autoConnect: boolean
@@ -280,24 +271,6 @@ export interface MeetingWithAssociations extends Meeting {
 }
 
 // =============================================================================
-// Output Types
-// =============================================================================
-
-/**
- * Available output template identifiers
- */
-export type OutputTemplateId = 'meeting_minutes' | 'interview_feedback' | 'project_status' | 'action_items'
-
-/**
- * Output template definition
- */
-export interface OutputTemplate {
-  id: OutputTemplateId
-  name: string
-  description: string
-}
-
-// =============================================================================
 // Recording-Meeting Linking Types
 // =============================================================================
 
@@ -325,20 +298,6 @@ export interface RecordingLinkResult {
   success: boolean
   error?: string
 }
-
-// =============================================================================
-// RAG Filter Types
-// =============================================================================
-
-/**
- * Discriminated union for RAG query filtering
- */
-export type RAGFilter =
-  | { type: 'none' }
-  | { type: 'meeting'; meetingId: string }
-  | { type: 'contact'; contactId: string }
-  | { type: 'project'; projectId: string }
-  | { type: 'dateRange'; startDate: string; endDate: string }
 
 // =============================================================================
 // Helper Functions

@@ -3,7 +3,6 @@ import { registerDatabaseHandlers } from './database-handlers'
 import { registerCalendarHandlers } from './calendar-handlers'
 import { registerStorageHandlers } from './storage-handlers'
 import { registerRecordingHandlers } from './recording-handlers'
-import { registerRAGHandlers } from './rag-handlers'
 import { registerAppHandlers } from './app-handlers'
 import { registerContactsHandlers } from './contacts-handlers'
 import { registerProjectsHandlers } from './projects-handlers'
@@ -14,10 +13,11 @@ import { registerDeviceCacheHandlers } from './device-cache-handlers'
 import { registerDownloadServiceHandlers } from '../services/download-service'
 import { registerIntegrityHandlers } from './integrity-handlers'
 import { registerKnowledgeHandlers } from './knowledge-handlers'
-import { registerAssistantHandlers } from './assistant-handlers'
 import { registerMeetingsHandlers } from './meetings-handlers'
 import { registerJensenHandlers } from './jensen-handlers'
 import { registerEmbeddingHandlers } from './embedding-handlers'
+import { registerSearchHandlers } from './search-handlers'
+import { registerMeetingNotesHandlers } from './meeting-notes-handlers'
 
 export function registerIpcHandlers(): void {
   // Register all IPC handlers
@@ -26,7 +26,6 @@ export function registerIpcHandlers(): void {
   registerCalendarHandlers()
   registerStorageHandlers()
   registerRecordingHandlers()
-  registerRAGHandlers()
   registerAppHandlers()
   registerContactsHandlers()
   registerProjectsHandlers()
@@ -37,10 +36,11 @@ export function registerIpcHandlers(): void {
   registerDownloadServiceHandlers()
   registerIntegrityHandlers()
   registerKnowledgeHandlers()
-  registerAssistantHandlers()
   registerMeetingsHandlers()
   registerJensenHandlers()
   registerEmbeddingHandlers()
+  registerSearchHandlers()
+  registerMeetingNotesHandlers()
 
   console.log('All IPC handlers registered')
 }

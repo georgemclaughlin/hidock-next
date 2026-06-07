@@ -10,9 +10,6 @@ import {
   getTranscriptsByRecordingIds,
   searchTranscripts,
   getQueueItems,
-  getChatHistory,
-  addChatMessage,
-  clearChatHistory,
   isFileSynced,
   getSyncedFile,
   getAllSyncedFiles,
@@ -92,21 +89,6 @@ export function registerDatabaseHandlers(): void {
   // Queue
   ipcMain.handle('db:get-queue', async (_, status?: string) => {
     return getQueueItems(status)
-  })
-
-  // Chat
-  ipcMain.handle('db:get-chat-history', async (_, limit?: number) => {
-    return getChatHistory(limit)
-  })
-
-  ipcMain.handle('db:add-chat-message', async (_, role: 'user' | 'assistant', content: string, sources?: string) => {
-    const id = addChatMessage(role, content, sources)
-    return { id, role, content, sources }
-  })
-
-  ipcMain.handle('db:clear-chat-history', async () => {
-    clearChatHistory()
-    return true
   })
 
   // Get meeting with its recordings and transcripts

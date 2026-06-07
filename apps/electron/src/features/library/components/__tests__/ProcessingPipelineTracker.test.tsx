@@ -28,17 +28,16 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       diarizationEnabled: true
     },
     embeddings: {
-      provider: 'native',
       nativeModel: 'bge-small-en-v1.5-q',
-      ollamaBaseUrl: 'http://localhost:11434',
-      ollamaModel: 'nomic-embed-text',
       chunkSize: 500,
       chunkOverlap: 50
     },
-    chat: {
+    notes: {
       provider: 'ollama',
+      ollamaBaseUrl: 'http://localhost:11434',
       ollamaModel: 'llama3.2',
-      maxContextChunks: 10
+      thinkingEnabled: true,
+      autoGenerate: true
     },
     device: {
       autoConnect: false,
@@ -126,7 +125,7 @@ beforeEach(() => {
 })
 
 describe('ProcessingPipelineTracker', () => {
-  it('shows summarize as ready when the local assistant URL is configured', () => {
+  it('shows summarize as ready when the local notes URL is configured', () => {
     render(<ProcessingPipelineTracker recording={makeRecording()} transcript={makeTranscript()} />)
 
     const summaryStage = screen.getByText('Summarize').closest('.group')
@@ -134,13 +133,13 @@ describe('ProcessingPipelineTracker', () => {
     expect(within(summaryStage as HTMLElement).getByText('Ready')).toBeInTheDocument()
   })
 
-  it('shows summarize as configure when the local assistant URL is missing', () => {
+  it('shows summarize as configure when the local notes URL is missing', () => {
     const config = makeConfig()
     useConfigStore.setState({
       config: {
         ...config,
-        embeddings: {
-          ...config.embeddings,
+        notes: {
+          ...config.notes,
           ollamaBaseUrl: ''
         }
       }

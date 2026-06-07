@@ -100,7 +100,7 @@ export function Explore() {
     // C-EXP-002: Start timing
     const searchStart = performance.now()
     try {
-      const result = await window.electronAPI.rag.globalSearch(query, 10)
+      const result = await window.electronAPI.search.global(query, 10)
 
       // B-EXP-005: Check if component unmounted or request was superseded
       if (controller.signal.aborted || cancelledRef.current) return

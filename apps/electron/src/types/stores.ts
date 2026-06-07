@@ -113,7 +113,7 @@ export interface FilterStore {
 // UI Store
 // =============================================================================
 
-export type SidebarContent = 'calendar' | 'contact' | 'project' | 'chat' | 'none'
+export type SidebarContent = 'calendar' | 'contact' | 'project' | 'none'
 
 export interface SentimentSegment {
   startTime: number // Seconds
@@ -202,80 +202,6 @@ export interface RecordingsStore {
 }
 
 // =============================================================================
-// RAG Chat Store
-// =============================================================================
-
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  sources?: Array<{
-    content: string
-    meetingId?: string
-    subject?: string
-    score: number
-  }>
-  createdAt: string
-}
-
-export interface RAGFilter {
-  type: 'none' | 'meeting' | 'contact' | 'project' | 'dateRange'
-  value?: string // meetingId, contactId, projectId, or serialized date range
-}
-
-export interface ChatStore {
-  // State
-  messages: ChatMessage[]
-  loading: boolean
-  sessionId: string
-  filter: RAGFilter
-  ollamaAvailable: boolean
-
-  // Actions
-  loadHistory: () => Promise<void>
-  sendMessage: (message: string) => Promise<void>
-  clearHistory: () => Promise<void>
-  setFilter: (filter: RAGFilter) => void
-  clearFilter: () => void
-  checkOllamaStatus: () => Promise<boolean>
-  newSession: () => void
-}
-
-// =============================================================================
-// Output Store
-// =============================================================================
-
-export type OutputTemplateId = 'meeting_minutes' | 'interview_feedback' | 'project_status' | 'action_items'
-
-export interface OutputTemplate {
-  id: OutputTemplateId
-  name: string
-  description: string
-}
-
-export interface OutputStore {
-  // State
-  templates: OutputTemplate[]
-  selectedTemplateId: OutputTemplateId | null
-  generatedContent: string | null
-  generating: boolean
-  error: string | null
-
-  // Actions
-  loadTemplates: () => Promise<void>
-  selectTemplate: (id: OutputTemplateId | null) => void
-  generate: (params: {
-    templateId: OutputTemplateId
-    meetingId?: string
-    projectId?: string
-    contactId?: string
-  }) => Promise<string | null>
-  copyToClipboard: () => Promise<boolean>
-  saveToFile: () => Promise<boolean>
-  clearOutput: () => void
-}
-
-// =============================================================================
 // Config Store (existing, but typed)
 // =============================================================================
 
@@ -318,17 +244,16 @@ export interface AppConfig {
     diarizationEnabled: boolean
   }
   embeddings: {
-    provider: 'native' | 'ollama'
     nativeModel: string
-    ollamaBaseUrl: string
-    ollamaModel: string
     chunkSize: number
     chunkOverlap: number
   }
-  chat: {
+  notes: {
     provider: 'ollama'
+    ollamaBaseUrl: string
     ollamaModel: string
-    maxContextChunks: number
+    thinkingEnabled: boolean
+    autoGenerate: boolean
   }
   device: {
     autoConnect: boolean
