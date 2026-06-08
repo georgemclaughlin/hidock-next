@@ -243,6 +243,55 @@ describe('Transcription Service', () => {
       expect(mockUpdateQueueItem).not.toHaveBeenCalledWith('queue-1', 'failed', expect.anything())
     })
 
+    it('stores timestamped transcript segments even when diarization returns no speakers', async () => {
+      const mockQueueItem = {
+        id: 'queue-1',
+        recording_id: 'rec-123',
+        filename: 'timed.wav',
+        status: 'pending',
+        attempts: 0,
+        retry_count: 0
+      }
+      mockGetQueueItems.mockImplementation((status?: string) => {
+        if (status === 'failed') return []
+        if (status === 'pending') return [mockQueueItem]
+        return []
+      })
+      mockGetRecordingById.mockReturnValue({
+        id: 'rec-123',
+        filename: 'timed.wav',
+        file_path: '/recordings/timed.wav',
+        date_recorded: '2026-01-01T00:00:00.000Z',
+        status: 'complete',
+        transcription_status: 'pending'
+      })
+      mockTranscribeWithNativeModel.mockResolvedValue({
+        output: {
+          text: 'First segment. Second segment.',
+          language: 'en',
+          segments: [
+            { start: 0.25, end: 2.5, text: 'First segment.' },
+            { start: 2.75, end: 5.25, text: 'Second segment.' }
+          ]
+        },
+        provider: 'local-parakeet',
+        model: 'parakeet-v3'
+      })
+
+      const { processQueueManually } = await import('../transcription')
+
+      await processQueueManually()
+
+      expect(mockInsertTranscript).toHaveBeenCalledWith(expect.objectContaining({
+        recording_id: 'rec-123',
+        full_text: 'First segment. Second segment.',
+        speakers: JSON.stringify([
+          { speaker: undefined, start: 0.25, end: 2.5, text: 'First segment.' },
+          { speaker: undefined, start: 2.75, end: 5.25, text: 'Second segment.' }
+        ])
+      }))
+    })
+
     it('should not auto-retry failed queue rows for recordings that already have a transcript', async () => {
       const failedQueueItem = {
         id: 'queue-failed',

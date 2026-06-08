@@ -285,8 +285,8 @@ describe('SourceReader — metadata editing', () => {
         status: 'complete',
         result: {
           generated: true,
-          titleSuggestion: 'Generated Meeting Summary',
-          summary: '# Generated Meeting Summary\n\nA concise generated summary.'
+          titleSuggestion: 'Generated Header Title',
+          summary: '# Generated Markdown Title\n\nA concise generated summary.'
         }
       })
     })
@@ -294,7 +294,8 @@ describe('SourceReader — metadata editing', () => {
     await waitFor(() => {
       expect(onMetadataEdited).toHaveBeenCalledOnce()
     })
-    expect(await screen.findByRole('heading', { name: 'Generated Meeting Summary' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Generated Header Title', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Generated Markdown Title' })).toBeInTheDocument()
   })
 
   it('keeps showing note generation progress after navigating away and back', async () => {

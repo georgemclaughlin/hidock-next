@@ -419,7 +419,7 @@ function buildTranscriptSegmentsJson(output: NativeTranscriptOutput): string | u
     return undefined
   }
 
-  if (!segments.some((segment) => Boolean(segment.speaker))) {
+  if (!segments.some((segment) => typeof segment.start === 'number' || typeof segment.end === 'number' || Boolean(segment.speaker))) {
     return undefined
   }
 

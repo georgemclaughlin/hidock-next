@@ -272,6 +272,7 @@ export function SourceReader({
   ))
   const [, setNotesGenerationTick] = useState(0)
   const [optimisticNotesByRecording, setOptimisticNotesByRecording] = useState<Record<string, string | null>>({})
+  const [optimisticTitlesByRecording, setOptimisticTitlesByRecording] = useState<Record<string, string>>({})
   const [audioPlayerExpanded, setAudioPlayerExpanded] = useState(false)
   const [detailsExpanded, setDetailsExpanded] = useState(false)
 
@@ -281,6 +282,17 @@ export function SourceReader({
   )
   const hasDiarizedTranscript = useMemo(
     () => transcriptSegments.some((segment) => Boolean(segment.speaker?.trim())),
+    [transcriptSegments]
+  )
+  const rawTranscriptSegments = useMemo(
+    () => transcriptSegments
+      .filter((segment) => typeof segment.start === 'number' && Number.isFinite(segment.start))
+      .map((segment) => ({
+        start: segment.start,
+        end: segment.end,
+        text: segment.text,
+        speaker: null
+      })),
     [transcriptSegments]
   )
 
@@ -296,6 +308,10 @@ export function SourceReader({
     ? optimisticNotesByRecording[recording.id] ?? transcript?.summary ?? undefined
     : transcript?.summary ?? undefined
   const hasMeetingNotes = Boolean(meetingNotesSummary?.trim())
+  const optimisticTitle = recording ? optimisticTitlesByRecording[recording.id] : undefined
+  const recordingTitle = recording
+    ? optimisticTitle || recording.title || meeting?.subject || recording.filename
+    : ''
 
   // Reset all state when recording changes
   useEffect(() => {
@@ -327,6 +343,13 @@ export function SourceReader({
         ...current,
         [status.recordingId]: status.result?.summary ?? null
       }))
+      const titleSuggestion = status.result.titleSuggestion?.trim()
+      if (titleSuggestion) {
+        setOptimisticTitlesByRecording((current) => ({
+          ...current,
+          [status.recordingId]: titleSuggestion
+        }))
+      }
       if (isCurrentRecording) {
         setTranscriptView('notes')
       }
@@ -393,6 +416,16 @@ export function SourceReader({
     })
   }, [recording?.id, transcript?.summary])
 
+  useEffect(() => {
+    if (!recording?.id || !recording.title) return
+    setOptimisticTitlesByRecording((current) => {
+      if (!(recording.id in current)) return current
+      const next = { ...current }
+      delete next[recording.id]
+      return next
+    })
+  }, [recording?.id, recording?.title])
+
   const handleCloseAudioPlayer = useCallback(() => {
     setAudioPlayerExpanded(false)
     onStop?.()
@@ -402,11 +435,11 @@ export function SourceReader({
     if (!recording?.knowledgeCaptureId) return
     const trimmed = editedTitle.trim()
     if (!trimmed) {
-      setEditedTitle(recording.title || recording.filename)
+      setEditedTitle(recordingTitle)
       toast.error('Title cannot be empty')
       return
     }
-    if (trimmed === (recording.title || recording.filename)) {
+    if (trimmed === recordingTitle) {
       setIsEditingTitle(false)
       return
     }
@@ -417,6 +450,10 @@ export function SourceReader({
         { title: trimmed }
       )
       if (result.success) {
+        setOptimisticTitlesByRecording((current) => ({
+          ...current,
+          [recording.id]: trimmed
+        }))
         setIsEditingTitle(false)
         setMetadataEdited(true)
         toast.success('Title updated')
@@ -430,7 +467,7 @@ export function SourceReader({
     } finally {
       setIsSavingTitle(false)
     }
-  }, [editedTitle, recording, onMetadataEdited])
+  }, [editedTitle, recording, recordingTitle, onMetadataEdited])
 
   const handleCancelTitle = useCallback(() => {
     setIsEditingTitle(false)
@@ -587,7 +624,6 @@ export function SourceReader({
         }
     }
   })()
-  const recordingTitle = recording.title || meeting?.subject || recording.filename
   const recordedAtText = (() => {
     const date = new Date(recording.dateRecorded)
     return !isNaN(date.getTime()) ? formatDateTime(date.toISOString()) : 'Unknown date'
@@ -646,7 +682,7 @@ export function SourceReader({
                   <button
                     onClick={() => {
                       setIsEditingTitle(true)
-                      setEditedTitle(recording.title || recording.filename)
+                      setEditedTitle(recordingTitle)
                     }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
                     aria-label="Edit title"
@@ -994,6 +1030,7 @@ export function SourceReader({
               <TabsContent value="raw" className="mt-3">
                 <TranscriptViewer
                   transcript={transcript.full_text}
+                  segments={rawTranscriptSegments}
                   currentTimeMs={currentTimeMs}
                   onSeek={onSeek || (() => {})}
                   showSummary={false}
