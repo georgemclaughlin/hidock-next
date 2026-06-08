@@ -30,8 +30,38 @@ type RankedKnowledgeResult = GlobalKnowledgeResult & {
 const ACTIVE_RECORDING_SQL = "COALESCE(r.location, '') != 'deleted' AND COALESCE(r.status, '') != 'deleted'"
 const ACTIVE_KNOWLEDGE_CAPTURE_SQL = "kc.deleted_at IS NULL AND COALESCE(kc.storage_tier, '') != 'deleted'"
 const ACTIVE_CAPTURE_SOURCE_SQL = `(kc.source_recording_id IS NULL OR (r.id IS NOT NULL AND ${ACTIVE_RECORDING_SQL}))`
+const TITLE_SUGGESTION_SQL = "NULLIF(TRIM(t.title_suggestion), '')"
+const CAPTURE_DISPLAY_TITLE_SQL = `
+  CASE
+    WHEN ${TITLE_SUGGESTION_SQL} IS NOT NULL
+      AND (
+        kc.title IS NULL
+        OR TRIM(kc.title) = ''
+        OR kc.title = 'Untitled'
+        OR kc.title = r.filename
+        OR kc.title LIKE '%.%'
+      )
+    THEN ${TITLE_SUGGESTION_SQL}
+    ELSE COALESCE(NULLIF(TRIM(kc.title), ''), ${TITLE_SUGGESTION_SQL}, m.subject, r.filename, 'Recording')
+  END
+`
+const RECORDING_DISPLAY_TITLE_SQL = `COALESCE(${TITLE_SUGGESTION_SQL}, m.subject, r.filename, 'Recording')`
 
 class KnowledgeSearchService {
+  private textMatchesAnyTerm(text: unknown, terms: string[]): boolean {
+    if (typeof text !== 'string' || !text.trim()) return false
+    const lowerText = text.toLowerCase()
+    return terms.some((term) => lowerText.includes(term.toLowerCase()))
+  }
+
+  private chooseResultTitle(displayTitle: unknown, titleSuggestion: unknown, terms: string[]): unknown {
+    if (this.textMatchesAnyTerm(titleSuggestion, terms)) {
+      return titleSuggestion
+    }
+
+    return displayTitle
+  }
+
   private findKnowledgeCaptureForVectorDoc(doc: VectorDocument): GlobalKnowledgeResult | null {
     const recordingId = doc.metadata.recordingId
     const meetingId = doc.metadata.meetingId
@@ -39,9 +69,16 @@ class KnowledgeSearchService {
 
     if (recordingId && meetingId) {
       const row = queryOne<any>(`
-        SELECT kc.id, kc.title, kc.summary, kc.captured_at, kc.source_recording_id
+        SELECT
+          kc.id,
+          ${CAPTURE_DISPLAY_TITLE_SQL} AS title,
+          kc.summary,
+          kc.captured_at,
+          kc.source_recording_id
         FROM knowledge_captures kc
         LEFT JOIN recordings r ON r.id = kc.source_recording_id
+        LEFT JOIN transcripts t ON t.recording_id = kc.source_recording_id
+        LEFT JOIN meetings m ON m.id = COALESCE(kc.meeting_id, r.meeting_id)
         WHERE (kc.source_recording_id = ? OR kc.meeting_id = ?)
           AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
           AND ${ACTIVE_CAPTURE_SOURCE_SQL}
@@ -61,9 +98,16 @@ class KnowledgeSearchService {
 
     if (recordingId) {
       const row = queryOne<any>(`
-        SELECT kc.id, kc.title, kc.summary, kc.captured_at, kc.source_recording_id
+        SELECT
+          kc.id,
+          ${CAPTURE_DISPLAY_TITLE_SQL} AS title,
+          kc.summary,
+          kc.captured_at,
+          kc.source_recording_id
         FROM knowledge_captures kc
         LEFT JOIN recordings r ON r.id = kc.source_recording_id
+        LEFT JOIN transcripts t ON t.recording_id = kc.source_recording_id
+        LEFT JOIN meetings m ON m.id = COALESCE(kc.meeting_id, r.meeting_id)
         WHERE kc.source_recording_id = ?
           AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
           AND ${ACTIVE_CAPTURE_SOURCE_SQL}
@@ -82,9 +126,16 @@ class KnowledgeSearchService {
 
     if (meetingId) {
       const row = queryOne<any>(`
-        SELECT kc.id, kc.title, kc.summary, kc.captured_at, kc.source_recording_id
+        SELECT
+          kc.id,
+          ${CAPTURE_DISPLAY_TITLE_SQL} AS title,
+          kc.summary,
+          kc.captured_at,
+          kc.source_recording_id
         FROM knowledge_captures kc
         LEFT JOIN recordings r ON r.id = kc.source_recording_id
+        LEFT JOIN transcripts t ON t.recording_id = kc.source_recording_id
+        LEFT JOIN meetings m ON m.id = COALESCE(kc.meeting_id, r.meeting_id)
         WHERE kc.meeting_id = ?
           AND ${ACTIVE_KNOWLEDGE_CAPTURE_SQL}
           AND ${ACTIVE_CAPTURE_SOURCE_SQL}
@@ -111,7 +162,7 @@ class KnowledgeSearchService {
     const row = queryOne<any>(`
       SELECT
         r.id,
-        COALESCE(m.subject, r.filename, 'Recording') AS title,
+        ${RECORDING_DISPLAY_TITLE_SQL} AS title,
         t.summary,
         t.full_text,
         COALESCE(r.date_recorded, t.created_at) AS captured_at
@@ -190,6 +241,7 @@ class KnowledgeSearchService {
     const db = getDatabase()
     const captureSearch = this.buildRankedLikeClauses(terms, [
       { sql: 'kc.title', weight: 3 },
+      { sql: 't.title_suggestion', weight: 3 },
       { sql: 'kc.summary', weight: 2 },
       { sql: 'm.subject', weight: 3 },
       { sql: 'r.filename', weight: 2 },
@@ -199,11 +251,12 @@ class KnowledgeSearchService {
     const captureRows = db.exec(`
       SELECT
         kc.id,
-        kc.title,
-        kc.summary,
+        ${CAPTURE_DISPLAY_TITLE_SQL} AS title,
+        COALESCE(kc.summary, t.summary) AS summary,
         kc.captured_at,
         kc.source_recording_id,
         t.full_text,
+        ${TITLE_SUGGESTION_SQL} AS title_suggestion,
         ${captureSearch.rankSql} AS match_rank
       FROM knowledge_captures kc
       LEFT JOIN transcripts t ON t.recording_id = kc.source_recording_id
@@ -218,6 +271,7 @@ class KnowledgeSearchService {
     `, [...captureSearch.params, limit])
 
     const transcriptSearch = this.buildRankedLikeClauses(terms, [
+      { sql: 't.title_suggestion', weight: 3 },
       { sql: 'm.subject', weight: 3 },
       { sql: 'r.filename', weight: 2 },
       { sql: 't.summary', weight: 2 },
@@ -226,11 +280,12 @@ class KnowledgeSearchService {
     const transcriptRows = db.exec(`
       SELECT
         t.recording_id AS id,
-        COALESCE(m.subject, r.filename, 'Recording') AS title,
+        ${RECORDING_DISPLAY_TITLE_SQL} AS title,
         t.summary,
         COALESCE(r.date_recorded, t.created_at) AS captured_at,
         t.recording_id AS source_recording_id,
         t.full_text,
+        ${TITLE_SUGGESTION_SQL} AS title_suggestion,
         ${transcriptSearch.rankSql} AS match_rank
       FROM transcripts t
       JOIN recordings r ON r.id = t.recording_id
@@ -252,22 +307,22 @@ class KnowledgeSearchService {
     if (captureRows.length > 0) {
       rankedResults.push(...captureRows[0].values.map(v => ({
         id: v[0],
-        title: v[1],
+        title: this.chooseResultTitle(v[1], v[6], terms),
         summary: v[2] || this.buildSearchSnippet(v[5], terms),
         capturedAt: v[3],
         sourceRecordingId: v[4],
-        lexicalRank: Number(v[6]) || 0
+        lexicalRank: Number(v[7]) || 0
       })))
     }
 
     if (transcriptRows.length > 0) {
       rankedResults.push(...transcriptRows[0].values.map(v => ({
         id: v[0],
-        title: v[1],
+        title: this.chooseResultTitle(v[1], v[6], terms),
         summary: v[2] || this.buildSearchSnippet(v[5], terms),
         capturedAt: v[3],
         sourceRecordingId: v[4],
-        lexicalRank: Number(v[6]) || 0
+        lexicalRank: Number(v[7]) || 0
       })))
     }
 

@@ -67,6 +67,40 @@ describe('Explore Page', () => {
     }, { timeout: 2000 })
   })
 
+  it('should highlight matched words in generated knowledge titles', async () => {
+    mockGlobalSearch.mockResolvedValueOnce({
+      success: true,
+      data: {
+        knowledge: [{
+          id: 'k1',
+          title: 'Generated Roadmap Review',
+          summary: 'The team reviewed launch timing.',
+          capturedAt: new Date().toISOString()
+        }],
+        people: [],
+        projects: []
+      }
+    })
+
+    render(
+      <MemoryRouter>
+        <Explore />
+      </MemoryRouter>
+    )
+
+    const input = screen.getByPlaceholderText(/Search anything/i)
+    fireEvent.change(input, { target: { value: 'roadmap' } })
+
+    await waitFor(() => {
+      const title = screen.getByText((_content, element) => (
+        element?.tagName.toLowerCase() === 'h4' &&
+        element.textContent === 'Generated Roadmap Review'
+      ))
+      const highlighted = title.querySelector('mark')
+      expect(highlighted).toHaveTextContent('Roadmap')
+    }, { timeout: 2000 })
+  })
+
   // C-EXP-M01: Search error clears when query changes
   it('should clear search error when query changes', async () => {
     // First search that fails
