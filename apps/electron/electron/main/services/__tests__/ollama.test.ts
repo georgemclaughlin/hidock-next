@@ -86,6 +86,7 @@ describe('OllamaService', () => {
       expect(body.model).toBe('custom-notes-model')
       expect(body.think).toBe(true)
       expect(body.stream).toBe(true)
+      expect(body.options).toEqual({ temperature: 0.2 })
       expect(body.messages).toEqual([
         { role: 'system', content: 'Return JSON' },
         { role: 'user', content: 'Summarize this' }

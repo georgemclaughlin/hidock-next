@@ -86,7 +86,7 @@ class OllamaService {
         think: options.think ?? this.thinkingEnabled,
         options: {
           temperature: options.temperature ?? 0.2,
-          num_predict: options.maxTokens ?? 1600
+          ...(options.maxTokens !== undefined ? { num_predict: options.maxTokens } : {})
         }
       }
 

@@ -148,7 +148,7 @@ export async function generateMeetingNotesForRecording(
     { role: 'user', content: titlePrompt }
   ]
 
-  const titleResponse = await ollama.chat(titleMessages, { temperature: 0.2, maxTokens: 128, think: true })
+  const titleResponse = await ollama.chat(titleMessages, { temperature: 0.2, think: true })
   const titleSuggestion = titleResponse
     ? cleanPlainTextResponse(titleResponse, meeting?.subject || recording.filename)
     : undefined
@@ -171,7 +171,7 @@ export async function generateMeetingNotesForRecording(
     }
   ]
 
-  const response = await ollama.chat(summaryMessages, { temperature: 0.2, maxTokens: 4096, think: true })
+  const response = await ollama.chat(summaryMessages, { temperature: 0.2, think: true })
   const summary = response ? cleanMarkdownResponse(response, titleSuggestion) : undefined
 
   if (!summary) {
