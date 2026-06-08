@@ -7,8 +7,10 @@ import { formatDate, formatDuration } from '@/lib/utils'
 import { Meeting, Transcript } from '@/types'
 import { UnifiedRecording, hasLocalPath } from '@/types/unified-recording'
 import { StatusIcon } from './StatusIcon'
+import { SummaryStatusBadge, type SummaryBadgeStatus } from './SummaryStatusBadge'
 import { TranscriptionStatusBadge } from './TranscriptionStatusBadge'
 import { useLibraryStore } from '@/store/useLibraryStore'
+import { useMeetingNotesQueueStatus, type MeetingNotesQueueStatus } from '@/store/features/useMeetingNotesQueueStore'
 import { getDisplayTitle } from '@/features/library/utils/getDisplayTitle'
 import { highlightText } from '@/features/library/utils/highlightText'
 
@@ -34,6 +36,30 @@ interface SourceRowProps {
   deviceConnected?: boolean
 }
 
+function getSummaryStatus(
+  queueStatus: MeetingNotesQueueStatus | null,
+  hasTranscript: boolean,
+  summary?: string | null
+): SummaryBadgeStatus | null {
+  if (queueStatus?.status === 'queued') return 'queued'
+  if (queueStatus?.status === 'generating') return 'generating'
+  if (queueStatus?.status === 'failed') return 'failed'
+
+  if (queueStatus?.status === 'complete' && queueStatus.result?.generated) {
+    return 'complete'
+  }
+
+  if (summary?.trim()) {
+    return 'complete'
+  }
+
+  if (queueStatus?.status === 'skipped') {
+    return 'skipped'
+  }
+
+  return hasTranscript ? 'none' : null
+}
+
 export const SourceRow = memo(function SourceRow({
   recording,
   meeting,
@@ -55,6 +81,9 @@ export const SourceRow = memo(function SourceRow({
 }: SourceRowProps) {
   const canPlay = hasLocalPath(recording)
   const error = useLibraryStore((state) => state.recordingErrors.get(recording.id))
+  const summaryQueueStatus = useMeetingNotesQueueStatus(recording.id)
+  const hasTranscript = recording.transcriptionStatus === 'complete' || Boolean(transcript?.full_text?.trim())
+  const summaryStatus = getSummaryStatus(summaryQueueStatus, hasTranscript, transcript?.summary)
 
   // Smart title
   const { primaryText, source: titleSource } = getDisplayTitle(recording, meeting, transcript)
@@ -110,6 +139,7 @@ export const SourceRow = memo(function SourceRow({
           <StatusIcon recording={recording} />
         </div>
         <TranscriptionStatusBadge status={recording.transcriptionStatus} compact className="mt-2" />
+        {summaryStatus && <SummaryStatusBadge status={summaryStatus} className="mt-1" />}
 
         <div className="min-w-0 flex-1">
           <p
@@ -251,6 +281,7 @@ export const SourceRow = memo(function SourceRow({
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isActiveSource === nextProps.isActiveSource &&
     prevProps.transcript?.id === nextProps.transcript?.id &&
+    prevProps.transcript?.summary === nextProps.transcript?.summary &&
     prevProps.transcript?.title_suggestion === nextProps.transcript?.title_suggestion &&
     prevProps.meeting?.id === nextProps.meeting?.id &&
     prevProps.meeting?.subject === nextProps.meeting?.subject &&

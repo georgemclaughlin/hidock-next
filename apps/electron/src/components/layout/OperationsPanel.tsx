@@ -5,26 +5,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useAppStore, useDownloadQueue, useDeviceSyncProgress, useDeviceSyncEta } from '@/store/useAppStore'
 import { getRecorderDeviceService } from '@/services/recorder-device'
 import { useTranscriptionStore, useTranscriptionStats } from '@/store/features/useTranscriptionStore'
+import {
+  useMeetingNotesQueueItems,
+  useMeetingNotesQueueStats,
+  useMeetingNotesQueueStore
+} from '@/store/features/useMeetingNotesQueueStore'
 import { useOperations } from '@/hooks/useOperations'
 import { toast } from '@/components/ui/toaster'
 import { formatEta } from '@/utils/formatters'
-
-type MeetingNotesGenerationResult = {
-  generated: boolean
-  skippedReason?: string
-  titleSuggestion?: string
-  summary?: string
-}
-
-type MeetingNotesQueueStatus = {
-  recordingId: string
-  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
-  queuedAt?: string
-  startedAt?: string
-  completedAt?: string
-  result?: MeetingNotesGenerationResult
-  error?: string
-}
 
 interface OperationsPanelProps {
   sidebarOpen: boolean
@@ -42,12 +30,14 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
   const deviceSyncEta = useDeviceSyncEta()
   const transcriptionStats = useTranscriptionStats()
   const transcriptionQueue = useTranscriptionStore((s) => s.queue)
+  const summaryQueueItems = useMeetingNotesQueueItems()
+  const summaryStats = useMeetingNotesQueueStats()
+  const upsertSummaryStatus = useMeetingNotesQueueStore((s) => s.upsertStatus)
   const unifiedRecordings = useAppStore((s) => s.unifiedRecordings) ?? []
   const { cancelAllDownloads, cancelAllTranscriptions, cancelTranscription } = useOperations()
 
   // DL-15: Track failed download count for retry button
   const [failedDownloadCount, setFailedDownloadCount] = useState(0)
-  const [summaryQueueStatuses, setSummaryQueueStatuses] = useState<Map<string, MeetingNotesQueueStatus>>(() => new Map())
 
   useEffect(() => {
     if (!window.electronAPI?.downloadService) return
@@ -90,14 +80,8 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
   }, [])
 
   useEffect(() => {
-    return window.electronAPI?.notes?.onStatusChanged?.((status) => {
-      setSummaryQueueStatuses((current) => {
-        const next = new Map(current)
-        next.set(status.recordingId, status)
-        return next
-      })
-    })
-  }, [])
+    return window.electronAPI?.notes?.onStatusChanged?.(upsertSummaryStatus)
+  }, [upsertSummaryStatus])
 
   const recordingNameById = useMemo(() => {
     return new Map(unifiedRecordings.map((recording) => [
@@ -105,32 +89,6 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
       recording.title || recording.filename
     ]))
   }, [unifiedRecordings])
-
-  const summaryQueueItems = useMemo(() => {
-    return Array.from(summaryQueueStatuses.values())
-      .filter((item) => item.status === 'queued' || item.status === 'generating' || item.status === 'failed')
-      .sort((a, b) => {
-        const aTime = a.startedAt ?? a.queuedAt ?? a.completedAt ?? ''
-        const bTime = b.startedAt ?? b.queuedAt ?? b.completedAt ?? ''
-        return bTime.localeCompare(aTime)
-      })
-  }, [summaryQueueStatuses])
-
-  const summaryStats = useMemo(() => {
-    return summaryQueueItems.reduce(
-      (stats, item) => {
-        if (item.status === 'failed') {
-          stats.failed += 1
-        } else if (item.status === 'generating') {
-          stats.processing += 1
-        } else if (item.status === 'queued') {
-          stats.pending += 1
-        }
-        return stats
-      },
-      { pending: 0, processing: 0, failed: 0 }
-    )
-  }, [summaryQueueItems])
 
   const handleRetrySummary = useCallback(async (recordingId: string) => {
     try {

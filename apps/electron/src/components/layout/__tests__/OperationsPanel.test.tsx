@@ -5,6 +5,7 @@ import { OperationsPanel } from '../OperationsPanel'
 // Mock stores
 import { useAppStore, useDownloadQueue } from '@/store/useAppStore'
 import { useTranscriptionStore, useTranscriptionStats } from '@/store/features/useTranscriptionStore'
+import { useMeetingNotesQueueStore } from '@/store/features/useMeetingNotesQueueStore'
 
 let notesStatusCallback: ((status: {
   recordingId: string
@@ -36,6 +37,7 @@ vi.mock('@/hooks/useOperations', () => ({
 }))
 
 function setupDefaultMocks() {
+  useMeetingNotesQueueStore.getState().clear()
   notesStatusCallback = undefined
   vi.stubGlobal('electronAPI', {
     notes: {
