@@ -28,6 +28,7 @@ import {
   TriPaneLayout,
   SourceReader
 } from '@/features/library/components'
+import type { SourceReaderMetadataChange } from '@/features/library/components/SourceReader'
 import { useSourceSelection, useKeyboardNavigation, useTransitionFilters } from '@/features/library/hooks'
 import { buildSearchCorpus } from '@/features/library/utils/buildSearchCorpus'
 import { useLibraryStore, useLibrarySorting } from '@/store/useLibraryStore'
@@ -108,6 +109,48 @@ export function Library() {
 
   // Drag-and-drop state for file import
   const [isDragOver, setIsDragOver] = useState(false)
+  const [optimisticRecordingTitles, setOptimisticRecordingTitles] = useState<Record<string, string>>({})
+
+  const displayedRecordings = useMemo(() => {
+    if (Object.keys(optimisticRecordingTitles).length === 0) return recordings
+
+    return recordings.map((recording) => {
+      const title = optimisticRecordingTitles[recording.id]
+      return title ? { ...recording, title } : recording
+    })
+  }, [optimisticRecordingTitles, recordings])
+
+  useEffect(() => {
+    if (Object.keys(optimisticRecordingTitles).length === 0) return
+
+    setOptimisticRecordingTitles((current) => {
+      let changed = false
+      const next = { ...current }
+      const currentRecordingsById = new Map(recordings.map((recording) => [recording.id, recording]))
+
+      for (const [recordingId, title] of Object.entries(next)) {
+        const recording = currentRecordingsById.get(recordingId)
+        if (!recording || recording.title === title) {
+          delete next[recordingId]
+          changed = true
+        }
+      }
+
+      return changed ? next : current
+    })
+  }, [optimisticRecordingTitles, recordings])
+
+  const handleMetadataEdited = useCallback((change?: SourceReaderMetadataChange) => {
+    const title = change?.title?.trim()
+    if (change?.recordingId && title) {
+      setOptimisticRecordingTitles((current) => ({
+        ...current,
+        [change.recordingId]: title
+      }))
+    }
+
+    void refresh(false, { bypassDebounce: true })
+  }, [refresh])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -216,14 +259,14 @@ export function Library() {
     const state = location.state as { selectedId?: string } | null
     if (state?.selectedId) {
       // Find the recording with this ID
-      const recording = recordings.find((r) => r.id === state.selectedId)
+      const recording = displayedRecordings.find((r) => r.id === state.selectedId)
       if (recording) {
         setSelectedSourceId(recording.id)
         // Clear the navigation state to prevent re-triggering on refresh
         navigate(location.pathname, { replace: true, state: {} })
       }
     }
-  }, [location.state, recordings, setSelectedSourceId, navigate, location.pathname])
+  }, [location.state, displayedRecordings, setSelectedSourceId, navigate, location.pathname])
 
   // Device disconnect handling
   const [wasConnected, setWasConnected] = useState(deviceConnected)
@@ -390,7 +433,7 @@ export function Library() {
 
   // Filter recordings based on location and search
   const filteredRecordings = useMemo(() => {
-    const filtered = recordings.filter((rec) => {
+    const filtered = displayedRecordings.filter((rec) => {
       // Use dual-mode filter matching (semantic or exclusive)
       const locationMatches =
         filterMode === 'semantic'
@@ -455,14 +498,14 @@ export function Library() {
     })
 
     return filtered
-  }, [recordings, filterMode, semanticFilter, exclusiveFilter, categoryFilter, qualityFilter, statusFilter, deferredSearchQuery, sortBy, sortOrder])
+  }, [displayedRecordings, filterMode, semanticFilter, exclusiveFilter, categoryFilter, qualityFilter, statusFilter, deferredSearchQuery, sortBy, sortOrder])
 
   // Announce filter result changes (after filteredRecordings is declared)
   useEffect(() => {
-    if (!loading && filteredRecordings.length !== recordings.length) {
-      announce(`Showing ${filteredRecordings.length} of ${recordings.length} captures`)
+    if (!loading && filteredRecordings.length !== displayedRecordings.length) {
+      announce(`Showing ${filteredRecordings.length} of ${displayedRecordings.length} captures`)
     }
-  }, [filteredRecordings.length, recordings.length, loading, announce])
+  }, [filteredRecordings.length, displayedRecordings.length, loading, announce])
 
   // Memoize the list of IDs for keyboard navigation
   const itemIds = useMemo(() => filteredRecordings.map((r) => r.id), [filteredRecordings])
@@ -793,7 +836,7 @@ export function Library() {
   }
 
   // Get selected recording and its data for SourceReader
-  const selectedRecording = selectedSourceId ? recordings.find((r) => r.id === selectedSourceId) : null
+  const selectedRecording = selectedSourceId ? displayedRecordings.find((r) => r.id === selectedSourceId) : null
   const selectedTranscript = selectedRecording ? transcripts.get(selectedRecording.id) : undefined
   const selectedMeeting = selectedRecording?.meetingId ? meetings.get(selectedRecording.meetingId) : undefined
 
@@ -815,7 +858,7 @@ export function Library() {
   })
 
   // Loading state — show skeleton layout instead of bare spinner
-  if (loading && recordings.length === 0) {
+  if (loading && displayedRecordings.length === 0) {
     return (
       <div className="flex flex-col h-full">
         <header className="border-b px-6 py-4">
@@ -969,7 +1012,7 @@ export function Library() {
         <div className={`lg:max-w-4xl lg:mx-auto transition-opacity ${isFilterPending ? 'opacity-60' : 'opacity-100'}`}>
           {filteredRecordings.length === 0 ? (
             <EmptyState
-              hasRecordings={recordings.length > 0}
+              hasRecordings={displayedRecordings.length > 0}
               onNavigateToDevice={() => navigate('/sync')}
               onAddRecording={handleAddRecording}
             />
@@ -1150,7 +1193,7 @@ export function Library() {
               onNavigateToMeeting={handleNavigateToMeeting}
               onOpenSettings={() => navigate('/settings')}
               // Metadata editing
-              onMetadataEdited={() => refresh(false)}
+              onMetadataEdited={handleMetadataEdited}
             />
           }
         />

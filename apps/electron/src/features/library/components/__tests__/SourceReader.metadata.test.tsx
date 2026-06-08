@@ -294,6 +294,10 @@ describe('SourceReader — metadata editing', () => {
     await waitFor(() => {
       expect(onMetadataEdited).toHaveBeenCalledOnce()
     })
+    expect(onMetadataEdited).toHaveBeenCalledWith({
+      recordingId: 'rec-1',
+      title: 'Generated Header Title'
+    })
     expect(await screen.findByRole('heading', { name: 'Generated Header Title', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Generated Markdown Title' })).toBeInTheDocument()
   })
@@ -455,6 +459,10 @@ describe('SourceReader — metadata editing', () => {
 
     await waitFor(() => {
       expect(onMetadataEdited).toHaveBeenCalledOnce()
+    })
+    expect(onMetadataEdited).toHaveBeenCalledWith({
+      recordingId: 'rec-1',
+      title: 'New Title'
     })
   })
 

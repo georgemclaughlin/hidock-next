@@ -57,6 +57,10 @@ type MeetingNotesQueueStatus = {
   }
   error?: string
 }
+export type SourceReaderMetadataChange = {
+  recordingId: string
+  title?: string
+}
 
 const activeNotesGenerations = new Set<string>()
 const manualNotesGenerations = new Set<string>()
@@ -227,7 +231,7 @@ interface SourceReaderProps {
   onNavigateToMeeting?: (meetingId: string) => void
   onOpenSettings?: () => void
   // Metadata editing callback
-  onMetadataEdited?: () => void
+  onMetadataEdited?: (change?: SourceReaderMetadataChange) => void
 }
 
 export function SourceReader({
@@ -356,7 +360,7 @@ export function SourceReader({
       if (wasManual && isCurrentRecording) {
         toast.success('Summary generated', status.result.titleSuggestion || 'Meeting summary updated')
       }
-      onMetadataEdited?.()
+      onMetadataEdited?.(titleSuggestion ? { recordingId: status.recordingId, title: titleSuggestion } : { recordingId: status.recordingId })
     }
 
     if (status.status === 'skipped' && wasManual && isCurrentRecording) {
@@ -457,7 +461,7 @@ export function SourceReader({
         setIsEditingTitle(false)
         setMetadataEdited(true)
         toast.success('Title updated')
-        onMetadataEdited?.()
+        onMetadataEdited?.({ recordingId: recording.id, title: trimmed })
       } else {
         toast.error('Failed to save title')
       }

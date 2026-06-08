@@ -1,11 +1,26 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { Library } from '../Library'
 
 const mockGetTranscriptsByRecordingIds = vi.fn().mockResolvedValue({})
 const mockOnTranscriptionCompleted = vi.fn()
+const mockGetNotesStatus = vi.fn().mockResolvedValue({ success: true, data: null })
+const mockOnNotesStatusChanged = vi.fn()
 let transcriptionCompletedCallback: ((data: { recordingId: string }) => void) | null = null
+let notesStatusCallbacks: Array<(status: {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  result?: {
+    generated: boolean
+    titleSuggestion?: string
+    summary?: string
+  }
+}) => void> = []
+let mockSelectedSourceId: string | null = null
+const mockSetSelectedSourceId = vi.fn((id: string | null) => {
+  mockSelectedSourceId = id
+})
 
 // Mock hooks
 vi.mock('@/hooks/useUnifiedRecordings', () => ({
@@ -103,8 +118,8 @@ vi.mock('@/store/useLibraryStore', () => ({
       clearSelection: vi.fn(),
       panelSizes: [25, 45, 30],
       setPanelSizes: vi.fn(),
-      selectedSourceId: null,
-      setSelectedSourceId: vi.fn(),
+      selectedSourceId: mockSelectedSourceId,
+      setSelectedSourceId: mockSetSelectedSourceId,
       expandedRowIds: new Set(),
       expandedTranscripts: new Set(),
       toggleRowExpansion: vi.fn(),
@@ -177,7 +192,11 @@ global.window.electronAPI = {
   downloadService: {
     queueDownloads: vi.fn()
   },
-  onTranscriptionCompleted: mockOnTranscriptionCompleted
+  onTranscriptionCompleted: mockOnTranscriptionCompleted,
+  notes: {
+    getStatus: mockGetNotesStatus,
+    onStatusChanged: mockOnNotesStatusChanged
+  }
 } as any
 
 import { useUnifiedRecordings } from '@/hooks/useUnifiedRecordings'
@@ -200,9 +219,16 @@ describe('Library', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     transcriptionCompletedCallback = null
+    notesStatusCallbacks = []
+    mockSelectedSourceId = null
     mockGetTranscriptsByRecordingIds.mockResolvedValue({})
+    mockGetNotesStatus.mockResolvedValue({ success: true, data: null })
     mockOnTranscriptionCompleted.mockImplementation((callback) => {
       transcriptionCompletedCallback = callback
+      return vi.fn()
+    })
+    mockOnNotesStatusChanged.mockImplementation((callback) => {
+      notesStatusCallbacks.push(callback)
       return vi.fn()
     })
     vi.mocked(useUnifiedRecordings).mockReturnValue({
@@ -301,6 +327,44 @@ describe('Library', () => {
       await waitFor(() => {
         expect(mockGetTranscriptsByRecordingIds).toHaveBeenCalledWith(['test-123'])
       })
+    })
+
+    it('updates the visible recording title when meeting summary generation returns a title', async () => {
+      mockSelectedSourceId = 'test-123'
+      const refresh = vi.fn().mockResolvedValue(undefined)
+      vi.mocked(useUnifiedRecordings).mockReturnValue({
+        recordings: [mockRecording],
+        loading: false,
+        error: null,
+        refresh,
+        deviceConnected: false,
+        stats: { total: 1, deviceOnly: 0, localOnly: 1, both: 0, synced: 1, unsynced: 0, onSource: 0, locallyAvailable: 1 }
+      })
+
+      renderLibrary()
+
+      await waitFor(() => {
+        expect(mockOnNotesStatusChanged).toHaveBeenCalled()
+      })
+
+      act(() => {
+        for (const callback of notesStatusCallbacks) {
+          callback({
+            recordingId: 'test-123',
+            status: 'complete',
+            result: {
+              generated: true,
+              titleSuggestion: 'Generated Parent Title',
+              summary: '# Generated Summary\n\nA concise generated summary.'
+            }
+          })
+        }
+      })
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Generated Parent Title').length).toBeGreaterThanOrEqual(2)
+      })
+      expect(refresh).toHaveBeenCalledWith(false, { bypassDebounce: true })
     })
 
     it('shows device status when not connected', async () => {
