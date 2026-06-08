@@ -74,7 +74,7 @@ describe('generateMeetingNotesForRecording', () => {
 
     expect(mocks.chat).toHaveBeenCalledTimes(2)
     const titleMessages = mocks.chat.mock.calls[0][0]
-    expect(mocks.chat.mock.calls[0][1]).toEqual({ temperature: 0.2, think: true })
+    expect(mocks.chat.mock.calls[0][1]).toEqual({ temperature: 0.2, think: false })
     expect(titleMessages).toHaveLength(2)
     expect(titleMessages[1].content).toContain('Return only the title')
     expect(titleMessages[1].content).toContain('The team reviewed roadmap priorities')
