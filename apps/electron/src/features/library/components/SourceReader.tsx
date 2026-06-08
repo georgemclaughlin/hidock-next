@@ -778,6 +778,7 @@ export function SourceReader({
                         recording={recording}
                         transcript={transcript}
                         onTranscribe={onTranscribe}
+                        onGenerateSummary={transcript ? handleGenerateNotes : undefined}
                         onOpenSettings={onOpenSettings}
                         variant="popover"
                       />
@@ -905,6 +906,16 @@ export function SourceReader({
             <p className="text-xs text-muted-foreground italic">
               Download this capture to play it and generate a transcript.
             </p>
+          )}
+
+          {hasLocalPath(recording) && (
+            <ProcessingPipelineTracker
+              recording={recording}
+              transcript={transcript}
+              onTranscribe={onTranscribe}
+              onGenerateSummary={transcript ? handleGenerateNotes : undefined}
+              onOpenSettings={onOpenSettings}
+            />
           )}
 
           {detailsExpanded && (

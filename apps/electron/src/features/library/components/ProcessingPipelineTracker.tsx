@@ -56,6 +56,7 @@ interface ProcessingPipelineTrackerProps {
   recording: UnifiedRecording
   transcript?: Transcript
   onTranscribe?: () => void
+  onGenerateSummary?: () => void
   onOpenSettings?: () => void
   variant?: 'section' | 'popover'
 }
@@ -169,6 +170,7 @@ function buildStages(
   isSummaryConfigured: boolean,
   diarizationEnabled: boolean,
   onTranscribe?: () => void,
+  onGenerateSummary?: () => void,
   onOpenSettings?: () => void
 ): PipelineStage[] {
   const stage = normalizeStage(item?.stage)
@@ -403,7 +405,8 @@ function buildStages(
         id: 'summary',
         label: 'Summarize',
         status: 'failed',
-        detail: notesStatus.error || 'Meeting summary generation failed.'
+        detail: notesStatus.error || 'Meeting summary generation failed.',
+        action: onGenerateSummary ? { label: 'Retry meeting summary', onSelect: onGenerateSummary } : undefined
       }
     }
 
@@ -412,7 +415,10 @@ function buildStages(
         id: 'summary',
         label: 'Summarize',
         status: 'skipped',
-        detail: notesStatus.result?.skippedReason || 'Meeting summary was skipped.'
+        detail: notesStatus.result?.skippedReason || 'Meeting summary was skipped.',
+        action: onGenerateSummary && isSummaryConfigured
+          ? { label: 'Generate meeting summary', onSelect: onGenerateSummary }
+          : undefined
       }
     }
 
@@ -421,7 +427,8 @@ function buildStages(
         id: 'summary',
         label: 'Summarize',
         status: 'ready',
-        detail: 'Local summary generation is configured.'
+        detail: 'Local summary generation is configured.',
+        action: onGenerateSummary ? { label: 'Generate meeting summary', onSelect: onGenerateSummary } : undefined
       }
     }
 
@@ -561,6 +568,7 @@ export function ProcessingPipelineTracker({
   recording,
   transcript,
   onTranscribe,
+  onGenerateSummary,
   onOpenSettings,
   variant = 'section'
 }: ProcessingPipelineTrackerProps) {
@@ -627,8 +635,8 @@ export function ProcessingPipelineTracker({
   }, [recording.id, transcript?.id])
 
   const stages = useMemo(
-    () => buildStages(recording, transcript, transcriptionItem, indexStats, notesStatus, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings),
-    [recording, transcript, transcriptionItem, indexStats, notesStatus, isSummaryConfigured, diarizationEnabled, onTranscribe, onOpenSettings]
+    () => buildStages(recording, transcript, transcriptionItem, indexStats, notesStatus, isSummaryConfigured, diarizationEnabled, onTranscribe, onGenerateSummary, onOpenSettings),
+    [recording, transcript, transcriptionItem, indexStats, notesStatus, isSummaryConfigured, diarizationEnabled, onTranscribe, onGenerateSummary, onOpenSettings]
   )
   const completedStageCount = stages.filter((stage) => stage.status === 'complete').length
 

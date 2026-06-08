@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { ProcessingPipelineTracker } from '../ProcessingPipelineTracker'
 import { useConfigStore } from '@/store/domain/useConfigStore'
 import type { AppConfig, Transcript } from '@/types'
@@ -173,6 +173,23 @@ describe('ProcessingPipelineTracker', () => {
     const summaryStage = screen.getByText('Summarize').closest('.group')
     expect(summaryStage).not.toBeNull()
     expect(await within(summaryStage as HTMLElement).findByText('Running')).toBeInTheDocument()
+  })
+
+  it('can queue summary generation from the summarize stage', async () => {
+    const onGenerateSummary = vi.fn()
+
+    render(
+      <ProcessingPipelineTracker
+        recording={makeRecording()}
+        transcript={makeTranscript()}
+        onGenerateSummary={onGenerateSummary}
+      />
+    )
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /summarize ready/i }))
+    fireEvent.click(await screen.findByText('Generate meeting summary'))
+
+    expect(onGenerateSummary).toHaveBeenCalledOnce()
   })
 
   it('shows diarization as skipped when disabled', () => {
