@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { OperationsPanel } from '../OperationsPanel'
 
 // Mock stores
 import { useAppStore, useDownloadQueue } from '@/store/useAppStore'
 import { useTranscriptionStore, useTranscriptionStats } from '@/store/features/useTranscriptionStore'
+
+let notesStatusCallback: ((status: {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  queuedAt?: string
+  startedAt?: string
+  completedAt?: string
+  error?: string
+}) => void) | undefined
 
 vi.mock('@/store/useAppStore', () => ({
   useAppStore: vi.fn(),
@@ -27,11 +36,26 @@ vi.mock('@/hooks/useOperations', () => ({
 }))
 
 function setupDefaultMocks() {
+  notesStatusCallback = undefined
+  vi.stubGlobal('electronAPI', {
+    notes: {
+      onStatusChanged: vi.fn((callback) => {
+        notesStatusCallback = callback
+        return vi.fn()
+      }),
+      enqueueForRecording: vi.fn().mockResolvedValue({
+        success: true,
+        data: { recordingId: 'rec-1', status: 'queued' }
+      })
+    }
+  })
+
   vi.mocked(useAppStore).mockImplementation((selector: any) => {
     const state = {
       downloadQueue: new Map(),
       deviceSyncProgress: null,
-      deviceSyncEta: null
+      deviceSyncEta: null,
+      unifiedRecordings: []
     }
     return typeof selector === 'function' ? selector(state) : state
   })
@@ -71,7 +95,8 @@ describe('OperationsPanel', () => {
       const state = {
         downloadQueue,
         deviceSyncProgress: null,
-        deviceSyncEta: null
+        deviceSyncEta: null,
+        unifiedRecordings: []
       }
       return typeof selector === 'function' ? selector(state) : state
     })
@@ -105,7 +130,8 @@ describe('OperationsPanel', () => {
       const state = {
         downloadQueue,
         deviceSyncProgress: null,
-        deviceSyncEta: null
+        deviceSyncEta: null,
+        unifiedRecordings: []
       }
       return typeof selector === 'function' ? selector(state) : state
     })
@@ -114,5 +140,36 @@ describe('OperationsPanel', () => {
 
     // When collapsed, cancel buttons are hidden
     expect(screen.queryByText(/Cancel all downloads/)).not.toBeInTheDocument()
+  })
+
+  it('renders meeting summary operations from notes status events', () => {
+    vi.mocked(useAppStore).mockImplementation((selector: any) => {
+      const state = {
+        downloadQueue: new Map(),
+        deviceSyncProgress: null,
+        deviceSyncEta: null,
+        unifiedRecordings: [
+          {
+            id: 'rec-1',
+            filename: '2026Jun06-133830-Rec24.mp3',
+            title: 'Roadmap Review'
+          }
+        ]
+      }
+      return typeof selector === 'function' ? selector(state) : state
+    })
+
+    render(<OperationsPanel sidebarOpen={true} />)
+
+    act(() => {
+      notesStatusCallback?.({
+        recordingId: 'rec-1',
+        status: 'generating',
+        startedAt: '2026-06-07T18:00:00.000Z'
+      })
+    })
+
+    expect(screen.getByText(/Summaries \(1/)).toBeInTheDocument()
+    expect(screen.getByText('Roadmap Review')).toBeInTheDocument()
   })
 })

@@ -1,13 +1,30 @@
-import { useState, useEffect, useCallback } from 'react'
-import { X, Download, Sparkles, RefreshCw, AlertCircle, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { X, Download, Sparkles, RefreshCw, AlertCircle, RotateCcw, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useDownloadQueue, useDeviceSyncProgress, useDeviceSyncEta } from '@/store/useAppStore'
+import { useAppStore, useDownloadQueue, useDeviceSyncProgress, useDeviceSyncEta } from '@/store/useAppStore'
 import { getRecorderDeviceService } from '@/services/recorder-device'
 import { useTranscriptionStore, useTranscriptionStats } from '@/store/features/useTranscriptionStore'
 import { useOperations } from '@/hooks/useOperations'
 import { toast } from '@/components/ui/toaster'
 import { formatEta } from '@/utils/formatters'
+
+type MeetingNotesGenerationResult = {
+  generated: boolean
+  skippedReason?: string
+  titleSuggestion?: string
+  summary?: string
+}
+
+type MeetingNotesQueueStatus = {
+  recordingId: string
+  status: 'queued' | 'generating' | 'complete' | 'skipped' | 'failed'
+  queuedAt?: string
+  startedAt?: string
+  completedAt?: string
+  result?: MeetingNotesGenerationResult
+  error?: string
+}
 
 interface OperationsPanelProps {
   sidebarOpen: boolean
@@ -25,10 +42,12 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
   const deviceSyncEta = useDeviceSyncEta()
   const transcriptionStats = useTranscriptionStats()
   const transcriptionQueue = useTranscriptionStore((s) => s.queue)
+  const unifiedRecordings = useAppStore((s) => s.unifiedRecordings) ?? []
   const { cancelAllDownloads, cancelAllTranscriptions, cancelTranscription } = useOperations()
 
   // DL-15: Track failed download count for retry button
   const [failedDownloadCount, setFailedDownloadCount] = useState(0)
+  const [summaryQueueStatuses, setSummaryQueueStatuses] = useState<Map<string, MeetingNotesQueueStatus>>(() => new Map())
 
   useEffect(() => {
     if (!window.electronAPI?.downloadService) return
@@ -70,11 +89,71 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
     }
   }, [])
 
+  useEffect(() => {
+    return window.electronAPI?.notes?.onStatusChanged?.((status) => {
+      setSummaryQueueStatuses((current) => {
+        const next = new Map(current)
+        next.set(status.recordingId, status)
+        return next
+      })
+    })
+  }, [])
+
+  const recordingNameById = useMemo(() => {
+    return new Map(unifiedRecordings.map((recording) => [
+      recording.id,
+      recording.title || recording.filename
+    ]))
+  }, [unifiedRecordings])
+
+  const summaryQueueItems = useMemo(() => {
+    return Array.from(summaryQueueStatuses.values())
+      .filter((item) => item.status === 'queued' || item.status === 'generating' || item.status === 'failed')
+      .sort((a, b) => {
+        const aTime = a.startedAt ?? a.queuedAt ?? a.completedAt ?? ''
+        const bTime = b.startedAt ?? b.queuedAt ?? b.completedAt ?? ''
+        return bTime.localeCompare(aTime)
+      })
+  }, [summaryQueueStatuses])
+
+  const summaryStats = useMemo(() => {
+    return summaryQueueItems.reduce(
+      (stats, item) => {
+        if (item.status === 'failed') {
+          stats.failed += 1
+        } else if (item.status === 'generating') {
+          stats.processing += 1
+        } else if (item.status === 'queued') {
+          stats.pending += 1
+        }
+        return stats
+      },
+      { pending: 0, processing: 0, failed: 0 }
+    )
+  }, [summaryQueueItems])
+
+  const handleRetrySummary = useCallback(async (recordingId: string) => {
+    try {
+      const result = await window.electronAPI?.notes?.enqueueForRecording?.(recordingId)
+      if (!result?.success) {
+        toast({
+          title: 'Failed to queue summary',
+          description: result?.error?.message || 'Could not re-queue meeting summary',
+          variant: 'error'
+        })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not re-queue meeting summary'
+      toast({ title: 'Failed to queue summary', description: message, variant: 'error' })
+    }
+  }, [])
+
   const hasDownloads = downloadQueue.size > 0
   // DL-15: Also show panel when there are failed downloads (for retry button)
   const hasFailedDownloads = failedDownloadCount > 0
   const hasTranscriptions = transcriptionStats.pending > 0 || transcriptionStats.processing > 0 || transcriptionStats.failed > 0
-  const hasAnyOperations = hasDownloads || hasFailedDownloads || hasTranscriptions
+  const hasSummaryGenerations = summaryStats.pending > 0 || summaryStats.processing > 0 || summaryStats.failed > 0
+  const hasAnyOperations = hasDownloads || hasFailedDownloads || hasTranscriptions || hasSummaryGenerations
 
   if (!hasAnyOperations) return null
 
@@ -294,7 +373,73 @@ export function OperationsPanel({ sidebarOpen }: OperationsPanelProps) {
           )}
         </div>
       )}
+
+      {/* Meeting Summaries Section */}
+      {hasSummaryGenerations && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-300">
+              <FileText className={`h-3 w-3 ${summaryStats.processing > 0 || summaryStats.pending > 0 ? 'text-cyan-400 animate-pulse' : 'text-red-400'}`} />
+              {sidebarOpen ? (
+                <span>
+                  Summaries ({summaryStats.processing + summaryStats.pending}
+                  {summaryStats.failed > 0 && `, ${summaryStats.failed} failed`})
+                </span>
+              ) : (
+                <span className={`text-[10px] ${summaryStats.failed > 0 && summaryStats.processing + summaryStats.pending === 0 ? 'text-red-400' : 'text-cyan-400'}`}>
+                  {summaryStats.processing + summaryStats.pending || summaryStats.failed}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {sidebarOpen && (
+            <div className="space-y-1 px-1">
+              {summaryQueueItems.slice(0, 4).map((item) => {
+                const filename = recordingNameById.get(item.recordingId) ?? `Recording ${item.recordingId.slice(0, 8)}`
+                return (
+                  <div key={item.recordingId} className="flex items-center gap-1.5 text-[10px]">
+                    {item.status === 'generating' && (
+                      <RefreshCw className="h-2.5 w-2.5 text-cyan-400 animate-spin shrink-0" />
+                    )}
+                    {item.status === 'queued' && (
+                      <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60 shrink-0" />
+                    )}
+                    {item.status === 'failed' && (
+                      <AlertCircle className="h-2.5 w-2.5 text-red-400 shrink-0" />
+                    )}
+                    <span className="text-slate-400 truncate flex-1" title={filename}>
+                      {filename.length > 18 ? `${filename.slice(0, 15)}...` : filename}
+                    </span>
+                    {item.status === 'failed' && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              aria-label={`Retry summary for ${filename}`}
+                              className="text-slate-500 hover:text-slate-300"
+                              onClick={() => { void handleRetrySummary(item.recordingId) }}
+                            >
+                              <RotateCcw className="h-2.5 w-2.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Retry</p>
+                            {item.error && <p className="text-xs text-muted-foreground">{item.error}</p>}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                )
+              })}
+              {summaryQueueItems.length > 4 && (
+                <div className="text-[10px] text-slate-500">+{summaryQueueItems.length - 4} more in queue</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
-

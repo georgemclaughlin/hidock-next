@@ -908,16 +908,6 @@ export function SourceReader({
             </p>
           )}
 
-          {hasLocalPath(recording) && (
-            <ProcessingPipelineTracker
-              recording={recording}
-              transcript={transcript}
-              onTranscribe={onTranscribe}
-              onGenerateSummary={transcript ? handleGenerateNotes : undefined}
-              onOpenSettings={onOpenSettings}
-            />
-          )}
-
           {detailsExpanded && (
             <div id="source-details-panel" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 border-t pt-3 text-sm">
               <div>
